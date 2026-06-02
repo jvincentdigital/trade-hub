@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { forexRatesResponseSchema } from '@/lib/schemas'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const limit = checkRateLimit('data', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   try {
     const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD', {
       next: { revalidate: 3600 },

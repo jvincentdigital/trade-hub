@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { twelveDataResponseSchema } from '@/lib/schemas'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 // Twelve Data free tier: 800 req/day, 8 req/min. Supports intraday forex OHLC.
 // Free API key: https://twelvedata.com/register
@@ -21,6 +22,9 @@ function toUnixSec(datetime: string): number {
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ pair: string }> }) {
+  const limit = checkRateLimit('data', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   const apiKey = process.env.TWELVE_DATA_API_KEY
   if (!apiKey) {
     return NextResponse.json(

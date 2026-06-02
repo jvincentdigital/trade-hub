@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { OHLCCandle } from '@/lib/types/market'
 import { detectPatterns } from '@/lib/patterns/detector'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 import {
   COIN_MAP,
   fetchOHLC,
@@ -139,6 +140,9 @@ async function buildSetup(id: string, tf: Timeframe): Promise<BuildOutcome> {
 }
 
 export async function GET(request: Request) {
+  const limit = checkRateLimit('scanner', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   const url = new URL(request.url)
   const tfRaw = url.searchParams.get('tf') ?? '4H'
   const symbolsRaw = url.searchParams.get('symbols') ?? ''

@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { frankfurterResponseSchema } from '@/lib/schemas'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 const ALLOWED_DAYS = new Set([7, 14, 30, 90, 180, 365])
 const PAIR_RE = /^([A-Z]{3})-([A-Z]{3})$/
 
 export async function GET(request: Request, { params }: { params: Promise<{ pair: string }> }) {
+  const limit = checkRateLimit('data', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   const { pair } = await params
   const match = PAIR_RE.exec(pair)
   if (!match) {

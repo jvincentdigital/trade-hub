@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { marketChartResponseSchema } from '@/lib/schemas'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 // CoinGecko free tier: /market_chart?days=1 → 5-minute price points (~289).
 // We bucket those into 15- or 30-minute OHLC. Larger intervals aren't worth
@@ -14,6 +15,9 @@ function isInterval(x: string): x is Interval {
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const limit = checkRateLimit('data', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   const { id } = await params
   const url = new URL(request.url)
   const intervalRaw = url.searchParams.get('interval') ?? '15m'

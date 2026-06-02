@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { ohlcResponseSchema } from '@/lib/schemas'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 const ALLOWED_DAYS = new Set([1, 7, 14, 30, 90, 180, 365])
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const limit = checkRateLimit('data', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   const { id } = await params
   const url = new URL(request.url)
   const daysRaw = url.searchParams.get('days')

@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { cryptoPricesResponseSchema } from '@/lib/schemas'
+import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 const COINS =
   'bitcoin,ethereum,solana,ripple,binancecoin,cardano,avalanche-2,dogecoin,polkadot,matic-network'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const limit = checkRateLimit('data', getClientIdentifier(request))
+  if (!limit.ok) return rateLimitResponse(limit)
+
   try {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${COINS}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`,
