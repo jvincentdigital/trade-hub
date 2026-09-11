@@ -41,7 +41,12 @@ fmt-check: ## Verify formatting without writing changes
 	npm run fmt:check
 
 typecheck: ## Run TypeScript type checking
-	npx tsc --noEmit
+# Local binary, not `npx`: when node is off PATH (any non-interactive shell,
+# make included), npx falls through to the Windows npm on /mnt/c and runs the
+# wrong tsc, failing on the UNC path while the code is actually clean.
+	@command -v node >/dev/null 2>&1 || (echo "node not found on PATH. Using nvm? Run from an interactive shell, or: source ~/.nvm/nvm.sh" && exit 1)
+	@test -x ./node_modules/.bin/tsc || (echo "tsc not found. Run: make install" && exit 1)
+	./node_modules/.bin/tsc --noEmit
 
 # ── Deploy & Manage ───────────────────────────────────────
 # Vercel CLI (jvincentdigital-projects/trade-hub). `.vercel/` holds the link.
