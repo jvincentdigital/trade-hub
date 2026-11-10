@@ -27,6 +27,8 @@ export interface Candidate extends BacktestTrade {
   usdPerQuote: number
   feeRate: number
   leverage: number
+  /** Length of the candles it trades on, in seconds. Its exit only counts at the end of the exit candle (no look-ahead across candle sizes). */
+  candleSec?: number
 }
 
 export interface TradeMoney extends Candidate {
@@ -77,8 +79,11 @@ export function portfolioBacktest(
   const passed: Passed[] = []
 
   const closeBefore = (time: number) => {
-    const due = open.filter((o) => o.exitTime < time).sort((a, b) => a.exitTime - b.exitTime)
-    open = open.filter((o) => o.exitTime >= time)
+    const closeAt = (o: { exitTime: number; candleSec?: number }) => o.exitTime + (o.candleSec ?? 0)
+    const due = open
+      .filter((o) => closeAt(o) <= time && o.exitTime < time)
+      .sort((a, b) => closeAt(a) - closeAt(b))
+    open = open.filter((o) => !due.includes(o))
     for (const o of due) {
       const gross = o.units * (o.direction === 'long' ? 1 : -1) * (o.exit - o.entry) * o.usdPerQuote
       const exitFee = o.units * o.exit * o.usdPerQuote * o.feeRate

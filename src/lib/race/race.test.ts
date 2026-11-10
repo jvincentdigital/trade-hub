@@ -330,6 +330,23 @@ describe('leaderboard: one account per strategy', () => {
     expect(fee.trades[0].pnl).toBeCloseTo(40 - 0.84)
   })
 
+  it('a daily trade only frees its money at the end of its exit day (no look-ahead)', () => {
+    const D = 1_000 * 86_400
+    // forex wins +$40 on day D (daily candle), crypto enters at D + 5h on hourly candles
+    const p = portfolioBacktest(1000, [
+      cand('GBP-USD', D - 86_400, D, { candleSec: 86_400 }),
+      cand('bitcoin', D + 5 * 3_600, D + 9 * 3_600, { candleSec: 3_600 }),
+    ])
+    const btc = p.trades.find((t) => t.market === 'bitcoin')!
+    expect(btc.balanceAtEntry).toBe(1000)
+    // the next day it is in the balance
+    const q = portfolioBacktest(1000, [
+      cand('GBP-USD', D - 86_400, D, { candleSec: 86_400 }),
+      cand('bitcoin', D + 86_400, D + 86_400 + 3_600, { candleSec: 3_600 }),
+    ])
+    expect(q.trades.find((t) => t.market === 'bitcoin')!.balanceAtEntry).toBeCloseTo(1040)
+  })
+
   it('scores a strategy: per market, wins, best market, money a month, max drop', () => {
     const e = scoreStrategy({
       ruleId: 'x',

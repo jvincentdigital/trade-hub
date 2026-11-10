@@ -81,6 +81,8 @@ const when = (sec: number) =>
     minute: '2-digit',
   })
 
+const CANDLE_SEC = { '1h': 3_600, '4h': 14_400, '1d': 86_400 } as const
+
 export default function RacePage() {
   const [start, setStart] = useState(1000)
   const safeStart = start > 0 ? start : 1000
@@ -251,6 +253,7 @@ function Backtests({ start }: { start: number }) {
             usdPerQuote: pastUsdPerQuote(id, t.entry, t.entryTime, data),
             feeRate: FEE_RATE[market],
             leverage: LEVERAGE[market],
+            candleSec: market === 'forex' ? 86_400 : CANDLE_SEC[rule.timeframe],
           })
       }
       runs[rule.id] = { markets: ran, candidates }
