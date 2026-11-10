@@ -1,9 +1,10 @@
 'use client'
-import { use, useMemo, useState } from 'react'
+import { Suspense, use, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { CandleChart } from '@/components/market/CandleChart'
+import { RuleSignals } from '@/components/market/RuleSignals'
 import {
   fetchCryptoIntraday,
   fetchCryptoOHLC,
@@ -268,6 +269,20 @@ export default function CryptoDetailPage({ params }: { params: Promise<{ id: str
           {formatChange(change)} over the last {tf.label}. Auto-refresh 60s.
         </p>
       )}
+      <Suspense fallback={null}>
+        <RuleSignals instrumentId={id} />
+      </Suspense>
+      <Link
+        href={`/demo?symbol=${id}`}
+        style={{
+          display: 'inline-block',
+          marginTop: '12px',
+          fontSize: '12px',
+          color: 'var(--indigo)',
+        }}
+      >
+        Practice this market in the demo account →
+      </Link>
     </div>
   )
 }

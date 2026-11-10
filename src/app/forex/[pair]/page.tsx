@@ -1,9 +1,10 @@
 'use client'
-import { use, useMemo, useState } from 'react'
+import { Suspense, use, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { CandleChart } from '@/components/market/CandleChart'
+import { RuleSignals } from '@/components/market/RuleSignals'
 import { fetchForexIntraday, fetchForexOHLC, type ForexDays, type ForexIntraday } from '@/lib/data'
 import { detectAll } from '@/lib/patterns/detector'
 
@@ -277,6 +278,20 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           </div>
         )}
       </div>
+      <Suspense fallback={null}>
+        <RuleSignals instrumentId={pair} />
+      </Suspense>
+      <Link
+        href={`/demo?symbol=${pair}`}
+        style={{
+          display: 'inline-block',
+          marginTop: '12px',
+          fontSize: '12px',
+          color: 'var(--indigo)',
+        }}
+      >
+        Practice this market in the demo account →
+      </Link>
     </div>
   )
 }

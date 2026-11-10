@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Bitcoin, TrendingUp, BookOpen, Star } from 'lucide-react'
+import { LayoutDashboard, Bitcoin, TrendingUp, BookOpen, Star, Wallet } from 'lucide-react'
 
 const nav = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -9,7 +9,12 @@ const nav = [
   { href: '/forex', label: 'Forex', icon: TrendingUp },
   { href: '/strategies', label: 'Strategies', icon: BookOpen },
   { href: '/watchlist', label: 'Watchlist', icon: Star },
+  { href: '/demo', label: 'Demo', icon: Wallet },
 ]
+
+// Detail pages (/crypto/bitcoin) keep their section highlighted.
+const isActive = (path: string, href: string) =>
+  href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`)
 
 export function Sidebar() {
   const path = usePathname()
@@ -50,7 +55,7 @@ export function Sidebar() {
           </span>
         </div>
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = path === href
+          const active = isActive(path, href)
           return (
             <Link
               key={href}
@@ -93,7 +98,7 @@ export function Sidebar() {
         }}
       >
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = path === href
+          const active = isActive(path, href)
           return (
             <Link
               key={href}

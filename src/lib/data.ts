@@ -44,3 +44,12 @@ export async function fetchForexIntraday(
   }
   return res.json()
 }
+
+export type CryptoCandleTf = '1h' | '4h' | '1d'
+
+/** 90 days of 1h / 4h / 1d candles built from hourly prices (see lib/coingecko fetchCandles). */
+export async function fetchCryptoCandles(id: string, tf: CryptoCandleTf): Promise<OHLCCandle[]> {
+  const res = await fetch(`/api/crypto/candles/${encodeURIComponent(id)}?tf=${tf}`)
+  if (!res.ok) throw new Error(`crypto candles ${res.status}`)
+  return res.json()
+}

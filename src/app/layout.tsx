@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { PaperEngine } from '@/components/paper/PaperEngine'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="main-content" style={{ padding: '1.5rem', minHeight: '100vh' }}>
           {children}
         </main>
+        <PaperEngine />
         <Analytics />
       </body>
     </html>

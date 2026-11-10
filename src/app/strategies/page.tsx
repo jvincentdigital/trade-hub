@@ -3,6 +3,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Plus, Edit2, Trash2, X, Bell } from 'lucide-react'
 import SetupScanner from './_components/SetupScanner'
+import StrategyRules from './_components/StrategyRules'
 import { useTradePlans } from '@/lib/hooks/useTradePlans'
 import type { TradePlan, TradePlanTimeframe } from '@/lib/schemas'
 import { PATTERN_NAMES, type PatternName, detectAll } from '@/lib/patterns/detector'
@@ -47,6 +48,7 @@ function emptyPlan(market: 'crypto' | 'forex' = 'crypto', pair = ''): TradePlan 
 export default function StrategiesPage() {
   return (
     <div>
+      <StrategyRules />
       <SetupScanner />
       <Suspense fallback={null}>
         <TradePlansSection />
@@ -132,7 +134,7 @@ function TradePlansSection() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 600 }}>Strategies</h1>
+          <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Trade plans</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
             Trade plans with pattern-based auto-triggers · {plans.length} total
           </p>
