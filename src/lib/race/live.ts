@@ -106,6 +106,42 @@ export function createRaceState(
   }
 }
 
+/**
+ * Bring an existing race up to date without touching open trades:
+ * - a new strategy joins with fresh money (the same start as everyone);
+ * - a new market (gold, added 2026-11-10) gets a share of an even split, and
+ *   that cash is taken evenly from the strategy's existing slots, so each
+ *   strategy's total money (and P&L) is unchanged at the moment it joins.
+ * Returns the new state and a line per change, for the log.
+ */
+export function syncRaceState(
+  state: RaceState,
+  rules: { id: string; name: string; markets: string[] }[],
+): { state: RaceState; changes: string[] } {
+  const changes: string[] = []
+  const strategies = { ...state.strategies }
+  for (const r of rules) {
+    const cur = strategies[r.id]
+    if (!cur) {
+      strategies[r.id] = createRaceState([r], state.startMoney).strategies[r.id]
+      changes.push(`${r.name} joined the race`)
+      continue
+    }
+    const missing = r.markets.filter((m) => !cur.slots[m])
+    const existing = Object.keys(cur.slots)
+    if (!missing.length) continue
+    const share = state.startMoney / (existing.length + missing.length)
+    const takeEach = existing.length ? (share * missing.length) / existing.length : 0
+    const slots: Record<string, Slot> = {}
+    for (const m of existing)
+      slots[m] = { ...cur.slots[m], balance: cur.slots[m].balance - takeEach }
+    for (const m of missing) slots[m] = { balance: share, open: null, lastSignalTime: 0 }
+    strategies[r.id] = { ...cur, slots }
+    changes.push(`${r.name}: added ${missing.join(', ')}`)
+  }
+  return { state: { ...state, strategies }, changes }
+}
+
 export interface StepInput {
   market: string
   /** latestSignal on CLOSED candles of the rule's timeframe, or null. */

@@ -3,7 +3,14 @@ import type { OHLCCandle } from '../types/market'
 import type { BacktestResult, BacktestTrade, Signal } from '../rules/engine'
 import { closedOnly, resample } from './candles'
 import { rankEntries, scoreStrategy, shareOf } from './leaderboard'
-import { createRaceState, raceStateSchema, stepSlot, summarize, type Slot } from './live'
+import {
+  createRaceState,
+  raceStateSchema,
+  stepSlot,
+  summarize,
+  syncRaceState,
+  type Slot,
+} from './live'
 
 const H = 3600
 const bar = (time: number, o: number, h: number, l: number, c: number): OHLCCandle => ({
@@ -249,5 +256,56 @@ describe('leaderboard', () => {
     const noTrades = mk('none', [])
     expect(noTrades.best).toBeNull()
     expect(noTrades.winRate).toBeNull()
+  })
+})
+
+describe('race state migration (gold joins an existing race)', () => {
+  it('adds gold to each strategy without touching open trades or total money', () => {
+    const old = createRaceState(
+      [
+        { id: 'a', name: 'A', markets: ['bitcoin', 'ethereum'] },
+        { id: 'c', name: 'C', markets: ['bitcoin'] },
+      ],
+      1000,
+      1,
+    )
+    old.strategies.a.slots.bitcoin = stepSlot(old.strategies.a.slots.bitcoin, {
+      ...base,
+      signal: sig(),
+      path: [bar(4000, 100, 100, 100, 100)],
+      price: 100,
+    }).slot
+    old.strategies.a.closed.push({
+      ...old.strategies.a.slots.bitcoin.open!,
+      exitTime: 1,
+      exit: 1,
+      reason: 'stop',
+      pnl: -1,
+      fees: 0,
+    })
+    old.prices.bitcoin = 100
+    const before = summarize(old).find((x) => x.ruleId === 'a')!.money
+    const openBefore = old.strategies.a.slots.bitcoin.open
+
+    const { state, changes } = syncRaceState(old, [
+      { id: 'a', name: 'A', markets: ['bitcoin', 'ethereum', 'pax-gold'] },
+      { id: 'c', name: 'C', markets: ['bitcoin'] },
+      { id: 'n', name: 'New', markets: ['pax-gold'] },
+    ])
+    expect(raceStateSchema.safeParse(state).success).toBe(true)
+    const a = state.strategies.a
+    expect(a.slots['pax-gold']).toEqual({ balance: 1000 / 3, open: null, lastSignalTime: 0 })
+    expect(a.slots.bitcoin.open).toEqual(openBefore)
+    expect(a.closed).toHaveLength(1)
+    expect(summarize(state).find((x) => x.ruleId === 'a')!.money).toBeCloseTo(before)
+    // untouched strategy, and a new one starting fresh
+    expect(state.strategies.c).toEqual(old.strategies.c)
+    expect(state.strategies.n.slots['pax-gold'].balance).toBe(1000)
+    expect(changes).toEqual(['A: added pax-gold', 'New joined the race'])
+    // running it again changes nothing
+    expect(
+      syncRaceState(state, [{ id: 'a', name: 'A', markets: ['bitcoin', 'ethereum', 'pax-gold'] }])
+        .changes,
+    ).toEqual([])
   })
 })

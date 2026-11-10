@@ -12,15 +12,19 @@ import type { ClosedTrade, PaperAccount, PendingOrder, Position, Side } from './
 
 export const DEFAULT_BALANCE = 10_000
 
-/** Notional / margin. Crypto is spot-style (no leverage); forex uses 30:1, the EU/UK retail cap. */
-export const LEVERAGE: Record<Market, number> = { crypto: 1, forex: 30 }
+/**
+ * Notional / margin. Crypto is spot-style (no leverage); forex uses 30:1, the
+ * EU/UK retail cap; gold uses 20:1, the EU/UK retail cap for gold CFDs.
+ */
+export const LEVERAGE: Record<Market, number> = { crypto: 1, forex: 30, metals: 20 }
 
 /**
  * Cost charged on each side (open and close) as a fraction of notional.
  * Crypto 0.1% is a typical exchange taker fee; forex 0.007% is roughly a
- * 0.7 pip spread on EUR/USD. Keeps demo results from looking better than real.
+ * 0.7 pip spread on EUR/USD. Gold 0.02% is about a 40-80 cent spread per ounce
+ * at $2,000-4,000, typical for retail XAU/USD. Keeps demo results from looking better than real.
  */
-export const FEE_RATE: Record<Market, number> = { crypto: 0.001, forex: 0.00007 }
+export const FEE_RATE: Record<Market, number> = { crypto: 0.001, forex: 0.00007, metals: 0.0002 }
 
 const MAX_EQUITY_POINTS = 500
 const EQUITY_POINT_EVERY_MS = 15 * 60_000

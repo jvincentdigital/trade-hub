@@ -17,7 +17,7 @@ Runs in the browser when `/race` opens (about half a minute).
 
 - Starting money is editable (default $1,000) and the same for every strategy.
 - **Fair split:** each strategy's money is split evenly over every market it
-  can trade (18 for crypto + forex rules, 10 for crypto-only). Each share is
+  can trade (19 for all-markets rules: 10 crypto, gold, 8 forex; 10 for the crypto-only MM Confluence v2). Each share is
   its own little account running the normal `backtest` (fees, sizing,
   leverage caps as in `docs/strategy-rules.md`). End money = sum of shares. A
   market whose data failed keeps its share as cash.
@@ -37,7 +37,7 @@ Runs in the browser when `/race` opens (about half a minute).
 
 `make race-tick` (= `npx tsx scripts/race-tick.ts`) runs one tick:
 
-1. Fetches each market once, straight from CoinGecko (90 days hourly) and
+1. Fetches each market once, straight from CoinGecko (90 days hourly, crypto and gold) and
    Frankfurter (daily), 6 s apart, one retry after 30 s.
 2. For every strategy and market: `latestSignal` on **closed** candles of the
    rule's timeframe (the forming candle is dropped). A signal newer than the
@@ -59,6 +59,25 @@ money box scales the live dollars too (everything is proportional).
 
 First tick: 2026-11-10 17:35 UTC (1:35 PM Puerto Rico), 9 trades opened, 1 market
 (BNB) skipped by the CoinGecko rate limit.
+
+## Candles per market
+
+| Group             | Candles                                                      | Why it matters                                                  |
+| ----------------- | ------------------------------------------------------------ | --------------------------------------------------------------- |
+| Crypto (10)       | Hourly prices, built into the rule's 1h, 4h or 1d candles    | Full rule timeframe                                             |
+| Gold (1, XAU/USD) | Same as crypto, priced by PAX Gold (`pax-gold` on CoinGecko) | Full rule timeframe                                             |
+| Forex (8)         | One daily candle (free ECB rates), highs/lows estimated      | 1h/4h rules run on daily candles: far fewer trades, rough stops |
+
+The page shows this table in both sections.
+
+## Gold joining a running race (2026-11-10)
+
+`syncRaceState` (in `live.ts`, run at the start of every tick) adds any market
+a strategy should trade but has no slot for. The new slot gets an even share
+(start / markets, so $1,000 / 19 = $52.63), and that cash is taken evenly
+from the strategy's other slots. Open trades, closed trades and each
+strategy's total money are untouched, so P&L carries on. New strategies join
+with fresh money. Running it again changes nothing. See `docs/gold.md`.
 
 ## Hourly job (NOT installed)
 

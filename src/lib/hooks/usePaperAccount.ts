@@ -3,7 +3,7 @@ import { useMemo, useSyncExternalStore } from 'react'
 import { createAccount, DEFAULT_BALANCE } from '../paper/engine'
 import { paperAccountSchema, type PaperAccount } from '../paper/schema'
 import type { PriceMap } from '../paper/instruments'
-import { useCryptoPrices, useForexRates } from './useMarketData'
+import { useCryptoPrices, useForexRates, useMetalPrices } from './useMarketData'
 
 // One shared demo account for every component on the page (a tiny external
 // store), persisted to localStorage and kept in sync across tabs.
@@ -71,11 +71,13 @@ export function usePaperAccount(): PaperAccount {
 export function useLivePrices(): { prices: PriceMap; isLoading: boolean } {
   const crypto = useCryptoPrices()
   const forex = useForexRates()
+  const { metals } = useMetalPrices()
   const prices = useMemo(() => {
     const map: PriceMap = {}
     for (const p of crypto.prices) if (p.price > 0) map[p.id] = p.price
     for (const p of forex.rates) if (p.price > 0) map[p.id] = p.price
+    for (const p of metals) if (p.price > 0) map[p.id] = p.price
     return map
-  }, [crypto.prices, forex.rates])
+  }, [crypto.prices, forex.rates, metals])
   return { prices, isLoading: crypto.isLoading || forex.isLoading }
 }

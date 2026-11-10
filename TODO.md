@@ -20,7 +20,9 @@ Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draf
 
 **Added later (2026-11-10 afternoon): Strategy race, `/race`.** Every built-in strategy gets its own play-money account ($1,000 default, editable). "Last 90 days" ranks them by end money (money split evenly over each strategy's markets, fees on); tap a row for per-market results and trades. "Live from today" is a forward test: `make race-tick` opens/closes trades per strategy into `~/.local/share/trade-hub/race.json`; first tick ran by hand (9 trades opened). The hourly launchd job is written (`scripts/launchd/`) but **not installed**. See `docs/strategy-race.md`.
 
-- [ ] @john: say yes to the hourly race job, then install it with the 3 commands in `docs/strategy-race.md`.
+- [x] Hourly race job installed by John (com.jvd.trade-hub-race).
+
+**Gold (XAU/USD) added (2026-11-10 afternoon).** Priced by PAX Gold on CoinGecko (hourly, free). `/gold` page (card on `/forex`), tradeable in `/demo` (0.02% cost, 20:1), runs on every all-markets rule and in both race sections; existing race.json gets gold slots without losing open trades. See `docs/gold.md`.
 
 **How to review (about 10 min)**
 

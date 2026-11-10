@@ -1,7 +1,7 @@
 'use client'
 import useSWR from 'swr'
 import { OHLCCandle } from '../types/market'
-import { COIN_MAP } from '../coingecko'
+import { COIN_MAP, METAL_MAP } from '../coingecko'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -81,6 +81,27 @@ export function useCryptoPrices() {
     { refreshInterval: 60000 },
   )
   return { prices: transformCryptoPrices(data), error, isLoading, refresh: mutate }
+}
+
+/** Gold (PAX Gold) price, from the same cached call as the crypto prices. */
+export function transformMetalPrices(data: Record<string, CoinGeckoRow> | undefined) {
+  if (!data) return []
+  return Object.entries(METAL_MAP).map(([id, meta]) => ({
+    id,
+    name: meta.name,
+    note: meta.note,
+    price: data[id]?.usd ?? 0,
+    change24h: data[id]?.usd_24h_change ?? 0,
+  }))
+}
+
+export function useMetalPrices() {
+  const { data, error, isLoading } = useSWR<Record<string, CoinGeckoRow>>(
+    '/api/crypto/prices',
+    fetcher,
+    { refreshInterval: 60000 },
+  )
+  return { metals: transformMetalPrices(data), error, isLoading }
 }
 
 export function useCryptoOHLC(id: string) {

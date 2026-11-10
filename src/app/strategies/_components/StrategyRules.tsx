@@ -6,7 +6,13 @@ import { DemoBadge } from '@/components/paper/DemoBadge'
 import { useRules } from '@/lib/hooks/useRules'
 import { setPaperAccount, useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { equityOf, FEE_RATE, LEVERAGE, placeOrder, sizeByRisk } from '@/lib/paper/engine'
-import { formatQuote, getInstrument, INSTRUMENTS, quoteToUsd } from '@/lib/paper/instruments'
+import {
+  formatQuote,
+  getInstrument,
+  instrumentHref,
+  INSTRUMENTS,
+  quoteToUsd,
+} from '@/lib/paper/instruments'
 import {
   backtest,
   describeCondition,
@@ -159,7 +165,7 @@ function RuleCard({
           <h2 style={{ fontSize: 15, fontWeight: 600 }}>{rule.name}</h2>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
             <Chip>{rule.timeframe}</Chip>
-            <Chip>{rule.market === 'both' ? 'crypto + forex' : rule.market}</Chip>
+            <Chip>{rule.market === 'both' ? 'crypto, forex + gold' : rule.market}</Chip>
             <Chip>
               {rule.direction === 'both'
                 ? 'buys + sells'
@@ -234,7 +240,7 @@ function RuleCard({
         >
           {ids.map((id) => (
             <option key={id} value={id}>
-              {getInstrument(id)?.symbol ?? id}
+              {getInstrument(id)?.label ?? getInstrument(id)?.symbol ?? id}
             </option>
           ))}
         </select>
@@ -248,7 +254,7 @@ function RuleCard({
           All {ids.length}
         </button>
         <Link
-          href={`/${inst?.market === 'forex' ? 'forex' : 'crypto'}/${pair}?rule=${rule.id}`}
+          href={`${instrumentHref(inst, pair)}?rule=${rule.id}`}
           style={{ ...ghost, textDecoration: 'none' }}
         >
           <CandlestickChart size={13} /> Chart

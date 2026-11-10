@@ -185,6 +185,13 @@ function OrderTicket({
               </option>
             ))}
           </optgroup>
+          <optgroup label="Gold">
+            {INSTRUMENTS.filter((i) => i.market === 'metals').map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.label ?? i.symbol}
+              </option>
+            ))}
+          </optgroup>
           <optgroup label="Forex">
             {INSTRUMENTS.filter((i) => i.market === 'forex').map((i) => (
               <option key={i.id} value={i.id}>
@@ -202,6 +209,7 @@ function OrderTicket({
         {inst.market === 'forex' && (
           <span style={{ color: 'var(--text-muted)' }}> · forex rate updates once a day</span>
         )}
+        {inst.note && <span style={{ color: 'var(--text-muted)' }}> · {inst.note}</span>}
       </p>
 
       <Segmented
@@ -285,7 +293,7 @@ function OrderTicket({
         <dt>Size</dt>
         <dd>
           {units > 0
-            ? `${units.toLocaleString('en-US', { maximumFractionDigits: inst.market === 'forex' ? 0 : 6 })} ${inst.market === 'forex' ? 'units' : inst.symbol.split('/')[0]}`
+            ? `${units.toLocaleString('en-US', { maximumFractionDigits: inst.market === 'forex' ? 0 : 6 })} ${inst.market === 'forex' ? 'units' : inst.market === 'metals' ? 'oz' : inst.symbol.split('/')[0]}`
             : sizeMode === 'risk' && !sl
               ? 'add a stop loss'
               : '-'}
@@ -619,6 +627,10 @@ function ResetAndNotes({ account }: { account: PaperAccount }) {
       >
         <li>Crypto prices come from CoinGecko and refresh about once a minute.</li>
         <li>
+          Gold (XAU/USD) is priced by PAX Gold on CoinGecko, a token that tracks one ounce of gold;
+          it refreshes like crypto. Up to 20:1 leverage, the retail cap for gold.
+        </li>
+        <li>
           Forex rates come from a free daily feed: they change about once a day, so forex here is
           for slow swing practice, not intraday.
         </li>
@@ -626,8 +638,8 @@ function ResetAndNotes({ account }: { account: PaperAccount }) {
           Limit orders, stops and targets are checked only while Trade Hub is open in a browser tab.
         </li>
         <li>
-          Each trade pays a cost on open and close (crypto 0.1%, forex about 0.7 pip) so results are
-          not flattered.
+          Each trade pays a cost on open and close (crypto 0.1%, forex about 0.7 pip, gold 0.02%) so
+          results are not flattered.
         </li>
         <li>Saved in this browser only. Clearing site data wipes the demo account.</li>
       </ul>

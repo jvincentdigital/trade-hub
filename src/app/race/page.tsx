@@ -28,7 +28,7 @@ const RULES = BUILT_IN_RULES.map((rule) => ({
   markets: ruleInstrumentIds(rule, INSTRUMENTS),
 }))
 const NAME = new Map(BUILT_IN_RULES.map((r) => [r.id, r.name]))
-const sym = (id: string) => getInstrument(id)?.symbol ?? id
+const sym = (id: string) => getInstrument(id)?.label ?? getInstrument(id)?.symbol ?? id
 
 const money = (n: number, opts: { sign?: boolean; cents?: boolean } = {}) => {
   const abs = Math.abs(n).toLocaleString('en-US', {
@@ -221,6 +221,7 @@ function Backtests({ start }: { start: number }) {
         {money(shareOf(start, markets.length), { cents: true })} each), and each share trades on its
         own. A market whose data did not load keeps its share as cash.
       </p>
+      <CandleNote />
 
       {load.state === 'loading' ? (
         <div style={{ marginTop: 14 }} role="status" aria-live="polite">
@@ -290,8 +291,8 @@ function Backtests({ start }: { start: number }) {
             </p>
           )}
           <p style={small}>
-            Ran {when(load.at / 1000)}. Crypto uses 90 days of hourly prices (the first weeks only
-            warm up the indicators); forex uses free daily ECB rates, so its stops are rough.
+            Ran {when(load.at / 1000)}. The first weeks of crypto and gold only warm up the
+            indicators. Forex daily highs and lows are estimated, so its stops are rough.
           </p>
         </>
       )}
@@ -344,6 +345,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
           <thead>
             <tr>
               <th style={{ ...th, textAlign: 'left' }}>Market</th>
+              <th style={th}>Candles</th>
               <th style={th}>Trades</th>
               <th style={th}>End</th>
               <th style={th}>Profit</th>
@@ -355,6 +357,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
               .map((m) => (
                 <tr key={m.id}>
                   <td style={{ ...td, textAlign: 'left' }}>{sym(m.id)}</td>
+                  <td style={td}>{candleKind(m.id)}</td>
                   <td style={td}>{m.trades.length}</td>
                   <td style={td}>{money(m.end, { cents: true })}</td>
                   <td style={{ ...td, color: color(m.profit) }}>
@@ -365,7 +368,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
             {entry.skipped.map((id) => (
               <tr key={id}>
                 <td style={{ ...td, textAlign: 'left' }}>{sym(id)}</td>
-                <td style={td} colSpan={3}>
+                <td style={td} colSpan={4}>
                   skipped, no data
                 </td>
               </tr>
@@ -448,6 +451,33 @@ function TradeList({
   )
 }
 
+const candleKind = (id: string) => (getInstrument(id)?.market === 'forex' ? 'daily' : 'hourly')
+
+/** Which candles each market group uses, so fewer forex trades make sense. */
+function CandleNote() {
+  const count = (m: string) => INSTRUMENTS.filter((i) => i.market === m).length
+  const items = [
+    {
+      k: `Crypto (${count('crypto')})`,
+      v: "hourly prices, built into each rule's 1h, 4h or 1d candles",
+    },
+    { k: 'Gold (1)', v: 'hourly too, price tracked by PAX Gold' },
+    {
+      k: `Forex (${count('forex')})`,
+      v: 'daily candles only (free ECB rates), so forex rules trade far less and 1h/4h rules run on daily candles there',
+    },
+  ]
+  return (
+    <ul aria-label="Candles per market" style={candleList}>
+      {items.map((i) => (
+        <li key={i.k}>
+          <b style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{i.k}:</b> {i.v}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 // ── Live from today ──────────────────────────────────────────────────────
 
 const fetcher = async (url: string) => {
@@ -476,6 +506,7 @@ function Live({ start }: { start: number }) {
         opens or closes trades in its own play account (same split, sizes and fees as above). Only
         trades after the start count, so nothing here can be fitted to the past.
       </p>
+      <CandleNote />
 
       {isLoading ? (
         <p style={{ ...small, marginTop: 12 }}>Loading the live race…</p>
@@ -704,6 +735,19 @@ const th: React.CSSProperties = {
   padding: '3px 0 3px 10px',
 }
 const td: React.CSSProperties = { textAlign: 'right', padding: '4px 0 4px 10px' }
+const candleList: React.CSSProperties = {
+  listStyle: 'none',
+  padding: '8px 10px',
+  margin: '8px 0 0',
+  borderRadius: 8,
+  background: 'var(--bg-secondary)',
+  border: '0.5px solid var(--border)',
+  fontSize: 12,
+  lineHeight: 1.5,
+  color: 'var(--text-secondary)',
+  display: 'grid',
+  gap: 2,
+}
 const tradeRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',

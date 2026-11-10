@@ -44,7 +44,8 @@ src/
       forex/rates/      #     GET  USD-based rates for 8 pairs
       scanner/          #     GET  MM Confluence v2 setup scanner (crypto-only)
     crypto/             #   Crypto explorer (grid + detail panel w/ chart + patterns)
-    forex/              #   Forex pair cards
+    forex/              #   Forex pair cards + Gold card
+    gold/               #   Gold (XAU/USD) detail, priced by PAX Gold (docs/gold.md)
     strategies/         #   Strategy rules + live scanner + trade plans (localStorage)
       _components/      #     StrategyRules.tsx, RuleEditor.tsx, SetupScanner.tsx
     demo/               #   Demo account: play-money paper trading

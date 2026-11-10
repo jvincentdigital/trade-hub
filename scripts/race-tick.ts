@@ -4,8 +4,8 @@
  *   npx tsx scripts/race-tick.ts            (or: make race-tick)
  *   npx tsx scripts/race-tick.ts --reset --start 1000
  *
- * Fetches fresh candles once per market (CoinGecko free + Frankfurter, no
- * keys, sequential with pauses), asks every built-in strategy for its latest
+ * Fetches fresh candles once per market (CoinGecko free for crypto and gold,
+ * Frankfurter for forex; no keys, sequential with pauses), asks every built-in strategy for its latest
  * signal on closed candles, and opens/closes trades in that strategy's own
  * play-money account. State: ~/.local/share/trade-hub/race.json
  * (override with RACE_FILE). Play money only: nothing here talks to a broker.
@@ -26,6 +26,7 @@ import {
   raceStateSchema,
   stepSlot,
   summarize,
+  syncRaceState,
   type RaceState,
 } from '../src/lib/race/live'
 import type { OHLCCandle } from '../src/lib/types/market'
@@ -73,13 +74,13 @@ async function main() {
     )
     console.log(`New race: $${startArg} per strategy, ${rules.length} strategies`)
   }
-  // A built-in added later joins the race from now on.
-  for (const { rule, markets } of rules) {
-    if (!state.strategies[rule.id]) {
-      const fresh = createRaceState([{ id: rule.id, name: rule.name, markets }], state.startMoney)
-      state.strategies[rule.id] = fresh.strategies[rule.id]
-    }
-  }
+  // New strategies or markets (gold) join without touching open trades.
+  const synced = syncRaceState(
+    state,
+    rules.map(({ rule, markets }) => ({ id: rule.id, name: rule.name, markets })),
+  )
+  state = synced.state
+  for (const c of synced.changes) console.log(`  ${c}`)
 
   const needed = [...new Set(rules.flatMap((r) => r.markets))]
   const data = new Map<string, OHLCCandle[]>()
@@ -92,7 +93,7 @@ async function main() {
       skipped.push(id)
       process.stdout.write(`  ${n + 1}/${needed.length} ${id} skipped (${(e as Error).message})\n`)
     }
-    if (getInstrument(id)?.market === 'crypto') await sleep(6000)
+    if (getInstrument(id)?.market !== 'forex') await sleep(6000)
   }
 
   const nowSec = Math.floor(Date.now() / 1000)

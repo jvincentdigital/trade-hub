@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { ohlcResponseSchema } from '@/lib/schemas'
-import { COIN_MAP } from '@/lib/coingecko'
+import { isCoinGeckoId } from '@/lib/coingecko'
 import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 const ALLOWED_DAYS = new Set([1, 7, 14, 30, 90, 180, 365])
@@ -11,7 +11,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!limit.ok) return rateLimitResponse(limit)
 
   const { id } = await params
-  if (!(id in COIN_MAP)) {
+  if (!isCoinGeckoId(id)) {
     return NextResponse.json({ error: 'Unknown coin id' }, { status: 400 })
   }
 

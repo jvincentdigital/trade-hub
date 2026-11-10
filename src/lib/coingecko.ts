@@ -21,6 +21,16 @@ export const COIN_MAP: Record<string, CoinMeta> = {
   'polygon-ecosystem-token': { name: 'Polygon', symbol: 'POL' },
 }
 
+// Metals priced through a CoinGecko token that tracks them (free, hourly, no
+// key). PAX Gold (PAXG) is backed by and tracks one troy ounce of gold, so it
+// stands in for XAU/USD. Kept out of COIN_MAP so crypto lists stay crypto.
+export const METAL_MAP: Record<string, CoinMeta & { note: string }> = {
+  'pax-gold': { name: 'Gold', symbol: 'XAU', note: 'price tracked by PAX Gold' },
+}
+
+/** Every id our CoinGecko routes accept: coins plus metals. */
+export const isCoinGeckoId = (id: string) => id in COIN_MAP || id in METAL_MAP
+
 export type Timeframe = '30min' | '4H' | '1D'
 
 // CoinGecko /ohlc granularity is locked to the `days` param (checked 2026-11-10):

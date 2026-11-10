@@ -1,6 +1,9 @@
 'use client'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useForexRates } from '@/lib/hooks/useMarketData'
+import { ChevronRight } from 'lucide-react'
+import { useForexRates, useMetalPrices } from '@/lib/hooks/useMarketData'
+import { formatPrice } from '@/lib/utils/formatters'
 import { useWatchlist } from '@/lib/hooks/useWatchlist'
 import { PairCard } from '@/components/market/PairCard'
 import { Sparkline } from '@/components/market/Sparkline'
@@ -10,6 +13,7 @@ export default function ForexPage() {
   const router = useRouter()
   const { rates, isLoading, error } = useForexRates()
   const { toggle, isWatched } = useWatchlist()
+  const { metals } = useMetalPrices()
 
   const items: MarketItem[] = rates.map((r) => ({ ...r, patterns: [], type: 'forex' }))
 
@@ -78,6 +82,51 @@ export default function ForexPage() {
           ))}
         </div>
       )}
+      <h2 style={{ fontSize: '14px', fontWeight: 600, margin: '1.5rem 0 0.6rem' }}>Gold</h2>
+      {metals.map((m) => (
+        <Link
+          key={m.id}
+          href="/gold"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            maxWidth: '460px',
+            minHeight: '44px',
+            padding: '14px 16px',
+            background: 'var(--bg-card)',
+            border: '0.5px solid var(--border)',
+            borderRadius: '10px',
+            color: 'inherit',
+            textDecoration: 'none',
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: '14px', fontWeight: 600 }}>
+              Gold (XAU/USD)
+            </span>
+            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              {m.note} · hourly candles
+            </span>
+          </span>
+          <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ display: 'block', fontSize: '14px', fontWeight: 600 }}>
+              {m.price > 0 ? formatPrice(m.price) : '-'}
+            </span>
+            <span
+              style={{
+                display: 'block',
+                fontSize: '11px',
+                color: m.change24h >= 0 ? 'var(--green)' : 'var(--red)',
+              }}
+            >
+              {m.change24h >= 0 ? '+' : ''}
+              {m.change24h.toFixed(2)}% 24h
+            </span>
+          </span>
+          <ChevronRight size={16} color="var(--text-secondary)" aria-hidden />
+        </Link>
+      ))}
     </div>
   )
 }

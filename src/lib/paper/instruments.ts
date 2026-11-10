@@ -1,7 +1,7 @@
-import { COIN_MAP } from '../coingecko'
+import { COIN_MAP, METAL_MAP } from '../coingecko'
 import { FOREX_PAIRS } from '../hooks/useMarketData'
 
-export type Market = 'crypto' | 'forex'
+export type Market = 'crypto' | 'forex' | 'metals'
 
 export interface Instrument {
   /** CoinGecko id for crypto (`bitcoin`), hyphenated pair for forex (`EUR-USD`). */
@@ -10,6 +10,10 @@ export interface Instrument {
   market: Market
   /** Currency the price is quoted in; P&L is converted from this to USD. */
   quote: string
+  /** Friendlier name where the symbol alone is unclear ("Gold (XAU/USD)"). */
+  label?: string
+  /** Where the price comes from, when it is a stand-in. */
+  note?: string
 }
 
 export const INSTRUMENTS: Instrument[] = [
@@ -19,6 +23,14 @@ export const INSTRUMENTS: Instrument[] = [
     market: 'crypto' as const,
     quote: 'USD',
   })),
+  ...Object.entries(METAL_MAP).map(([id, m]) => ({
+    id,
+    symbol: `${m.symbol}/USD`,
+    market: 'metals' as const,
+    quote: 'USD',
+    label: `${m.name} (${m.symbol}/USD)`,
+    note: m.note,
+  })),
   ...FOREX_PAIRS.map((p) => ({
     id: p.symbol.replace('/', '-'),
     symbol: p.symbol,
@@ -26,6 +38,18 @@ export const INSTRUMENTS: Instrument[] = [
     quote: p.quote,
   })),
 ]
+
+export const MARKET_LABEL: Record<Market, string> = {
+  crypto: 'Crypto',
+  forex: 'Forex',
+  metals: 'Gold',
+}
+
+/** Detail page of an instrument. */
+export function instrumentHref(inst: Instrument | undefined, id: string): string {
+  if (inst?.market === 'metals') return '/gold'
+  return `/${inst?.market === 'forex' ? 'forex' : 'crypto'}/${id}`
+}
 
 const BY_ID = new Map(INSTRUMENTS.map((i) => [i.id, i]))
 

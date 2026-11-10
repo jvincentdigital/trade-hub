@@ -13,9 +13,11 @@ const nav = [
   { href: '/race', label: 'Race', icon: Trophy },
 ]
 
-// Detail pages (/crypto/bitcoin) keep their section highlighted.
+// Detail pages (/crypto/bitcoin) keep their section highlighted; gold lives under Forex.
 const isActive = (path: string, href: string) =>
-  href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`)
+  href === '/'
+    ? path === '/'
+    : path === href || path.startsWith(`${href}/`) || (href === '/forex' && path === '/gold')
 
 export function Sidebar() {
   const path = usePathname()

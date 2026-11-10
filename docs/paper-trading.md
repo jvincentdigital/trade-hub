@@ -9,8 +9,8 @@ only: nothing talks to a broker, nothing can move real money.
 - **Market orders** fill at the latest feed price. **Limit orders** wait and fill when the price crosses the limit (a buy limit set above the current price is already "marketable" and fills at once at the better live price).
 - **Stop loss / take profit** on every order (optional, but the plan checks nag if you skip the stop). Stops fill at the observed price, which can be worse than the stop, like a real gap. Targets fill at the target.
 - **Position sizing**: by risk % (units = equity × risk% ÷ stop distance in USD) or by a dollar amount.
-- **Costs**: 0.1% per side on crypto (typical taker fee), 0.007% on forex (about a 0.7 pip spread on EUR/USD).
-- **Margin**: crypto is spot-style (1:1, no leverage). Forex uses 30:1, the EU/UK retail cap; the ticket shows the cash it locks.
+- **Costs**: 0.1% per side on crypto (typical taker fee), 0.007% on forex (about a 0.7 pip spread on EUR/USD), 0.02% on gold (about a 40-80 cent spread per ounce).
+- **Margin**: crypto is spot-style (1:1, no leverage). Forex uses 30:1, the EU/UK retail cap; gold 20:1, the EU/UK retail cap for gold. The ticket shows the cash it locks.
 - **P&L in USD** for every pair: JPY/CHF/CAD/GBP quotes are converted with the live pairs (`quoteToUsd`).
 - **Stats**: equity curve, win rate, profit factor, max drawdown, average win/loss, trade history.
 - **Plan checks** (`lib/paper/plan.ts`): warnings from John's Trading Plan (max 5R open risk, max 3 trades a day, every trade has a stop, trades come from a tested rule) and the MM Confluence daily -2% stop. They warn, they don't block.
@@ -31,7 +31,7 @@ only: nothing talks to a broker, nothing can move real money.
 | `src/lib/paper/schema.ts`          | Zod schema of the stored account (`version: 1`).                                                                                      |
 | `src/lib/paper/stats.ts`           | `computeStats` (shared with backtests) and `maxDrawdown`.                                                                             |
 | `src/lib/paper/plan.ts`            | Plan-check warnings.                                                                                                                  |
-| `src/lib/paper/instruments.ts`     | The 18 markets, `quoteToUsd`, price formatting.                                                                                       |
+| `src/lib/paper/instruments.ts`     | The 19 markets (10 crypto, gold, 8 forex), `instrumentHref`, `quoteToUsd`, price formatting.                                          |
 | `src/lib/hooks/usePaperAccount.ts` | Shared store over localStorage key `trade-hub-paper-account` (cross-tab sync), plus `useLivePrices`.                                  |
 | `src/app/demo/page.tsx`            | The page.                                                                                                                             |
 

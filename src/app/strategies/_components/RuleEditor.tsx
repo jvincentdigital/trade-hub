@@ -131,7 +131,7 @@ export function RuleEditor({
             >
               <option value="crypto">Crypto</option>
               <option value="forex">Forex</option>
-              <option value="both">Both</option>
+              <option value="both">All (crypto, forex, gold)</option>
             </select>
           </Field>
           <Field label="Candles">
