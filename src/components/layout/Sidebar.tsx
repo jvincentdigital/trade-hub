@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Bitcoin, TrendingUp, BookOpen, Star, Trophy, Wallet } from 'lucide-react'
 
 const nav = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/', label: 'Today', icon: LayoutDashboard },
   { href: '/crypto', label: 'Crypto', icon: Bitcoin },
   { href: '/forex', label: 'Forex', icon: TrendingUp },
   { href: '/strategies', label: 'Strategies', icon: BookOpen },
@@ -21,6 +21,7 @@ const isActive = (path: string, href: string) =>
 
 export function Sidebar() {
   const path = usePathname()
+  if (path === '/unlock') return null
 
   return (
     <>

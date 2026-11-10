@@ -61,8 +61,9 @@ until 2026-11-10 night, see "Real candles" below.
 
 Options: `npx tsx scripts/race-tick.ts --reset --start 1000` starts a new race.
 
-`/api/race` reads that file (local only; on Vercel it shows "not started") and
-the page shows "Live since <date>", ticks so far and the last tick time,
+`/api/race` reads that file locally; on the live site it reads the copy the
+tick pushes to the race relay worker (`docs/live.md`). The home page
+(`docs/dashboard.md`) shows its open trades; `/race` shows "Live since <date>", ticks so far and the last tick time,
 money now, open and closed trades and P&L per strategy. The page's starting
 money box scales the live dollars too (everything is proportional).
 

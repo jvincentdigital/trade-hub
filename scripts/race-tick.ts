@@ -3,6 +3,7 @@
  *
  *   npx tsx scripts/race-tick.ts            (or: make race-tick)
  *   npx tsx scripts/race-tick.ts --reset --start 1000
+ *   npx tsx scripts/race-tick.ts --push-only   (send the saved state to the live site, no tick)
  *
  * Fetches fresh candles per market (Kraken's free public OHLC for crypto and
  * gold, one call per candle size in use, about 1 a second; Frankfurter for
@@ -10,6 +11,10 @@
  * signal on closed candles, and opens/closes trades in that strategy's own
  * play-money account. State: ~/.local/share/trade-hub/race.json
  * (override with RACE_FILE). Play money only: nothing here talks to a broker.
+ *
+ * After saving, the state is PUT to the race relay worker (docs/live.md) when
+ * ~/.local/share/trade-hub/race.env exists (RACE_PUT_URL + RACE_WRITE_KEY).
+ * A failed push only logs a line; the tick itself still counts.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -55,6 +60,37 @@ function save(state: RaceState) {
   renameSync(tmp, FILE)
 }
 
+const ENV_FILE = join(homedir(), '.local/share/trade-hub/race.env')
+
+/** Send the saved state to the live site's relay. Never throws, never prints the key. */
+async function push(state: RaceState) {
+  if (!existsSync(ENV_FILE)) return
+  const env = Object.fromEntries(
+    readFileSync(ENV_FILE, 'utf8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#') && l.includes('='))
+      .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+  )
+  if (!env.RACE_PUT_URL || !env.RACE_WRITE_KEY) return
+  try {
+    const res = await fetch(env.RACE_PUT_URL, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bearer ${env.RACE_WRITE_KEY}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(state),
+      signal: AbortSignal.timeout(20_000),
+    })
+    console.log(
+      res.ok ? 'Pushed to the live site' : `Push to the live site failed: HTTP ${res.status}`,
+    )
+  } catch (e) {
+    console.log(`Push to the live site failed: ${(e as Error).message}`)
+  }
+}
+
 const isForex = (id: string) => getInstrument(id)?.market === 'forex'
 
 /** Forex: daily, one polite retry. Crypto/gold: lib/kraken spaces, caches and retries itself. */
@@ -70,6 +106,12 @@ async function fetchMarket(id: string, tf: RuleTimeframe): Promise<OHLCCandle[]>
 
 async function main() {
   const rules = BUILT_IN_RULES.map((r) => ({ rule: r, markets: ruleInstrumentIds(r, INSTRUMENTS) }))
+  if (args.includes('--push-only')) {
+    const saved = load()
+    if (!saved) throw new Error(`no race file at ${FILE}`)
+    await push(saved)
+    return
+  }
   let state = args.includes('--reset') ? null : load()
   if (!state) {
     if (!(startArg > 0)) throw new Error('--start must be a positive number')
@@ -165,6 +207,7 @@ async function main() {
     )
   }
   console.log(`Saved ${FILE} (play money only)`)
+  await push(state)
 }
 
 main().catch((e) => {

@@ -5,25 +5,47 @@ import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { raceStateSchema } from '@/lib/race/live'
 
-// Live strategy race: reads the local state file written by `make race-tick`.
-// Only meaningful on the machine running the ticks; elsewhere it says "none".
+// Live strategy race. On the live site (RACE_URL + RACE_KEY set) it reads the
+// latest state from the race relay worker, which the Mac Mini updates after
+// every hourly tick (docs/live.md). Locally it reads the file written by
+// `make race-tick`.
 export const dynamic = 'force-dynamic'
 
 const FILE = process.env.RACE_FILE || join(homedir(), '.local/share/trade-hub/race.json')
 const PLIST = join(homedir(), 'Library/LaunchAgents/com.jvd.trade-hub-race.plist')
 
+async function fromWorker(url: string, key: string) {
+  // Cached 60 s on the server so many page views make few worker reads.
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${key}` },
+    next: { revalidate: 60 },
+  })
+  if (!res.ok) throw new Error(`race relay ${res.status}`)
+  return res.json()
+}
+
 export async function GET() {
-  const installed = existsSync(PLIST)
-  if (!existsSync(FILE)) return NextResponse.json({ state: null, installed })
+  const { RACE_URL, RACE_KEY } = process.env
   try {
-    const parsed = raceStateSchema.safeParse(JSON.parse(readFileSync(FILE, 'utf8')))
+    let raw: unknown
+    let installed: boolean
+    if (RACE_URL && RACE_KEY) {
+      raw = await fromWorker(RACE_URL, RACE_KEY)
+      installed = true // the relay only gets data from the installed hourly job
+    } else {
+      installed = existsSync(PLIST)
+      if (!existsSync(FILE)) return NextResponse.json({ state: null, installed })
+      raw = JSON.parse(readFileSync(FILE, 'utf8'))
+    }
+    if (raw == null) return NextResponse.json({ state: null, installed })
+    const parsed = raceStateSchema.safeParse(raw)
     if (!parsed.success) {
-      logger.error({ issues: parsed.error.issues }, '[api/race] invalid race file')
-      return NextResponse.json({ error: 'Race file is not valid' }, { status: 500 })
+      logger.error({ issues: parsed.error.issues }, '[api/race] invalid race state')
+      return NextResponse.json({ error: 'Race state is not valid' }, { status: 500 })
     }
     return NextResponse.json({ state: parsed.data, installed })
   } catch (err) {
     logger.error({ err }, '[api/race] read failed')
-    return NextResponse.json({ error: 'Could not read the race file' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not read the race' }, { status: 500 })
   }
 }

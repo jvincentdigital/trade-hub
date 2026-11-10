@@ -121,3 +121,23 @@ export function useForexRates() {
   )
   return { rates: transformForexRates(data), error, isLoading, refresh: mutate }
 }
+
+const okFetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`${url} ${res.status}`)
+  return res.json()
+}
+
+/**
+ * Recent candles for a small chart: 1h from Kraken for crypto and gold (last
+ * 48), daily for forex (last 40). SWR shares one fetch per market.
+ */
+export function useRecentCandles(market: string, isForex: boolean) {
+  const url = isForex ? `/api/forex/ohlc/${market}?days=90` : `/api/crypto/candles/${market}?tf=1h`
+  const { data, error, isLoading } = useSWR<OHLCCandle[]>(url, okFetcher, {
+    refreshInterval: 300000,
+    revalidateOnFocus: false,
+  })
+  const n = isForex ? 40 : 48
+  return { candles: Array.isArray(data) ? data.slice(-n) : [], error, isLoading }
+}

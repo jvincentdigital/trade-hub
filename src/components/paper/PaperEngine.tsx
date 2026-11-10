@@ -1,5 +1,6 @@
 'use client'
 import { useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { tick } from '@/lib/paper/engine'
 import { setPaperAccount, useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 
@@ -8,6 +9,9 @@ import { setPaperAccount, useLivePrices, usePaperAccount } from '@/lib/hooks/use
 // trigger. It only subscribes to prices when there is something to watch.
 export function PaperEngine() {
   const account = usePaperAccount()
+  const path = usePathname()
+  // The unlock page is shown before the passcode: no data calls there.
+  if (path === '/unlock') return null
   if (account.positions.length === 0 && account.pendingOrders.length === 0) return null
   return <Ticker />
 }
