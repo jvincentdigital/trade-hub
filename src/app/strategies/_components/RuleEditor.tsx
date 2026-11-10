@@ -17,6 +17,7 @@ const NEW_CONDITION: Record<ConditionKind, Condition> = {
   emaTouch: { kind: 'emaTouch', period: 50, tolerancePct: 0.5 },
   pattern: { kind: 'pattern', names: [], lookback: 2 },
   nearLevel: { kind: 'nearLevel', lookback: 20, tolerancePct: 0.5 },
+  streak: { kind: 'streak', length: 3 },
 }
 
 const KIND_LABEL: Record<ConditionKind, string> = {
@@ -27,6 +28,7 @@ const KIND_LABEL: Record<ConditionKind, string> = {
   emaTouch: 'Pullback to EMA',
   pattern: 'Reversal candle',
   nearLevel: 'At range high / low',
+  streak: 'Run of candles against the trade',
 }
 
 const SESSION_PRESETS: Record<string, Rule['sessions']> = {

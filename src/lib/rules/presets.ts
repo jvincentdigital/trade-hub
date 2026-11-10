@@ -1,4 +1,5 @@
 import type { Rule } from './schema'
+import { MARVEL_RULES } from './marvel'
 
 // Built-in rules, written from our own strategy notes. Users duplicate one to
 // tweak it; built-ins themselves are read-only so a backtest stays comparable.
@@ -8,7 +9,7 @@ const CRYPTO_PRIME = [
   { label: 'Asia open', start: 20, end: 24 },
 ]
 
-export const BUILT_IN_RULES: Rule[] = [
+const OWN_RULES: Rule[] = [
   {
     id: 'mm-confluence-v2',
     name: 'MM Confluence v2',
@@ -74,3 +75,5 @@ export const BUILT_IN_RULES: Rule[] = [
     builtIn: true,
   },
 ]
+
+export const BUILT_IN_RULES: Rule[] = [...OWN_RULES, ...MARVEL_RULES]

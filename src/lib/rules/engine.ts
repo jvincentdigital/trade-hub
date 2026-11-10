@@ -115,6 +115,14 @@ function conditionPasses(
       }
       return false
     }
+    case 'streak': {
+      if (i < c.length) return false
+      for (let k = i - c.length; k < i; k++) {
+        const down = candles[k].close < candles[k].open
+        if (long ? !down : down) return false
+      }
+      return true
+    }
     case 'nearLevel': {
       if (i < c.lookback - 1) return false
       const win = candles.slice(i - c.lookback + 1, i + 1)
@@ -346,6 +354,8 @@ export function describeCondition(c: Condition): string {
       return `Candle tests the ${c.period} EMA (within ${c.tolerancePct}%) and closes back on the trend side`
     case 'pattern':
       return `${c.names.length ? c.names.join(' / ') : 'Any matching reversal candle'} in the last ${c.lookback} candle${c.lookback > 1 ? 's' : ''}`
+    case 'streak':
+      return `The ${c.length} candles before entry all ran against the trade (a run of ${c.length} down candles before a buy, up candles before a sell)`
     case 'nearLevel':
       return `Price within ${c.tolerancePct}% of the ${c.lookback}-candle low (buys) or high (sells)`
   }

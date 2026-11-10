@@ -460,7 +460,7 @@ function Performance({ account, equity }: { account: PaperAccount; equity: numbe
   return (
     <section style={card}>
       <SectionTitle>Performance</SectionTitle>
-      <EquityCurve values={curve} />
+      <EquityCurve values={curve} base={account.startingBalance} />
       <div style={{ ...grid('100px', 8), marginTop: 12 }}>
         <Mini label="Trades" value={String(s.trades)} />
         <Mini
@@ -479,18 +479,17 @@ function Performance({ account, equity }: { account: PaperAccount; equity: numbe
   )
 }
 
-function EquityCurve({ values }: { values: number[] }) {
+function EquityCurve({ values, base }: { values: number[]; base: number }) {
   if (values.length < 2) return <Empty>The equity curve appears after your first trade.</Empty>
   const w = 300
   const h = 80
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = max - min || 1
-  const pts = values.map(
-    (v, i) =>
-      `${((i / (values.length - 1)) * w).toFixed(1)},${(h - ((v - min) / span) * (h - 4) - 2).toFixed(1)}`,
-  )
-  const up = values[values.length - 1] >= values[0]
+  // At least a ±1% window around the start so pennies don't look like a crash.
+  const min = Math.min(...values, base * 0.99)
+  const max = Math.max(...values, base * 1.01)
+  const span = max - min
+  const y = (v: number) => (h - ((v - min) / span) * (h - 4) - 2).toFixed(1)
+  const pts = values.map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${y(v)}`)
+  const up = values[values.length - 1] >= base
   return (
     <svg
       viewBox={`0 0 ${w} ${h}`}
@@ -499,6 +498,15 @@ function EquityCurve({ values }: { values: number[] }) {
       role="img"
       aria-label="Equity curve"
     >
+      <line
+        x1="0"
+        x2={w}
+        y1={y(base)}
+        y2={y(base)}
+        stroke="var(--border-hover)"
+        strokeDasharray="3 3"
+        vectorEffect="non-scaling-stroke"
+      />
       <polyline
         fill="none"
         stroke={up ? 'var(--green)' : 'var(--red)'}

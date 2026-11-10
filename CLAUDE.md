@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Trade Hub is a single-user web dashboard for crypto and forex markets: live prices, 14-day candlestick charts, a 21-pattern detector that runs client-side on OHLC data, plus personal strategy notes and a watchlist. No auth, no database — user state persists in `localStorage`. External market data is proxied through Next.js route handlers (free-tier CoinGecko and ExchangeRate API, no keys). Intended deploy target is Vercel (not yet linked).
+Trade Hub is a single-user web dashboard for crypto and forex markets: live prices, candlestick charts, a 21-pattern detector that runs client-side on OHLC data, structured strategy rules (signals, backtests), a play-money demo account (`/demo`, paper trading), trade plans and a watchlist. No auth, no database — user state persists in `localStorage`. External market data is proxied through Next.js route handlers (free-tier CoinGecko and ExchangeRate API, no keys). Intended deploy target is Vercel (not yet linked).
 
 ## Tech Stack
 
@@ -39,13 +39,15 @@ src/
   app/                  # Next.js App Router
     api/                #   Route handlers (proxy CoinGecko + ExchangeRate API)
       crypto/prices/    #     GET  live prices for 10 coins
-      crypto/ohlc/[id]/ #     GET  OHLC candles (granularity from days param)
+      crypto/ohlc/[id]/ #     GET  OHLC candles (granularity from days param; >30 days = 4-day bars)
+      crypto/candles/[id]/ #  GET  90 days of 1h/4h/1d candles built from hourly prices
       forex/rates/      #     GET  USD-based rates for 8 pairs
       scanner/          #     GET  MM Confluence v2 setup scanner (crypto-only)
     crypto/             #   Crypto explorer (grid + detail panel w/ chart + patterns)
     forex/              #   Forex pair cards
-    strategies/         #   Strategy CRUD + live scanner (localStorage)
-      _components/      #     SetupScanner.tsx (live MM Confluence cards)
+    strategies/         #   Strategy rules + live scanner + trade plans (localStorage)
+      _components/      #     StrategyRules.tsx, RuleEditor.tsx, SetupScanner.tsx
+    demo/               #   Demo account: play-money paper trading
     watchlist/          #   User-selected pairs (localStorage)
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
@@ -53,11 +55,14 @@ src/
     page.tsx            #   Dashboard (aggregated sentiment)
   components/
     layout/Sidebar.tsx  # Responsive nav (desktop sidebar / mobile bottom bar)
-    market/             # PairCard, PatternBadge, PriceChart
+    market/             # PairCard, PatternBadge, PriceChart, CandleChart, RuleSignals
+    paper/              # PaperEngine (feeds prices to the demo account), DemoBadge
     ui/                 # Badge, Card primitives
   lib/
     coingecko.ts        # COIN_MAP + fetchOHLC / fetchVolumes helpers
-    hooks/              # useMarketData, useStrategies, useWatchlist (SWR + localStorage)
+    hooks/              # useMarketData, usePaperAccount, useRules, useTradePlans, useWatchlist
+    paper/              # Demo account engine: orders, fills, fees, stats, plan checks (pure, tested)
+    rules/              # Strategy rules: schema, signals, backtest, built-in + course rules (pure, tested)
     patterns/           # 21 candlestick detectors + orchestrator (detectPatterns)
     scanner/            # MM Confluence v2: ema, rsi, detectMWFormation, scoreSetup
     types/              # market.ts, strategy.ts
@@ -76,7 +81,7 @@ AGENTS.md               # Critical notes for AI agents (Next.js 16 specifics)
 
 ## Architecture
 
-Single Next.js app, no backend service or database. The client does most of the work: SWR hooks in `lib/hooks/useMarketData.ts` fetch from our own API routes, which proxy CoinGecko and ExchangeRate API (free tier, no auth) to sidestep CORS and add ISR caching. OHLC candles feed a client-side detector (`lib/patterns/`) that scores 21 candlestick patterns and surfaces the top results on the crypto detail panel. User-owned state — strategies and watchlist — lives in `localStorage` under the keys `trade-hub-strategies` and `trade-hub-watchlist`. See `docs/architecture.md` for a deeper walkthrough.
+Single Next.js app, no backend service or database. The client does most of the work: SWR hooks in `lib/hooks/useMarketData.ts` fetch from our own API routes, which proxy CoinGecko and ExchangeRate API (free tier, no auth) to sidestep CORS and add ISR caching. OHLC candles feed a client-side detector (`lib/patterns/`) that scores 21 candlestick patterns and surfaces the top results on the crypto detail panel. User-owned state lives in `localStorage`: `trade-hub-paper-account` (demo account), `trade-hub-rules` (own strategy rules), `tradehub.strategies.v1` (trade plans), `trade-hub-watchlist`. The demo account is play money only; it never talks to a broker. See `docs/architecture.md` for a deeper walkthrough.
 
 ## Key Workflows
 
@@ -117,7 +122,7 @@ This project uses CLI tools for all third-party service interactions. Before usi
 
 Current integrations (both unauthenticated, free tier):
 
-- **CoinGecko** — `api.coingecko.com/api/v3/simple/price` and `/coins/{id}/ohlc`
+- **CoinGecko** — `api.coingecko.com/api/v3/simple/price`, `/coins/{id}/ohlc` and `/coins/{id}/market_chart`
 - **ExchangeRate API** — `api.exchangerate-api.com/v4/latest/USD`
 
 ## Conventions

@@ -6,6 +6,7 @@ const routes: Array<{ path: string; heading: RegExp }> = [
   { path: '/forex', heading: /forex/i },
   { path: '/strategies', heading: /strategies|setup scanner/i },
   { path: '/watchlist', heading: /watchlist/i },
+  { path: '/demo', heading: /demo account/i },
 ]
 
 for (const { path, heading } of routes) {
@@ -34,4 +35,10 @@ for (const { path, heading } of routes) {
 test('404 page renders', async ({ page }) => {
   await page.goto('/this-route-does-not-exist')
   await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible()
+})
+
+test('demo account is clearly labeled as play money', async ({ page }) => {
+  await page.goto('/demo')
+  await expect(page.getByText(/demo · play money/i).first()).toBeVisible()
+  await expect(page.getByText(/nothing here reaches a broker or real money/i)).toBeVisible()
 })

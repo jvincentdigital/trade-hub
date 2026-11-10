@@ -185,3 +185,13 @@ describe('backtest sizing', () => {
     expect(r.endEquity).toBeGreaterThan(r.startEquity * 0.95)
   })
 })
+
+describe('streak condition', () => {
+  it('fires a buy after N down candles and not before', () => {
+    const rule: Rule = { ...base, direction: 'both', conditions: [{ kind: 'streak', length: 3 }] }
+    const c = series(6, -1)
+    const sigs = findSignals(rule, c)
+    expect(sigs[0].index).toBe(3)
+    expect(sigs.every((s) => s.direction === 'long')).toBe(true)
+  })
+})

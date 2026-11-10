@@ -37,6 +37,8 @@ export const conditionSchema = z.discriminatedUnion('kind', [
     names: z.array(z.string()),
     lookback: z.number().int().min(1),
   }),
+  /** The `length` candles before this one all closed against the trade (down candles before a buy). Exhaustion after a run. */
+  z.object({ kind: z.literal('streak'), length: z.number().int().min(2) }),
   /** Close is within tolerancePct of the lowest low (long) / highest high (short) of `lookback` candles. */
   z.object({
     kind: z.literal('nearLevel'),
