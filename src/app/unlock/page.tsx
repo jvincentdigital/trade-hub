@@ -1,3 +1,6 @@
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { COOKIE, passHash } from '@/lib/lock'
 import { unlock } from './actions'
 
 export const metadata = { title: 'Unlock' }
@@ -7,6 +10,9 @@ export default async function Unlock({
 }: {
   searchParams: Promise<{ wrong?: string }>
 }) {
+  // Already unlocked (say the home-screen app was added from this page): go in.
+  const pass = process.env.TRADE_HUB_PASSCODE
+  if (pass && (await cookies()).get(COOKIE)?.value === (await passHash(pass))) redirect('/')
   const { wrong } = await searchParams
   return (
     <div

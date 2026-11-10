@@ -57,6 +57,17 @@ body {
 
 /* Safe areas (viewport-fit=cover): on a home-screen iPhone the page runs under the
    status bar, notch and home bar, so padding adds env(safe-area-inset-*). Zero elsewhere. */
+/* The translucent status bar has no background, so scrolled content would pass under
+   the clock: a strip of page color covers it. Above the page, below the nav and overlays. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg-primary);
+  z-index: 45;
+  pointer-events: none;
+}
 .main-content {
   padding: calc(1.5rem + env(safe-area-inset-top)) calc(1.5rem + env(safe-area-inset-right)) 1.5rem
     calc(1.5rem + env(safe-area-inset-left));

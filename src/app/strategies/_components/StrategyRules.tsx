@@ -3,6 +3,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { CandlestickChart, Copy, FlaskConical, Pencil, Play, Trash2 } from 'lucide-react'
 import { DemoBadge } from '@/components/paper/DemoBadge'
+import { useOverlay } from '@/lib/hooks/useOverlay'
 import { useRules } from '@/lib/hooks/useRules'
 import { setPaperAccount, useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { equityOf, FEE_RATE, LEVERAGE, placeOrder, sizeByRisk } from '@/lib/paper/engine'
@@ -28,7 +29,8 @@ import { RuleEditor } from './RuleEditor'
 
 export default function StrategyRules() {
   const { rules, upsert, remove } = useRules()
-  const [editing, setEditing] = useState<Rule | null>(null)
+  // Esc and Back close the rule editor (useOverlay).
+  const [editing, edit, stopEditing] = useOverlay<Rule>()
 
   return (
     <section style={{ marginBottom: '2rem' }}>
@@ -50,9 +52,9 @@ export default function StrategyRules() {
           <RuleCard
             key={r.id}
             rule={r}
-            onEdit={() => setEditing(r)}
+            onEdit={() => edit(r)}
             onDuplicate={() =>
-              setEditing({
+              edit({
                 ...r,
                 id: crypto.randomUUID(),
                 name: `${r.name} (my copy)`,
@@ -66,10 +68,10 @@ export default function StrategyRules() {
       {editing && (
         <RuleEditor
           rule={editing}
-          onCancel={() => setEditing(null)}
+          onCancel={stopEditing}
           onSave={(r) => {
             upsert(r)
-            setEditing(null)
+            stopEditing()
           }}
         />
       )}
