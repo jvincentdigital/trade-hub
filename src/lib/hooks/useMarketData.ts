@@ -3,6 +3,7 @@ import useSWR from 'swr'
 import { OHLCCandle } from '../types/market'
 import { COIN_MAP, METAL_MAP } from '../coingecko'
 import { FOREX_PAIRS } from '../forexPairs'
+import { getInstrument } from '../paper/instruments'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -120,16 +121,34 @@ const okFetcher = async (url: string) => {
   return res.json()
 }
 
+const candleUrl = (market: string) =>
+  getInstrument(market)?.market === 'forex'
+    ? `/api/forex/ohlc/${market}?days=90`
+    : `/api/crypto/candles/${market}?tf=1h`
+
+const NO_CANDLES: Record<string, OHLCCandle[]> = {}
+
 /**
- * Recent candles for a small chart: 1h from Kraken for crypto and gold (last
- * 48), daily for forex (last 40). SWR shares one fetch per market.
+ * Candles for the Today page, one fetch per market: 1h from Kraken for crypto
+ * and gold (30 days), daily for forex (90 days). Feeds the open P&L chart and
+ * the chart in an opened trade row. A market whose fetch fails is left out.
  */
-export function useRecentCandles(market: string, isForex: boolean) {
-  const url = isForex ? `/api/forex/ohlc/${market}?days=90` : `/api/crypto/candles/${market}?tf=1h`
-  const { data, error, isLoading } = useSWR<OHLCCandle[]>(url, okFetcher, {
-    refreshInterval: 300000,
-    revalidateOnFocus: false,
-  })
-  const n = isForex ? 40 : 48
-  return { candles: Array.isArray(data) ? data.slice(-n) : [], error, isLoading }
+export function useCandleMap(markets: string[]) {
+  const unique = [...new Set(markets)].sort()
+  const { data, isLoading } = useSWR(
+    unique.length ? ['candle-map', ...unique] : null,
+    async ([, ...ms]: string[]) => {
+      const got = await Promise.allSettled(ms.map((m) => okFetcher(candleUrl(m))))
+      return Object.fromEntries(
+        ms.flatMap((m, i) => {
+          const r = got[i]
+          return r.status === 'fulfilled' && Array.isArray(r.value)
+            ? [[m, r.value as OHLCCandle[]]]
+            : []
+        }),
+      )
+    },
+    { refreshInterval: 300000, revalidateOnFocus: false, keepPreviousData: true },
+  )
+  return { candles: data ?? NO_CANDLES, isLoading }
 }

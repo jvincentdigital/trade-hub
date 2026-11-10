@@ -54,7 +54,7 @@ src/
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
     layout.tsx          #   Root layout + sidebar
-    page.tsx            #   Today: open trades with charts, race summary, closed trades (docs/dashboard.md)
+    page.tsx            #   Today: summary card + one row per open trade, opens in place (docs/dashboard.md)
     unlock/             #   Passcode page (src/proxy.ts locks everything else; docs/live.md)
   components/
     layout/Sidebar.tsx  # Responsive nav (desktop sidebar / mobile bottom bar)

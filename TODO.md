@@ -6,6 +6,10 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**Today: Cockpit layout (2026-11-10, late night), branch `today-cockpit`.** John's pick (mockup A plus the best of B and C): a summary card (open P&L with a small line since the first entry, a "where today could end" bar from all stops to all targets, one plain "needs a look" line, closed today), then one row per trade with a stop-to-target bar and "Risk $20 · Goal +$40 · 48% of the way to target", opening in place to the chart, size and levels (Esc and Back close it). Tabs All / Needs a look / By strategy; wide screens get a sticky summary column with each strategy's account and slots. Race forex trades are now valued at the race's own ECB rate, so they read "At entry; forex prices update once a day" instead of a fake move. See `docs/dashboard.md`.
+
+- [ ] @john: look at the PR (screenshots in `~/jvd-outputs/2026-11-10/trade-hub/mockups/built-*.png`) and merge if it looks right.
+
 **Race sizing (2026-11-10, night), branch `sizing-2pct`.** Each strategy now trades one $1,000 account and every trade risks 2% of its balance (at most 5 open, 10% open risk, margin cap like a real account), in the live race and the past results. Every trade shows lots or coins, $ per pip (or per $1 on gold), risk $, goal $ and R:R (Today cards, `/race`, `/demo`), and Today's header says what all targets or all stops would make. See `docs/strategy-race.md` "Sizing".
 
 - [ ] @john: review the PR, merge, then on the Mac Mini: `cd ~/dev/trade-hub && git pull && make race-reset` (backs up race.json, starts over at 2%, first tick, pushes to the live site).

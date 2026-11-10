@@ -90,7 +90,7 @@ export const qty = (n: number) =>
 export const fmtLots = (n: number) => (n >= 0.1 ? n.toFixed(2) : n.toPrecision(3))
 
 /** $0.219 per pip, $2.19, $21.86: cents above $10, 3 significant digits below. */
-const perMoney = (n: number) => (n >= 10 ? money(n) : `$${n.toPrecision(3)}`)
+export const perMoney = (n: number) => (n >= 10 ? money(n) : `$${n.toPrecision(3)}`)
 
 /** "0.0219 lots (2,186 units)", "0.0016 lots (0.163 oz)", "0.00153 BTC". */
 export function sizeText(inst: Instrument | undefined, s: Sizing): string {
