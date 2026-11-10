@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { CandleChart } from '@/components/market/CandleChart'
+import { TradingViewChart } from '@/components/market/TradingViewChart'
 import { RuleSignals } from '@/components/market/RuleSignals'
 import {
   fetchCryptoIntraday,
@@ -34,6 +35,7 @@ const TIMEFRAMES: Timeframe[] = [
 export default function CryptoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [tf, setTf] = useState<Timeframe>(() => TIMEFRAMES[5]) // default 30D
+  const [tvPick, setTv] = useState(false)
   const meta = COIN_MAP[id]
 
   const {
@@ -48,6 +50,7 @@ export default function CryptoDetailPage({ params }: { params: Promise<{ id: str
   )
 
   const patterns = useMemo(() => (candles ? detectAll(candles) : []), [candles])
+  const tv = tvPick
   const last = candles?.[candles.length - 1]
   const first = candles?.[0]
   const change =
@@ -123,11 +126,14 @@ export default function CryptoDetailPage({ params }: { params: Promise<{ id: str
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
         {TIMEFRAMES.map((t) => {
-          const active = t.label === tf.label
+          const active = t.label === tf.label && !tvPick
           return (
             <button
               key={t.label}
-              onClick={() => setTf(t)}
+              onClick={() => {
+                setTf(t)
+                setTv(false)
+              }}
               style={{
                 padding: '5px 10px',
                 borderRadius: '6px',
@@ -142,9 +148,24 @@ export default function CryptoDetailPage({ params }: { params: Promise<{ id: str
             </button>
           )
         })}
+        <button
+          onClick={() => setTv((v) => !v)}
+          aria-pressed={tv}
+          style={{
+            padding: '5px 10px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            cursor: 'pointer',
+            background: tv ? 'var(--indigo-dim)' : 'var(--bg-secondary)',
+            border: `0.5px solid ${tv ? 'var(--indigo)' : 'var(--border)'}`,
+            color: tv ? 'var(--indigo)' : 'var(--text-secondary)',
+          }}
+        >
+          TradingView
+        </button>
       </div>
 
-      {error && (
+      {error && !tv && (
         <div
           style={{
             background: 'var(--bg-card)',
@@ -169,7 +190,9 @@ export default function CryptoDetailPage({ params }: { params: Promise<{ id: str
           marginBottom: '16px',
         }}
       >
-        {isLoading || !candles ? (
+        {tv ? (
+          <TradingViewChart symbol={`CRYPTO:${(meta?.symbol ?? id).toUpperCase()}USD`} />
+        ) : isLoading || !candles ? (
           <div
             style={{
               height: '400px',
