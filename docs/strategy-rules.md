@@ -17,11 +17,11 @@ the trade). Stops: `swing` (beyond recent extreme + buffer) or `percent`.
 
 ## Where rules come from
 
-| File                           | Rules                                                                                                                      |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/rules/presets.ts`     | MM Confluence v2, EMA 50 pullback (both from `docs/strategies/mm-confluence-v2.md`), RSI range reversal (a plain baseline) |
-| `src/lib/rules/marvel.ts`      | MM stop hunt reversal, MM three-day exhaustion (from the course PDF, see `docs/strategies/marvel-fx-method.md`)            |
-| localStorage `trade-hub-rules` | John's own copies (Duplicate on any card, then edit)                                                                       |
+| File                           | Rules                                                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/rules/presets.ts`     | MM Confluence v2, EMA 50 pullback (both from `docs/strategies/mm-confluence-v2.md`), RSI range reversal (a plain baseline)                                                |
+| `src/lib/rules/marvel.ts`      | MM stop hunt reversal, MM three-day exhaustion (course PDF), MFX level 3 peak reversal, MFX EMA 12/36 pullback (course videos); see `docs/strategies/marvel-fx-method.md` |
+| localStorage `trade-hub-rules` | John's own copies (Duplicate on any card, then edit)                                                                                                                      |
 
 Built-ins are read-only so their backtests stay comparable over time.
 

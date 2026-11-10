@@ -20,7 +20,7 @@ text; short phrases of 5 words or fewer inside a source note are the limit.
    and 1h/4h/1d for crypto; no tick data; no news calendar).
 3. Update `src/lib/rules/marvel.ts`: export `MARVEL_RULES: Rule[]` built
    only from the condition kinds in `src/lib/rules/schema.ts` (trend,
-   emaStack, rsi, formation, emaTouch, pattern, nearLevel), with `sources`
+   emaStack, rsi, formation, emaTouch, pattern, nearLevel, streak), with `sources`
    pointing at videos + timestamps and `builtIn: true`. If the course needs
    a condition we do not have (e.g. Asian-session range, ADR), describe it
    in the doc under "Conditions to add" instead of faking it.
