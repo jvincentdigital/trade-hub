@@ -6,18 +6,18 @@ Trade Hub is a working single-user trading dashboard built on Next.js 16 (App Ro
 
 ## Stack
 
-| Layer         | Choice                                                     |
-|---------------|------------------------------------------------------------|
-| Framework     | Next.js 16 (App Router)                                    |
-| UI            | React 19                                                   |
-| Styling       | Tailwind CSS v4 (CSS-first via `app/globals.css`)          |
-| Language      | TypeScript 5 (strict)                                      |
-| Client data   | SWR v2 (`lib/hooks/*`)                                     |
-| Server data   | Next.js `fetch` with ISR (`revalidate` on route handlers)  |
-| Charts        | `lightweight-charts` v5                                    |
-| Icons         | `lucide-react`                                             |
-| Lint          | ESLint 9 + `eslint-config-next`                            |
-| Target host   | Vercel (default, not yet linked)                           |
+| Layer       | Choice                                                    |
+| ----------- | --------------------------------------------------------- |
+| Framework   | Next.js 16 (App Router)                                   |
+| UI          | React 19                                                  |
+| Styling     | Tailwind CSS v4 (CSS-first via `app/globals.css`)         |
+| Language    | TypeScript 5 (strict)                                     |
+| Client data | SWR v2 (`lib/hooks/*`)                                    |
+| Server data | Next.js `fetch` with ISR (`revalidate` on route handlers) |
+| Charts      | `lightweight-charts` v5                                   |
+| Icons       | `lucide-react`                                            |
+| Lint        | ESLint 9 + `eslint-config-next`                           |
+| Target host | Vercel (default, not yet linked)                          |
 
 ## Directory layout
 
@@ -59,24 +59,34 @@ Trade Hub is a working single-user trading dashboard built on Next.js 16 (App Ro
 
 `/api/scanner` is the server side of the MM Confluence v2 strategy (spec in `docs/strategies/mm-confluence-v2.md`). For each crypto symbol in the watchlist it fetches entry-TF OHLC, higher-TF OHLC (for EMA 200 alignment), and a volume series from `/market_chart`; runs `detectPatterns` and then `scoreSetup` to produce a 7-point checklist and a grade (A ≥ 6, B 4–5, C ≤ 3). `SetupScanner.tsx` on `/strategies` polls this route every 60s via SWR, filters to A/B grades, and renders checklist cards. Pure indicator math (`ema`, `rsi`, `detectMWFormation`, `scoreSetup`) lives in `lib/scanner/mmConfluence.ts` so both the route and the component consume the same source — the component re-exports it for discoverability. Forex symbols are skipped with `forex-no-ohlc` until an OHLC provider is wired up.
 
+## Demo account and strategy rules
+
+Added 2026-11-10. Both are pure TypeScript modules with tests, used by client pages:
+
+- `lib/paper/` is the demo ("paper") account: `engine.ts` (orders, fills, stops/targets, fees, margin, equity), `stats.ts` (win rate, profit factor, max drawdown), `plan.ts` (trading-plan warnings), `instruments.ts` (the 18 tradable markets and USD conversion). State lives in localStorage via `lib/hooks/usePaperAccount.ts`, a small shared store; `components/paper/PaperEngine.tsx` in the root layout feeds live prices into it while a tab is open. Details: `docs/paper-trading.md`.
+- `lib/rules/` is the strategy engine: `schema.ts` (Zod rule format), `engine.ts` (signals, backtest), `presets.ts` + `marvel.ts` (built-in rules), `data.ts` (which candles a rule runs on). UI: `app/strategies/_components/StrategyRules.tsx` and `components/market/RuleSignals.tsx` on detail pages. Details: `docs/strategy-rules.md`.
+
 ## External services
 
-| Service            | Endpoint                                                       | Auth | Cache (revalidate) | Notes                                                |
-|--------------------|----------------------------------------------------------------|------|--------------------|------------------------------------------------------|
-| CoinGecko          | `api.coingecko.com/api/v3/simple/price`                        | none | 60s                | 10 hardcoded coins: BTC, ETH, SOL, XRP, BNB, ADA, AVAX, DOGE, DOT, MATIC |
-| CoinGecko          | `api.coingecko.com/api/v3/coins/{id}/ohlc?days=N`              | none | 300s               | Detail panel uses `days=14`; scanner uses variable `days` (1/30/180). Granularity is locked by `days` (1→30min, 2–30→4H, 31+→daily). |
-| CoinGecko          | `api.coingecko.com/api/v3/coins/{id}/market_chart?days=N`      | none | 300s               | Scanner only: per-candle volume series (aligned to OHLC timestamps for the "volume > 1.5× avg20" check). |
-| ExchangeRate API   | `api.exchangerate-api.com/v4/latest/USD`                       | none | 3600s              | 8 pairs derived from USD rates (some inverted). Spot-only — no OHLC, so the scanner currently skips forex. |
+| Service          | Endpoint                                                  | Auth | Cache (revalidate) | Notes                                                                                                                                                                       |
+| ---------------- | --------------------------------------------------------- | ---- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CoinGecko        | `api.coingecko.com/api/v3/simple/price`                   | none | 60s                | 10 coins from `COIN_MAP`: BTC, ETH, SOL, XRP, BNB, ADA, AVAX, DOGE, DOT, POL (MATIC retired 2026-11-10: its feed returns nulls)                                             |
+| CoinGecko        | `api.coingecko.com/api/v3/coins/{id}/ohlc?days=N`         | none | 300s               | Detail panel uses `days=14`; scanner uses variable `days` (1/30/180). Granularity is locked by `days` (1→30min, 2–30→4H, 31+→**4-day**, not daily; checked 2026-11-10).     |
+| CoinGecko        | `api.coingecko.com/api/v3/coins/{id}/market_chart?days=N` | none | 300s               | Volume series for the scanner; `days=90` gives hourly prices that `fetchCandles` buckets into 1h/4h/1d candles (`/api/crypto/candles/[id]`, scanner 4H/1D, strategy rules). |
+| ExchangeRate API | `api.exchangerate-api.com/v4/latest/USD`                  | none | 3600s              | 8 pairs derived from USD rates (some inverted). Spot-only — no OHLC, so the scanner currently skips forex.                                                                  |
 
 No `.env` files are required today. When a service that needs a key is added, document it in `.env.example` and load via `process.env` in the route handler only — never ship a key to the client.
 
 ## Persistent state (localStorage)
 
-| Key                    | Shape                        | Owner hook         |
-|------------------------|------------------------------|--------------------|
-| `trade-hub-strategies` | `Strategy[]`                 | `useStrategies`    |
-| `trade-hub-watchlist`  | `string[]` (pair IDs)        | `useWatchlist`     |
-| `trade-hub-preferences`| reserved (not yet populated) | —                  |
+| Key                       | Shape                                                       | Owner hook        |
+| ------------------------- | ----------------------------------------------------------- | ----------------- |
+| `trade-hub-strategies`    | `Strategy[]`                                                | `useStrategies`   |
+| `trade-hub-watchlist`     | `string[]` (pair IDs)                                       | `useWatchlist`    |
+| `trade-hub-paper-account` | `PaperAccount` (demo account)                               | `usePaperAccount` |
+| `trade-hub-rules`         | `Rule[]` (user's own rules)                                 | `useRules`        |
+| `tradehub.strategies.v1`  | `TradePlan[]` (older key name, kept so saved plans survive) | `useTradePlans`   |
+| `trade-hub-preferences`   | reserved (not yet populated)                                | —                 |
 
 Because all user data is browser-local, clearing site data wipes the user's strategies and watchlist. A future migration to a backing store (Supabase, etc.) is a likely next step; when it happens, keep the hook surface stable so pages don't change.
 
@@ -86,13 +96,11 @@ This is **not** the Next.js most AI training data knows. Before writing framewor
 
 ## Known gaps
 
-These are tracked in `TODO.md`; listing here for architectural awareness:
+Tracked in `TODO.md`; listed here for architectural awareness (refreshed 2026-11-10):
 
-- No test runner wired up (`make test` is a stub). `lib/patterns/` and `lib/scanner/` are the highest-value regression surfaces.
-- No input validation on API responses before they're returned to the client; a CoinGecko or ExchangeRate schema drift still crashes hooks (Zod not yet added).
-- Logging is `console.error` breadcrumbs only — no structured logger (pino) and no error-tracking service (Sentry).
-- No forex OHLC source, so the MM Confluence scanner is crypto-only for now.
-- No CI workflow under `.github/workflows/`.
-- No deploy target configured — `vercel link` has not been run.
+- Forex data is daily only (free ECB rates via Frankfurter; ExchangeRate API spot updates about once a day). Forex highs/lows are synthesized at ±0.1%, so forex backtests and demo stops are rough. Real intraday forex needs a key (Twelve Data route exists, unset) or a broker practice feed (`docs/demo-brokers.md`).
+- The demo account only processes orders while a browser tab is open, and lives in one browser's localStorage.
+- localStorage hooks read storage in `useState` initializers, so pages with saved data can log a hydration mismatch warning on first load (pre-existing pattern; `usePaperAccount` uses `useSyncExternalStore` and avoids it).
+- Sentry DSN still needs to be set by John.
 
 Update this doc as real architectural decisions are made.

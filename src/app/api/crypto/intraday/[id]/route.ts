@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { marketChartResponseSchema } from '@/lib/schemas'
-import { COIN_MAP } from '@/lib/coingecko'
+import { isCoinGeckoId } from '@/lib/coingecko'
 import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
 // CoinGecko free tier: /market_chart?days=1 → 5-minute price points (~289).
@@ -20,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!limit.ok) return rateLimitResponse(limit)
 
   const { id } = await params
-  if (!(id in COIN_MAP)) {
+  if (!isCoinGeckoId(id)) {
     return NextResponse.json({ error: 'Unknown coin id' }, { status: 400 })
   }
 

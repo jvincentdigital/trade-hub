@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { PaperEngine } from '@/components/paper/PaperEngine'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s · Trade Hub',
   },
   description:
-    'Personal trading dashboard — live crypto + forex markets, candlestick pattern detection, and strategy notes.',
+    'Personal trading hub: open trades, stops and targets, the strategy race and live markets. Play money only.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="main-content" style={{ padding: '1.5rem', minHeight: '100vh' }}>
           {children}
         </main>
-        <Analytics />
+        <PaperEngine />
       </body>
     </html>
   )

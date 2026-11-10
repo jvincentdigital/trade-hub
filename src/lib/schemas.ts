@@ -3,11 +3,25 @@ import { z } from 'zod'
 // CoinGecko /simple/price?include_24hr_change=true&include_24hr_vol=true&include_market_cap=true
 export const cryptoPricesResponseSchema = z.record(
   z.string(),
+  // CoinGecko sends null for fields it can't compute (e.g. a stale coin); one
+  // null must not take down the whole price feed, so null becomes "missing".
   z.object({
-    usd: z.number().optional(),
-    usd_24h_change: z.number().optional(),
-    usd_24h_vol: z.number().optional(),
-    usd_market_cap: z.number().optional(),
+    usd: z
+      .number()
+      .nullish()
+      .transform((v) => v ?? undefined),
+    usd_24h_change: z
+      .number()
+      .nullish()
+      .transform((v) => v ?? undefined),
+    usd_24h_vol: z
+      .number()
+      .nullish()
+      .transform((v) => v ?? undefined),
+    usd_market_cap: z
+      .number()
+      .nullish()
+      .transform((v) => v ?? undefined),
   }),
 )
 export type CryptoPricesResponse = z.infer<typeof cryptoPricesResponseSchema>

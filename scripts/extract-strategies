@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Turn the Market Maker / Marvel FX course transcripts into Trade Hub rules.
+# Runs headless Claude on John's subscription (claude -p), never the API.
+#
+# Usage: scripts/extract-strategies [transcripts_dir]
+#   default dir: ~/jvd-outputs/trading/transcripts
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+DIR="${1:-$HOME/jvd-outputs/trading/transcripts}"
+count=$(find "$DIR" -maxdepth 1 -name '*.txt' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$count" = "0" ]; then
+  echo "No transcripts (*.txt) in $DIR yet. See docs/strategy-rules.md for how to make them." >&2
+  exit 1
+fi
+command -v claude >/dev/null || { echo "claude CLI not found on PATH" >&2; exit 1; }
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "ANTHROPIC_API_KEY is set; unset it so this runs on the subscription, not the API." >&2
+  exit 1
+fi
+
+echo "Extracting rules from $count transcripts in $DIR ..."
+{
+  cat scripts/extract-strategies.prompt.md
+  printf '\nTranscripts folder: %s\n' "$DIR"
+} | claude -p --permission-mode acceptEdits --add-dir "$DIR"
+echo "Done. Review: git diff docs/strategies/marvel-fx-method.md src/lib/rules/marvel.ts"

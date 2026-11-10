@@ -32,6 +32,11 @@ export const PATTERN_NAMES = [
 
 export type PatternName = (typeof PATTERN_NAMES)[number]
 
+// A candle with no range (high === low) has no shape to read. Old hourly-price
+// candles were flat like this and every one passed as both a Dragonfly and a
+// Gravestone Doji, so flat candles never count, alone or inside a pattern.
+const flat = (c: OHLCCandle) => c.high === c.low
+
 // Run every detector at every candle index, returning a flat list of hits
 // with index + time for chart markers. O(n × detectors); fine for ≤ 500 candles.
 export function detectAll(candles: OHLCCandle[]): PatternHit[] {
@@ -42,6 +47,7 @@ export function detectAll(candles: OHLCCandle[]): PatternHit[] {
     const prev1 = candles[i - 1]
     const prev2 = candles[i - 2]
     const history = candles.slice(0, i)
+    if (flat(c)) continue
 
     const singles = [
       P.detectDoji(c),
@@ -55,21 +61,26 @@ export function detectAll(candles: OHLCCandle[]): PatternHit[] {
       P.detectInvertedHammer(c, history),
       P.detectShootingStar(c, history),
     ]
-    const doubles = [
-      P.detectBullishEngulfing(c, prev1),
-      P.detectBearishEngulfing(c, prev1),
-      P.detectBullishHarami(c, prev1),
-      P.detectBearishHarami(c, prev1),
-      P.detectPiercingLine(c, prev1),
-      P.detectDarkCloudCover(c, prev1),
-      P.detectTweezers(c, prev1),
-    ]
-    const triples = [
-      P.detectMorningStar(c, prev1, prev2),
-      P.detectEveningStar(c, prev1, prev2),
-      P.detectThreeWhiteSoldiers(c, prev1, prev2),
-      P.detectThreeBlackCrows(c, prev1, prev2),
-    ]
+    const doubles = flat(prev1)
+      ? []
+      : [
+          P.detectBullishEngulfing(c, prev1),
+          P.detectBearishEngulfing(c, prev1),
+          P.detectBullishHarami(c, prev1),
+          P.detectBearishHarami(c, prev1),
+          P.detectPiercingLine(c, prev1),
+          P.detectDarkCloudCover(c, prev1),
+          P.detectTweezers(c, prev1),
+        ]
+    const triples =
+      flat(prev1) || flat(prev2)
+        ? []
+        : [
+            P.detectMorningStar(c, prev1, prev2),
+            P.detectEveningStar(c, prev1, prev2),
+            P.detectThreeWhiteSoldiers(c, prev1, prev2),
+            P.detectThreeBlackCrows(c, prev1, prev2),
+          ]
     ;[...singles, ...doubles, ...triples].forEach((r) => {
       if (r)
         hits.push({ name: r.name, type: r.type, confidence: r.confidence, index: i, time: c.time })
@@ -86,6 +97,7 @@ export function detectPatterns(candles: OHLCCandle[]): PatternResult[] {
   const prev1 = candles[len - 2]
   const prev2 = candles[len - 3]
   const history = candles.slice(0, len - 1)
+  if (flat(c)) return []
 
   const singles = [
     P.detectDoji(c),
@@ -100,22 +112,27 @@ export function detectPatterns(candles: OHLCCandle[]): PatternResult[] {
     P.detectShootingStar(c, history),
   ]
 
-  const doubles = [
-    P.detectBullishEngulfing(c, prev1),
-    P.detectBearishEngulfing(c, prev1),
-    P.detectBullishHarami(c, prev1),
-    P.detectBearishHarami(c, prev1),
-    P.detectPiercingLine(c, prev1),
-    P.detectDarkCloudCover(c, prev1),
-    P.detectTweezers(c, prev1),
-  ]
+  const doubles = flat(prev1)
+    ? []
+    : [
+        P.detectBullishEngulfing(c, prev1),
+        P.detectBearishEngulfing(c, prev1),
+        P.detectBullishHarami(c, prev1),
+        P.detectBearishHarami(c, prev1),
+        P.detectPiercingLine(c, prev1),
+        P.detectDarkCloudCover(c, prev1),
+        P.detectTweezers(c, prev1),
+      ]
 
-  const triples = [
-    P.detectMorningStar(c, prev1, prev2),
-    P.detectEveningStar(c, prev1, prev2),
-    P.detectThreeWhiteSoldiers(c, prev1, prev2),
-    P.detectThreeBlackCrows(c, prev1, prev2),
-  ]
+  const triples =
+    flat(prev1) || flat(prev2)
+      ? []
+      : [
+          P.detectMorningStar(c, prev1, prev2),
+          P.detectEveningStar(c, prev1, prev2),
+          P.detectThreeWhiteSoldiers(c, prev1, prev2),
+          P.detectThreeBlackCrows(c, prev1, prev2),
+        ]
 
   ;[...singles, ...doubles, ...triples].forEach((r) => {
     if (r) results.push(r)

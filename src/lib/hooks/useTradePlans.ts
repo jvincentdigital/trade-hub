@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useStoredState } from './useStoredState'
 import { TradePlan, tradePlansArraySchema } from '../schemas'
 
 const KEY = 'tradehub.strategies.v1'
@@ -22,7 +22,7 @@ const loadInitial = (): TradePlan[] => {
 }
 
 export function useTradePlans() {
-  const [plans, setPlans] = useState<TradePlan[]>(loadInitial)
+  const [plans, setPlans] = useStoredState<TradePlan[]>(loadInitial, [])
 
   const save = (list: TradePlan[]) => {
     setPlans(list)

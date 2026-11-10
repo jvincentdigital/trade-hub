@@ -1,18 +1,27 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Bitcoin, TrendingUp, BookOpen, Star } from 'lucide-react'
+import { LayoutDashboard, Bitcoin, TrendingUp, BookOpen, Star, Trophy, Wallet } from 'lucide-react'
 
 const nav = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/', label: 'Today', icon: LayoutDashboard },
   { href: '/crypto', label: 'Crypto', icon: Bitcoin },
   { href: '/forex', label: 'Forex', icon: TrendingUp },
   { href: '/strategies', label: 'Strategies', icon: BookOpen },
   { href: '/watchlist', label: 'Watchlist', icon: Star },
+  { href: '/demo', label: 'Demo', icon: Wallet },
+  { href: '/race', label: 'Race', icon: Trophy },
 ]
+
+// Detail pages (/crypto/bitcoin) keep their section highlighted; gold lives under Forex.
+const isActive = (path: string, href: string) =>
+  href === '/'
+    ? path === '/'
+    : path === href || path.startsWith(`${href}/`) || (href === '/forex' && path === '/gold')
 
 export function Sidebar() {
   const path = usePathname()
+  if (path === '/unlock') return null
 
   return (
     <>
@@ -50,7 +59,7 @@ export function Sidebar() {
           </span>
         </div>
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = path === href
+          const active = isActive(path, href)
           return (
             <Link
               key={href}
@@ -93,7 +102,7 @@ export function Sidebar() {
         }}
       >
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = path === href
+          const active = isActive(path, href)
           return (
             <Link
               key={href}
@@ -102,7 +111,10 @@ export function Sidebar() {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '3px',
+                minHeight: '44px',
+                minWidth: '44px',
                 textDecoration: 'none',
                 color: active ? 'var(--indigo)' : 'var(--text-muted)',
                 fontSize: '10px',

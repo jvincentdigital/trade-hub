@@ -17,36 +17,26 @@ export const COIN_MAP: Record<string, CoinMeta> = {
   'avalanche-2': { name: 'Avalanche', symbol: 'AVAX' },
   dogecoin: { name: 'Dogecoin', symbol: 'DOGE' },
   polkadot: { name: 'Polkadot', symbol: 'DOT' },
-  'matic-network': { name: 'Polygon', symbol: 'MATIC' },
+  // MATIC was migrated to POL; CoinGecko's matic-network feed went stale (null 24h change).
+  'polygon-ecosystem-token': { name: 'Polygon', symbol: 'POL' },
 }
+
+// Metals priced through a CoinGecko token that tracks them (free, hourly, no
+// key). PAX Gold (PAXG) is backed by and tracks one troy ounce of gold, so it
+// stands in for XAU/USD. Kept out of COIN_MAP so crypto lists stay crypto.
+export const METAL_MAP: Record<string, CoinMeta & { note: string }> = {
+  'pax-gold': { name: 'Gold', symbol: 'XAU', note: 'price tracked by PAX Gold' },
+}
+
+/** Every id our CoinGecko routes accept: coins plus metals. */
+export const isCoinGeckoId = (id: string) => id in COIN_MAP || id in METAL_MAP
 
 export type Timeframe = '30min' | '4H' | '1D'
 
-// CoinGecko /ohlc granularity is locked to the `days` param:
+// CoinGecko /ohlc granularity is locked to the `days` param (checked 2026-11-10):
 //   days=1       → 30-minute candles (~48)
 //   days=2..30   → 4-hour candles
-//   days=31+     → daily candles
-const TF_DAYS: Record<Timeframe, number> = {
-  '30min': 1,
-  '4H': 30,
-  '1D': 180,
-}
-
-// Higher-TF context per entry TF (~4× the entry granularity).
-const HIGHER_TF_DAYS: Record<Timeframe, number> = {
-  '30min': 30, // 4H context
-  '4H': 180, // 1D context
-  '1D': 365, // deeper 1D history (no weekly endpoint on free tier)
-}
-
-export function daysForTimeframe(tf: Timeframe): number {
-  return TF_DAYS[tf]
-}
-
-export function daysForHigherTimeframe(tf: Timeframe): number {
-  return HIGHER_TF_DAYS[tf]
-}
-
+//   days=31+     → 4-DAY candles (not daily). Use fetchKrakenCandles (lib/kraken) for real 1d bars.
 export async function fetchOHLC(id: string, days: number): Promise<OHLCCandle[] | null> {
   try {
     const res = await fetch(

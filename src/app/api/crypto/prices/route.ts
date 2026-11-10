@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { cryptoPricesResponseSchema } from '@/lib/schemas'
 import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
+import { COIN_MAP, METAL_MAP } from '@/lib/coingecko'
 
-const COINS =
-  'bitcoin,ethereum,solana,ripple,binancecoin,cardano,avalanche-2,dogecoin,polkadot,matic-network'
+// Single source of truth for the coin list (was a hardcoded copy that drifted).
+// Metals (gold via PAX Gold) ride along in the same call.
+const COINS = [...Object.keys(COIN_MAP), ...Object.keys(METAL_MAP)].join(',')
 
 export async function GET(request: Request) {
   const limit = checkRateLimit('data', getClientIdentifier(request))

@@ -1,7 +1,7 @@
 'use client'
 import useSWR from 'swr'
 import { OHLCCandle } from '../types/market'
-import { COIN_MAP } from '../coingecko'
+import { COIN_MAP, METAL_MAP } from '../coingecko'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -83,6 +83,27 @@ export function useCryptoPrices() {
   return { prices: transformCryptoPrices(data), error, isLoading, refresh: mutate }
 }
 
+/** Gold (PAX Gold) price, from the same cached call as the crypto prices. */
+export function transformMetalPrices(data: Record<string, CoinGeckoRow> | undefined) {
+  if (!data) return []
+  return Object.entries(METAL_MAP).map(([id, meta]) => ({
+    id,
+    name: meta.name,
+    note: meta.note,
+    price: data[id]?.usd ?? 0,
+    change24h: data[id]?.usd_24h_change ?? 0,
+  }))
+}
+
+export function useMetalPrices() {
+  const { data, error, isLoading } = useSWR<Record<string, CoinGeckoRow>>(
+    '/api/crypto/prices',
+    fetcher,
+    { refreshInterval: 60000 },
+  )
+  return { metals: transformMetalPrices(data), error, isLoading }
+}
+
 export function useCryptoOHLC(id: string) {
   const { data, error, isLoading } = useSWR<OHLCCandle[]>(
     id ? `/api/crypto/ohlc/${id}` : null,
@@ -99,4 +120,24 @@ export function useForexRates() {
     { refreshInterval: 3600000 },
   )
   return { rates: transformForexRates(data), error, isLoading, refresh: mutate }
+}
+
+const okFetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`${url} ${res.status}`)
+  return res.json()
+}
+
+/**
+ * Recent candles for a small chart: 1h from Kraken for crypto and gold (last
+ * 48), daily for forex (last 40). SWR shares one fetch per market.
+ */
+export function useRecentCandles(market: string, isForex: boolean) {
+  const url = isForex ? `/api/forex/ohlc/${market}?days=90` : `/api/crypto/candles/${market}?tf=1h`
+  const { data, error, isLoading } = useSWR<OHLCCandle[]>(url, okFetcher, {
+    refreshInterval: 300000,
+    revalidateOnFocus: false,
+  })
+  const n = isForex ? 40 : 48
+  return { candles: Array.isArray(data) ? data.slice(-n) : [], error, isLoading }
 }

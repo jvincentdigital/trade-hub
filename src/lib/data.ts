@@ -4,7 +4,7 @@ import type { OHLCCandle } from './types/market'
 // get ISR caching + centralized logging + Zod validation at the boundary.
 
 export type CryptoDays = 1 | 7 | 14 | 30 | 90 | 180 | 365
-export type ForexDays = 7 | 14 | 30 | 90 | 180 | 365
+export type ForexDays = 7 | 14 | 30 | 90 | 180 | 365 | 730
 export type CryptoIntraday = '15m' | '30m'
 
 export async function fetchCryptoOHLC(id: string, days: CryptoDays): Promise<OHLCCandle[]> {
@@ -42,5 +42,14 @@ export async function fetchForexIntraday(
     const body = await res.json().catch(() => ({}))
     throw new Error(body?.error || `forex intraday ${res.status}`)
   }
+  return res.json()
+}
+
+export type CryptoCandleTf = '1h' | '4h' | '1d'
+
+/** Real 1h / 4h / 1d candles from Kraken via our route (see lib/kraken). */
+export async function fetchCryptoCandles(id: string, tf: CryptoCandleTf): Promise<OHLCCandle[]> {
+  const res = await fetch(`/api/crypto/candles/${encodeURIComponent(id)}?tf=${tf}`)
+  if (!res.ok) throw new Error(`crypto candles ${res.status}`)
   return res.json()
 }

@@ -1,0 +1,8 @@
+#!/bin/zsh
+# launchd wrapper for the Trade Hub strategy race (com.jvd.trade-hub-race,
+# hourly). Play money only. Install steps: docs/strategy-race.md.
+set -u
+source ~/.zprofile >/dev/null 2>&1   # PATH (Homebrew node, ~/.local/bin)
+cd ~/dev/trade-hub || exit 1
+echo "$(date '+%F %T') start race tick (node $(node -v))"
+exec nice -n 10 npx tsx scripts/race-tick.ts

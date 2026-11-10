@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectPatterns } from './detector'
+import { detectAll, detectPatterns } from './detector'
 import { OHLCCandle } from '../types/market'
 
 function c(open: number, high: number, low: number, close: number, time = 0): OHLCCandle {
@@ -90,5 +90,18 @@ describe('detectPatterns', () => {
     for (let i = 1; i < results.length; i++) {
       expect(results[i - 1].confidence).toBeGreaterThanOrEqual(results[i].confidence)
     }
+  })
+})
+
+describe('zero-range candles', () => {
+  it('never tags a flat candle (high === low) as any pattern', () => {
+    const flat = [c(100, 100, 100, 100, 0), c(101, 101, 101, 101, 1), c(102, 102, 102, 102, 2)]
+    expect(detectPatterns(flat)).toEqual([])
+    expect(detectAll([...flat, c(103, 103, 103, 103, 3)])).toEqual([])
+  })
+
+  it('still finds patterns on real candles next to flat ones', () => {
+    const candles = [c(100, 100, 100, 100, 0), c(101, 102, 100, 101, 1), c(100, 102, 98, 100.05, 2)]
+    expect(detectPatterns(candles).some((r) => r.name === 'Doji')).toBe(true)
   })
 })

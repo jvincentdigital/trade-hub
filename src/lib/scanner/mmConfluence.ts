@@ -67,7 +67,7 @@ export function rsi(closes: number[], period = 14): number {
   return 100 - 100 / (1 + rs)
 }
 
-function rsiSeries(closes: number[], period = 14): number[] {
+export function rsiSeries(closes: number[], period = 14): number[] {
   const out: number[] = []
   if (closes.length < period + 1) return out
   let gains = 0

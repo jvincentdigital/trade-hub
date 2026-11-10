@@ -89,10 +89,13 @@ export default function WatchlistPage() {
                 </span>
                 <button
                   onClick={() => remove(item.id)}
+                  aria-label={`Remove ${item.symbol} from watchlist`}
                   style={{
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
+                    minWidth: '44px',
+                    minHeight: '44px',
                     color: 'var(--text-muted)',
                   }}
                 >

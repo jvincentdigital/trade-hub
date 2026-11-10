@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useStoredState } from './useStoredState'
 import { watchlistArraySchema } from '../schemas'
 
 const KEY = 'trade-hub-watchlist'
@@ -22,7 +22,7 @@ const loadInitial = (): string[] => {
 }
 
 export function useWatchlist() {
-  const [watchlist, setWatchlist] = useState<string[]>(loadInitial)
+  const [watchlist, setWatchlist] = useStoredState<string[]>(loadInitial, [])
 
   const save = (list: string[]) => {
     setWatchlist(list)

@@ -1,9 +1,11 @@
 'use client'
-import { use, useMemo, useState } from 'react'
+import { Suspense, use, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { CandleChart } from '@/components/market/CandleChart'
+import { TradingViewChart } from '@/components/market/TradingViewChart'
+import { RuleSignals } from '@/components/market/RuleSignals'
 import { fetchForexIntraday, fetchForexOHLC, type ForexDays, type ForexIntraday } from '@/lib/data'
 import { detectAll } from '@/lib/patterns/detector'
 
@@ -27,6 +29,7 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
   const { pair } = use(params)
   const display = pair.replace('-', '/')
   const [tf, setTf] = useState<Timeframe>(() => TIMEFRAMES[5]) // default 30D
+  const [tvPick, setTv] = useState(false)
 
   const {
     data: candles,
@@ -45,6 +48,9 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
   )
 
   const patterns = useMemo(() => (candles ? detectAll(candles) : []), [candles])
+  // No intraday forex feed without a key: TradingView covers it, free.
+  const tv =
+    tvPick || (tf.kind === 'intraday' && String(error?.message ?? '').includes('not configured'))
   const last = candles?.[candles.length - 1]
   const first = candles?.[0]
   const change =
@@ -58,8 +64,9 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           display: 'inline-flex',
           alignItems: 'center',
           gap: '6px',
-          fontSize: '12px',
-          color: 'var(--text-muted)',
+          minHeight: '44px',
+          fontSize: '13px',
+          color: 'var(--text-secondary)',
           textDecoration: 'none',
         }}
       >
@@ -106,6 +113,7 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
             border: 'none',
             borderRadius: '7px',
             padding: '7px 12px',
+            minHeight: '44px',
             color: 'white',
             fontSize: '12px',
             fontWeight: 500,
@@ -118,13 +126,18 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
         {TIMEFRAMES.map((t) => {
-          const active = t.label === tf.label
+          const active = t.label === tf.label && !tvPick
           return (
             <button
               key={t.label}
-              onClick={() => setTf(t)}
+              onClick={() => {
+                setTf(t)
+                setTv(false)
+              }}
               style={{
                 padding: '5px 10px',
+                minHeight: '44px',
+                minWidth: '44px',
                 borderRadius: '6px',
                 fontSize: '11px',
                 cursor: 'pointer',
@@ -137,9 +150,26 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
             </button>
           )
         })}
+        <button
+          onClick={() => setTv((v) => !v)}
+          aria-pressed={tv}
+          style={{
+            padding: '5px 10px',
+            minHeight: '44px',
+            minWidth: '44px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            cursor: 'pointer',
+            background: tv ? 'var(--indigo-dim)' : 'var(--bg-secondary)',
+            border: `0.5px solid ${tv ? 'var(--indigo)' : 'var(--border)'}`,
+            color: tv ? 'var(--indigo)' : 'var(--text-secondary)',
+          }}
+        >
+          TradingView
+        </button>
       </div>
 
-      {error && (
+      {error && !tv && (
         <div
           style={{
             background: 'var(--bg-card)',
@@ -179,7 +209,9 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           marginBottom: '16px',
         }}
       >
-        {isLoading || !candles ? (
+        {tv ? (
+          <TradingViewChart symbol={`FX:${pair.replace('-', '')}`} />
+        ) : isLoading || !candles ? (
           <div
             style={{
               height: '400px',
@@ -231,11 +263,13 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           Detected patterns ({patterns.length})
         </h2>
         <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-          {tf.kind === 'intraday'
-            ? 'Intraday OHLC via Twelve Data (real bid/ask).'
-            : 'Daily ECB close via Frankfurter. Intraday wicks on daily candles are synthesized (±0.1%), so single-wick patterns are approximate.'}
+          {tv
+            ? 'Patterns come from our own chart. Pick a day range (7D to 1Y) to see them; the TradingView chart has its own pattern tools.'
+            : tf.kind === 'intraday'
+              ? 'Intraday OHLC via Twelve Data (real bid/ask).'
+              : 'Daily ECB close via Frankfurter. Intraday wicks on daily candles are synthesized (±0.1%), so single-wick patterns are approximate.'}
         </p>
-        {patterns.length === 0 ? (
+        {tv ? null : patterns.length === 0 ? (
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             No patterns detected in this range.
           </p>
@@ -277,6 +311,22 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           </div>
         )}
       </div>
+      <Suspense fallback={null}>
+        <RuleSignals instrumentId={pair} />
+      </Suspense>
+      <Link
+        href={`/demo?symbol=${pair}`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          minHeight: '44px',
+          marginTop: '12px',
+          fontSize: '12px',
+          color: 'var(--indigo)',
+        }}
+      >
+        Practice this market in the demo account →
+      </Link>
     </div>
   )
 }
