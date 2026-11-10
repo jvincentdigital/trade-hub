@@ -1,5 +1,5 @@
 import { COIN_MAP, METAL_MAP } from '../coingecko'
-import { FOREX_PAIRS } from '../hooks/useMarketData'
+import { FOREX_PAIRS } from '../forexPairs'
 
 export type Market = 'crypto' | 'forex' | 'metals'
 

@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import { useRecentCandles } from '@/lib/hooks/useMarketData'
 import { formatQuote, getInstrument } from '@/lib/paper/instruments'
 import type { OpenPosition, PositionMetrics, PositionStatus } from '@/lib/positions/positions'
+import { perMoveText, rrText, sizeText, sizingOf } from '@/lib/sizing/sizing'
 import { MiniChart } from './MiniChart'
 import { ago, usd, signedUsd, pct } from './format'
 
@@ -40,7 +41,16 @@ export function PositionCard({ pos, m }: { pos: OpenPosition; m: PositionMetrics
   const { candles } = useRecentCandles(pos.market, inst?.market === 'forex')
   const q = (v: number) => formatQuote(v, inst)
   const isBuy = pos.side === 'long'
-  const sizeUsd = pos.usdPerQuote != null ? pos.units * pos.entry * pos.usdPerQuote : null
+  const size = sizingOf({
+    inst,
+    units: pos.units,
+    entry: pos.entry,
+    stop: pos.stop,
+    target: pos.target,
+    usdPerQuote: pos.usdPerQuote,
+  })
+  const per = perMoveText(size)
+  const rr = rrText(size.rr)
   const pnlColor =
     m.pnl == null ? 'var(--text-secondary)' : m.pnl >= 0 ? 'var(--green)' : 'var(--red)'
 
@@ -130,12 +140,31 @@ export function PositionCard({ pos, m }: { pos: OpenPosition; m: PositionMetrics
         />
       </dl>
 
-      <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-        Size {sizeUsd != null ? usd(sizeUsd) : '-'}
-        {pos.source === 'demo' && ` (${+pos.units.toPrecision(4)} units)`}
-        {m.atStopUsd != null && ` · risk ${usd(Math.abs(m.atStopUsd))}`}
-        {m.atTargetUsd != null && ` · aim ${usd(m.atTargetUsd)}`}
-      </p>
+      <div
+        aria-label="Trade size"
+        style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'grid', gap: 2 }}
+      >
+        <p>
+          Size <b style={{ color: 'var(--text-primary)' }}>{sizeText(inst, size)}</b>
+          {per && ` · ${per}`}
+          {size.valueUsd != null && ` · value ${usd(size.valueUsd)}`}
+        </p>
+        <p>
+          {size.riskUsd != null ? (
+            <>
+              Risk <b style={{ color: 'var(--red)' }}>{usd(size.riskUsd)}</b> at stop
+            </>
+          ) : (
+            'No stop, risk not capped'
+          )}
+          {size.goalUsd != null && (
+            <>
+              {' · '}Goal <b style={{ color: 'var(--green)' }}>{usd(size.goalUsd)}</b> at target
+            </>
+          )}
+          {rr && ` · ${rr}`}
+        </p>
+      </div>
 
       <Link
         href={pos.source === 'demo' ? '/demo' : '/race'}

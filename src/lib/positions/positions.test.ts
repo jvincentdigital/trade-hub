@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   closedTrades,
+  ifAllHit,
   measure,
   periodStarts,
   racePositions,
@@ -60,30 +61,44 @@ describe('measure', () => {
 })
 
 describe('race and demo rows', () => {
-  const state = createRaceState([{ id: 'r1', name: 'Rule one', markets: ['bitcoin'] }], 1000, 0)
-  state.strategies.r1.slots.bitcoin.open = {
+  const state = createRaceState([{ id: 'r1', name: 'Rule one' }], 1000, 0)
+  const open = {
     market: 'bitcoin',
-    direction: 'long',
+    direction: 'long' as const,
     signalTime: 1,
     entryTime: 100,
     entryBucket: 90,
     entry: 50,
     stop: 45,
     takeProfit: 60,
-    notional: 10,
+    units: 0.2,
+    usdPerQuote: 1,
+    margin: 10,
     entryFee: 0.01,
   }
+  state.strategies.r1.open = [open]
 
-  it('race trades: units = notional / entry, so P&L matches openPnl', () => {
+  it('race trades keep their units and quote rate, so P&L matches openPnl', () => {
     const [p] = racePositions(state)
     expect(p.by).toBe('Rule one')
     expect(p.openedAt).toBe(100_000)
-    expect(measure(p, 55).pnl).toBeCloseTo(1) // 10 x 10%
+    expect(p.units).toBe(0.2)
+    expect(measure(p, 55).pnl).toBeCloseTo(1) // 0.2 x $5
+  })
+
+  it('header totals: every target hit and every stop hit', () => {
+    const rows = [
+      measure(long, 105),
+      measure({ ...long, side: 'short', stop: 110, target: 80 }, 95),
+      measure({ ...long, stop: undefined }, 101),
+    ]
+    // targets +40 +40, stops -20 -20; the one without a stop is left out of both
+    expect(ifAllHit(rows)).toEqual({ target: 80, stop: -40, unknown: 1 })
   })
 
   it('closed trades merge, newest first, and tally wins and losses', () => {
     state.strategies.r1.closed.push({
-      ...state.strategies.r1.slots.bitcoin.open!,
+      ...open,
       exitTime: 200,
       exit: 45,
       reason: 'stop',

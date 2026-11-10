@@ -6,21 +6,22 @@ import { ChevronDown, ChevronRight, RefreshCw, Trophy, TriangleAlert } from 'luc
 import { DemoBadge } from '@/components/paper/DemoBadge'
 import { fetchCryptoCandles, fetchForexOHLC } from '@/lib/data'
 import { FEE_RATE, LEVERAGE } from '@/lib/paper/engine'
-import { getInstrument, INSTRUMENTS } from '@/lib/paper/instruments'
+import { getInstrument, INSTRUMENTS, type PriceMap } from '@/lib/paper/instruments'
 import { backtest } from '@/lib/rules/engine'
 import { ruleInstrumentIds } from '@/lib/rules/data'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
+import { RACE_SIZING } from '@/lib/race/account'
 import {
   rankEntries,
   scoreStrategy,
-  shareOf,
-  type MarketRun,
+  type Candidate,
   type RaceEntry,
   type TradeMoney,
   WINDOW_DAYS,
   windowStart,
 } from '@/lib/race/leaderboard'
 import { summarize, type RaceState } from '@/lib/race/live'
+import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
 
@@ -46,6 +47,32 @@ const money = (n: number, opts: { sign?: boolean; cents?: boolean } = {}) => {
 const color = (n: number) =>
   n > 0.004 ? 'var(--green)' : n < -0.004 ? 'var(--red)' : 'var(--text-secondary)'
 const pct = (x: number | null) => (x === null ? '-' : `${Math.round(x * 100)}%`)
+/** Size line for a race trade: lots or coins, $ per pip, risk, goal, R:R. */
+const sizeOf = (
+  t: {
+    market: string
+    units: number
+    entry: number
+    stop: number
+    takeProfit: number
+    usdPerQuote: number
+  },
+  scale = 1,
+) => {
+  const inst = getInstrument(t.market)
+  return sizingLine(
+    inst,
+    sizingOf({
+      inst,
+      units: t.units * scale,
+      entry: t.entry,
+      stop: t.stop,
+      target: t.takeProfit,
+      usdPerQuote: t.usdPerQuote,
+    }),
+  )
+}
+const limitsText = `at most ${RACE_SIZING.maxOpen} trades open, total open risk at most ${RACE_SIZING.maxOpenRiskPct}% of the balance, and a position can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1)`
 const when = (sec: number) =>
   new Date(sec * 1000).toLocaleString('en-US', {
     month: 'short',
@@ -111,9 +138,35 @@ export default function RacePage() {
 
 type Load =
   | { state: 'loading'; done: number; total: number; what: string }
-  | { state: 'done'; runs: Record<string, MarketRun[]>; skipped: string[]; at: number }
+  | {
+      state: 'done'
+      runs: Record<string, { markets: string[]; candidates: Candidate[] }>
+      skipped: string[]
+      at: number
+    }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** Last daily close at or before `time`. */
+function closeAt(candles: OHLCCandle[] | undefined, time: number): number | undefined {
+  if (!candles) return undefined
+  for (let i = candles.length - 1; i >= 0; i--) if (candles[i].time <= time) return candles[i].close
+  return undefined
+}
+
+/**
+ * USD per quote unit at a past entry: USD/xxx pairs use their own price,
+ * EUR/GBP uses GBP/USD that day. Only the units shown depend on it, not the dollars.
+ */
+function pastUsdPerQuote(id: string, price: number, time: number, data: Map<string, OHLCCandle[]>) {
+  const inst = getInstrument(id)
+  const rates: PriceMap = {}
+  for (const k of [`${inst?.quote}-USD`, `USD-${inst?.quote}`]) {
+    const c = closeAt(data.get(k), time)
+    if (c) rates[k] = c
+  }
+  return usdPerQuoteFor(inst, price, rates) ?? 1
+}
 
 /** One fetch per forex pair, and one per coin and candle size some rule uses. */
 type Job = { id: string; tf: RuleTimeframe | null }
@@ -169,29 +222,38 @@ function Backtests({ start }: { start: number }) {
     }
     if (run.current !== me) return
     const nowSec = Math.floor(Date.now() / 1000)
-    const runs: Record<string, MarketRun[]> = {}
+    // Each market's backtest gives the trades the rule would take there; the
+    // shared account (scoreStrategy) then decides which it can take.
+    const runs: Record<string, { markets: string[]; candidates: Candidate[] }> = {}
     for (const { rule, markets: ids } of RULES) {
-      runs[rule.id] = ids.flatMap((id) => {
+      const ran: string[] = []
+      const candidates: Candidate[] = []
+      for (const id of ids) {
         const candles = data.get(dataKey(id, rule.timeframe))
-        if (!candles?.length) return []
+        if (!candles?.length) continue
         const market = getInstrument(id)?.market ?? 'crypto'
-        return [
+        const result = backtest(
+          { ...rule, timeframe: market === 'forex' ? '1d' : rule.timeframe },
+          candles,
           {
-            id,
-            result: backtest(
-              { ...rule, timeframe: market === 'forex' ? '1d' : rule.timeframe },
-              candles,
-              {
-                startEquity: 1,
-                feeRate: FEE_RATE[market],
-                leverage: LEVERAGE[market],
-                // Every market trades only the rule's window; older candles warm up the indicators.
-                tradeFrom: windowStart(rule.timeframe, nowSec),
-              },
-            ),
+            startEquity: 1,
+            feeRate: FEE_RATE[market],
+            leverage: LEVERAGE[market],
+            // Every market trades only the rule's window; older candles warm up the indicators.
+            tradeFrom: windowStart(rule.timeframe, nowSec),
           },
-        ]
-      })
+        )
+        ran.push(id)
+        for (const t of result.trades)
+          candidates.push({
+            ...t,
+            market: id,
+            usdPerQuote: pastUsdPerQuote(id, t.entry, t.entryTime, data),
+            feeRate: FEE_RATE[market],
+            leverage: LEVERAGE[market],
+          })
+      }
+      runs[rule.id] = { markets: ran, candidates }
     }
     setLoad({ state: 'done', runs, skipped, at: Date.now() })
   }, [jobs])
@@ -212,9 +274,9 @@ function Backtests({ start }: { start: number }) {
       RULES.map(({ rule, markets: ids }) =>
         scoreStrategy({
           ruleId: rule.id,
-          riskPct: rule.riskPct,
           start,
-          runs: load.runs[rule.id] ?? [],
+          markets: load.runs[rule.id]?.markets ?? [],
+          candidates: load.runs[rule.id]?.candidates ?? [],
           skipped: ids.filter((id) => load.skipped.includes(dataKey(id, rule.timeframe))),
           days: WINDOW_DAYS[rule.timeframe],
         }),
@@ -243,13 +305,14 @@ function Backtests({ start }: { start: number }) {
         </button>
       </div>
       <p style={small}>
-        Backtest on past candles, fees included. Each strategy&apos;s money is split evenly over
-        every market it trades ({money(start)} over {markets.length} markets is{' '}
-        {money(shareOf(start, markets.length), { cents: true })} each), and each share trades on its
-        own. A market whose data did not load keeps its share as cash. Each strategy trades only as
-        far back as real candles of its size go: {WINDOW_DAYS['1h']} days for 1h rules,{' '}
-        {WINDOW_DAYS['4h']} days for 4h rules, {WINDOW_DAYS['1d']} days for daily rules. Windows
-        differ, so compare the a-month column too.
+        Backtest on past candles, fees included. Each strategy trades one {money(start)} account
+        across every market it can trade (up to {markets.length}): the trades from all its markets
+        go into that one account in time order, and each one risks {RACE_SIZING.riskPct}% of the
+        balance at that moment (about {money((start * RACE_SIZING.riskPct) / 100)} at the start).
+        Like a real account: {limitsText}. A market whose data did not load is left out. Each
+        strategy trades only as far back as real candles of its size go: {WINDOW_DAYS['1h']} days
+        for 1h rules, {WINDOW_DAYS['4h']} days for 4h rules, {WINDOW_DAYS['1d']} days for daily
+        rules. Windows differ, so compare the a-month column too.
       </p>
       <CandleNote />
 
@@ -308,6 +371,7 @@ function Backtests({ start }: { start: number }) {
                     <span>
                       {e.trades} trade{e.trades === 1 ? '' : 's'}
                     </span>
+                    {e.passed > 0 && <span>{e.passed} left out by the limits</span>}
                     <span>{pct(e.winRate)} wins</span>
                     <span>max drop {(e.maxDrawdown * 100).toFixed(1)}%</span>
                     <span>best {e.best ? sym(e.best) : '-'}</span>
@@ -372,15 +436,12 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
     <div style={detail}>
       <div style={{ overflowX: 'auto' }}>
         <table style={table}>
-          <caption style={caption}>
-            Per market ({money(entry.markets[0]?.share ?? 0, { cents: true })} each)
-          </caption>
+          <caption style={caption}>Per market (all in one {money(entry.start)} account)</caption>
           <thead>
             <tr>
               <th style={{ ...th, textAlign: 'left' }}>Market</th>
               <th style={th}>Candles</th>
               <th style={th}>Trades</th>
-              <th style={th}>End</th>
               <th style={th}>Profit</th>
             </tr>
           </thead>
@@ -392,7 +453,6 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
                   <td style={{ ...td, textAlign: 'left' }}>{sym(m.id)}</td>
                   <td style={td}>{candleKind(m.id, TF.get(entry.ruleId))}</td>
                   <td style={td}>{m.trades.length}</td>
-                  <td style={td}>{money(m.end, { cents: true })}</td>
                   <td style={{ ...td, color: color(m.profit) }}>
                     {money(m.profit, { sign: true, cents: true })}
                   </td>
@@ -401,7 +461,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
             {entry.skipped.map((id) => (
               <tr key={id}>
                 <td style={{ ...td, textAlign: 'left' }}>{sym(id)}</td>
-                <td style={td} colSpan={4}>
+                <td style={td} colSpan={3}>
                   skipped, no data
                 </td>
               </tr>
@@ -418,6 +478,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
           time: t.exitTime,
           how: reasonText(t),
           pnl: t.pnl,
+          size: `${sizeOf(t)} · from a ${money(t.balanceAtEntry)} balance`,
         }))}
         empty="No trades in this window."
       />
@@ -446,6 +507,8 @@ function TradeList({
     time: number
     how: string
     pnl: number
+    /** Size line: lots or coins, $ per pip, risk, goal, R:R. */
+    size?: string
   }[]
   empty: string
 }) {
@@ -472,6 +535,7 @@ function TradeList({
                 <span style={{ color: 'var(--text-secondary)' }}>
                   {t.how}, {when(t.time)}
                 </span>
+                {t.size && <span style={sizeLine}>{t.size}</span>}
               </span>
               <span style={{ color: color(t.pnl), fontVariantNumeric: 'tabular-nums' }}>
                 {money(t.pnl, { sign: true, cents: true })}
@@ -537,8 +601,9 @@ function Live({ start }: { start: number }) {
       </div>
       <p style={small}>
         A forward test: each tick checks every strategy&apos;s signal on fresh closed candles and
-        opens or closes trades in its own play account (same split, sizes and fees as above). Only
-        trades after the start count, so nothing here can be fitted to the past.
+        opens or closes trades in its own play account (one account per strategy, each trade risking{' '}
+        {RACE_SIZING.riskPct}% of its balance, same limits and fees as above). Only trades after the
+        start count, so nothing here can be fitted to the past.
       </p>
       <CandleNote />
 
@@ -607,6 +672,7 @@ function Live({ start }: { start: number }) {
                         time: t.entryTime,
                         how: 'opened',
                         pnl: t.pnl * scale,
+                        size: sizeOf(t, scale),
                       }))}
                       empty="No open trades."
                     />
@@ -619,6 +685,7 @@ function Live({ start }: { start: number }) {
                         time: t.exitTime,
                         how: t.reason === 'target' ? 'hit target' : 'hit stop',
                         pnl: t.pnl * scale,
+                        size: sizeOf(t, scale),
                       }))}
                       empty="No closed trades yet."
                     />
@@ -781,6 +848,13 @@ const candleList: React.CSSProperties = {
   color: 'var(--text-secondary)',
   display: 'grid',
   gap: 2,
+}
+const sizeLine: React.CSSProperties = {
+  display: 'block',
+  marginTop: 2,
+  fontSize: 11,
+  color: 'var(--text-secondary)',
+  fontVariantNumeric: 'tabular-nums',
 }
 const tradeRow: React.CSSProperties = {
   display: 'flex',

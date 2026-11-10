@@ -1,11 +1,16 @@
 import { z } from 'zod'
 import type { OHLCCandle } from '../types/market'
 import type { Signal } from '../rules/engine'
+import { LEVERAGE } from '../paper/engine'
+import { getInstrument } from '../paper/instruments'
+import { usdPerQuoteFor } from '../sizing/sizing'
+import { RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
 
 // "Live from today" race: a forward test. Every hour a tick looks at fresh
-// candles; each strategy has its own play account, split evenly over its
-// markets (one slot per market, one trade at a time per slot), the same way
-// as the 90-day leaderboard. Pure functions; the script does the I/O.
+// candles. Each strategy trades ONE play account across all its markets (one
+// trade per market at a time), sized like a real account (./account.ts):
+// every trade risks 2% of the current balance. Pure functions; the script
+// does the I/O.
 
 const sideSchema = z.enum(['long', 'short'])
 
@@ -20,8 +25,13 @@ export const liveTradeSchema = z.object({
   entry: z.number(),
   stop: z.number(),
   takeProfit: z.number(),
-  /** Position value in dollars at entry. */
-  notional: z.number(),
+  /** Coins, ounces or forex units of the base currency. */
+  units: z.number(),
+  /** USD per unit of the quote currency, fixed at entry (1 for USD-quoted markets). */
+  usdPerQuote: z.number(),
+  /** Balance the trade ties up: position value / leverage. */
+  margin: z.number(),
+  /** Paid together with the exit fee when the trade closes. */
   entryFee: z.number(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
@@ -36,19 +46,14 @@ export const closedLiveTradeSchema = liveTradeSchema.extend({
 })
 export type ClosedLiveTrade = z.infer<typeof closedLiveTradeSchema>
 
-export const slotSchema = z.object({
-  /** Cash in this market's share (entry fees already taken out). */
-  balance: z.number(),
-  open: liveTradeSchema.nullable(),
-  /** Newest signal candle already acted on, so one signal makes one trade. */
-  lastSignalTime: z.number(),
-})
-export type Slot = z.infer<typeof slotSchema>
-
 export const raceStrategySchema = z.object({
   ruleId: z.string(),
   name: z.string(),
-  slots: z.record(z.string(), slotSchema),
+  /** Start money plus every closed trade's net P&L. New trades risk 2% of it. */
+  balance: z.number(),
+  open: z.array(liveTradeSchema),
+  /** Newest signal candle already acted on, per market, so one signal makes one trade. */
+  lastSignal: z.record(z.string(), z.number()),
   closed: z.array(closedLiveTradeSchema),
 })
 export type RaceStrategy = z.infer<typeof raceStrategySchema>
@@ -63,7 +68,12 @@ export const tickLogSchema = z.object({
 export type TickLog = z.infer<typeof tickLogSchema>
 
 export const raceStateSchema = z.object({
+  /**
+   * Still 1: the race relay worker (race-worker/) only accepts version 1.
+   * The `sizing` field is what marks this one-account layout.
+   */
   version: z.literal(1),
+  sizing: sizingSchema,
   /** Milliseconds. */
   startedAt: z.number(),
   startMoney: z.number().positive(),
@@ -79,190 +89,285 @@ export type RaceState = z.infer<typeof raceStateSchema>
 export const MAX_TICK_LOG = 500
 
 export function createRaceState(
-  rules: { id: string; name: string; markets: string[] }[],
+  rules: { id: string; name: string }[],
   startMoney: number,
   now = Date.now(),
+  sizing: RaceSizing = RACE_SIZING,
 ): RaceState {
-  const strategies: Record<string, RaceStrategy> = {}
-  for (const r of rules) {
-    const share = startMoney / Math.max(1, r.markets.length)
-    strategies[r.id] = {
-      ruleId: r.id,
-      name: r.name,
-      slots: Object.fromEntries(
-        r.markets.map((m) => [m, { balance: share, open: null, lastSignalTime: 0 }]),
-      ),
-      closed: [],
-    }
-  }
   return {
     version: 1,
+    sizing,
     startedAt: now,
     startMoney,
     tickCount: 0,
     ticks: [],
     prices: {},
+    strategies: Object.fromEntries(
+      rules.map((r) => [
+        r.id,
+        { ruleId: r.id, name: r.name, balance: startMoney, open: [], lastSignal: {}, closed: [] },
+      ]),
+    ),
+  }
+}
+
+/** A strategy added to the built-in rules joins a running race with fresh money. */
+export function syncRaceState(
+  state: RaceState,
+  rules: { id: string; name: string }[],
+): { state: RaceState; changes: string[] } {
+  const missing = rules.filter((r) => !state.strategies[r.id])
+  if (!missing.length) return { state, changes: [] }
+  const fresh = createRaceState(missing, state.startMoney).strategies
+  return {
+    state: { ...state, strategies: { ...state.strategies, ...fresh } },
+    changes: missing.map((r) => `${r.name} joined the race`),
+  }
+}
+
+// ── The old layout (until 2026-11-10): money split over one slot per market ──
+
+const legacyTradeSchema = liveTradeSchema
+  .omit({ units: true, usdPerQuote: true, margin: true })
+  .extend({ notional: z.number() })
+const legacyStateSchema = z.object({
+  version: z.literal(1),
+  startedAt: z.number(),
+  startMoney: z.number().positive(),
+  tickCount: z.number().int(),
+  ticks: z.array(tickLogSchema),
+  prices: z.record(z.string(), z.number()),
+  strategies: z.record(
+    z.string(),
+    z.object({
+      ruleId: z.string(),
+      name: z.string(),
+      slots: z.record(
+        z.string(),
+        z.object({
+          balance: z.number(),
+          open: legacyTradeSchema.nullable(),
+          lastSignalTime: z.number(),
+        }),
+      ),
+      closed: z.array(
+        legacyTradeSchema.extend({
+          exitTime: z.number(),
+          exit: z.number(),
+          reason: z.enum(['stop', 'target']),
+          pnl: z.number(),
+          fees: z.number(),
+        }),
+      ),
+    }),
+  ),
+})
+type LegacyState = z.infer<typeof legacyStateSchema>
+
+/**
+ * Old race file into the new layout, with every dollar kept: the slots'
+ * cash becomes one balance (entry fees of open trades added back, since they
+ * are now paid at the close), and each trade's dollar size becomes units.
+ * Old trades keep their old (small) size; new trades use the new sizing.
+ */
+function fromLegacy(old: LegacyState): RaceState {
+  const convert = <T extends { market: string; entry: number; notional: number }>(t: T) => {
+    const inst = getInstrument(t.market)
+    const q = usdPerQuoteFor(inst, t.entry, old.prices) ?? 1
+    const { notional, ...rest } = t
+    return {
+      ...rest,
+      units: notional / (t.entry * q),
+      usdPerQuote: q,
+      margin: notional / LEVERAGE[inst?.market ?? 'crypto'],
+    }
+  }
+  const strategies: Record<string, RaceStrategy> = {}
+  for (const [id, s] of Object.entries(old.strategies)) {
+    const slots = Object.entries(s.slots)
+    const open = slots.flatMap(([, sl]) => (sl.open ? [convert(sl.open)] : []))
+    strategies[id] = {
+      ruleId: s.ruleId,
+      name: s.name,
+      balance:
+        slots.reduce((a, [, sl]) => a + sl.balance, 0) + open.reduce((a, t) => a + t.entryFee, 0),
+      open,
+      lastSignal: Object.fromEntries(slots.map(([m, sl]) => [m, sl.lastSignalTime])),
+      closed: s.closed.map(convert),
+    }
+  }
+  const { version, startedAt, startMoney, tickCount, ticks, prices } = old
+  return {
+    version,
+    sizing: RACE_SIZING,
+    startedAt,
+    startMoney,
+    tickCount,
+    ticks,
+    prices,
     strategies,
   }
 }
 
-/**
- * Bring an existing race up to date without touching open trades:
- * - a new strategy joins with fresh money (the same start as everyone);
- * - a new market (gold, added 2026-11-10) gets a share of an even split, and
- *   that cash is taken evenly from the strategy's existing slots, so each
- *   strategy's total money (and P&L) is unchanged at the moment it joins.
- * Returns the new state and a line per change, for the log.
- */
-export function syncRaceState(
-  state: RaceState,
-  rules: { id: string; name: string; markets: string[] }[],
-): { state: RaceState; changes: string[] } {
-  const changes: string[] = []
-  const strategies = { ...state.strategies }
-  for (const r of rules) {
-    const cur = strategies[r.id]
-    if (!cur) {
-      strategies[r.id] = createRaceState([r], state.startMoney).strategies[r.id]
-      changes.push(`${r.name} joined the race`)
-      continue
-    }
-    const missing = r.markets.filter((m) => !cur.slots[m])
-    const existing = Object.keys(cur.slots)
-    if (!missing.length) continue
-    const share = state.startMoney / (existing.length + missing.length)
-    const takeEach = existing.length ? (share * missing.length) / existing.length : 0
-    const slots: Record<string, Slot> = {}
-    for (const m of existing)
-      slots[m] = { ...cur.slots[m], balance: cur.slots[m].balance - takeEach }
-    for (const m of missing) slots[m] = { balance: share, open: null, lastSignalTime: 0 }
-    strategies[r.id] = { ...cur, slots }
-    changes.push(`${r.name}: added ${missing.join(', ')}`)
-  }
-  return { state: { ...state, strategies }, changes }
+/** Read a race file of either layout; the old one is moved to the new layout. */
+export function parseRaceState(
+  raw: unknown,
+): { ok: true; state: RaceState; migrated: boolean } | { ok: false; error: string } {
+  const cur = raceStateSchema.safeParse(raw)
+  if (cur.success) return { ok: true, state: cur.data, migrated: false }
+  const old = legacyStateSchema.safeParse(raw)
+  if (old.success) return { ok: true, state: fromLegacy(old.data), migrated: true }
+  return { ok: false, error: cur.error.message }
 }
 
-export interface StepInput {
+// ── One tick ─────────────────────────────────────────────────────────────
+
+export interface MarketTick {
   market: string
   /** latestSignal on CLOSED candles of the rule's timeframe, or null. */
   signal: Signal | null
-  /** Candles to check stop and target on (1h for crypto, daily for forex), oldest first. */
+  /** Candles to check stop and target on (1h for crypto and gold, daily for forex), oldest first. */
   path: OHLCCandle[]
   /** Latest price (entry price for a new trade). */
   price: number
-  nowSec: number
-  riskPct: number
+  /** USD per unit of the quote currency now; null when that rate is missing. */
+  usdPerQuote: number | null
   feeRate: number
   leverage: number
 }
 
 export interface StepResult {
-  slot: Slot
-  opened: LiveTrade | null
-  closed: ClosedLiveTrade | null
+  strategy: RaceStrategy
+  opened: LiveTrade[]
+  closed: ClosedLiveTrade[]
+  /** Signals a limit kept out (5 open, 10% open risk, no free margin), with the reason. */
+  passed: { market: string; reason: string }[]
 }
 
 const dir = (d: 'long' | 'short') => (d === 'long' ? 1 : -1)
 
-function close(
-  slot: Slot,
-  t: LiveTrade,
-  exit: number,
-  exitTime: number,
-  reason: 'stop' | 'target',
-  feeRate: number,
-): { slot: Slot; closed: ClosedLiveTrade } {
-  const gross = (t.notional * dir(t.direction) * (exit - t.entry)) / t.entry
-  const exitFee = ((t.notional * exit) / t.entry) * feeRate
-  const closed: ClosedLiveTrade = {
-    ...t,
-    exitTime,
-    exit,
-    reason,
-    pnl: gross - t.entryFee - exitFee,
-    fees: t.entryFee + exitFee,
+/** Dollars lost if the stop is hit, from entry, before fees. */
+export const tradeRisk = (t: LiveTrade) => t.units * Math.abs(t.entry - t.stop) * t.usdPerQuote
+
+/** First later path candle that hits the stop (checked first; a gap fills at the open) or target. */
+function exitOf(t: LiveTrade, path: OHLCCandle[]) {
+  const long = t.direction === 'long'
+  for (const c of path) {
+    if (c.time <= t.entryBucket) continue
+    if (long ? c.low <= t.stop : c.high >= t.stop) {
+      const gapped = long ? c.open < t.stop : c.open > t.stop
+      return { exit: gapped ? c.open : t.stop, time: c.time, reason: 'stop' as const }
+    }
+    if (long ? c.high >= t.takeProfit : c.low <= t.takeProfit)
+      return { exit: t.takeProfit, time: c.time, reason: 'target' as const }
   }
-  return { slot: { ...slot, balance: slot.balance + gross - exitFee, open: null }, closed }
+  return null
 }
 
 /**
- * One tick for one strategy on one market:
- * 1. An open trade closes if a later path candle hit its stop (checked first,
- *    like the backtest; a gap through the stop fills at that candle's open) or
- *    its target.
- * 2. A signal newer than the last one used is consumed. With no open trade it
- *    opens at the latest price, sized to risk `riskPct` of the slot, capped at
- *    slot × leverage, paying the entry fee now.
+ * One tick for one strategy:
+ * 1. Each open trade closes if a later path candle of its market hit its stop
+ *    or target; both fees are paid then and the net P&L goes to the balance.
+ * 2. Each market's signal newer than the last one used is consumed. With no
+ *    trade open in that market it opens at the latest price, risking 2% of
+ *    the balance, unless a limit says no (see sizeRaceTrade).
  */
-export function stepSlot(slot: Slot, input: StepInput): StepResult {
-  let cur = slot
-  let closed: ClosedLiveTrade | null = null
-  let opened: LiveTrade | null = null
-
-  const t = cur.open
-  if (t) {
-    const long = t.direction === 'long'
-    for (const c of input.path) {
-      if (c.time <= t.entryBucket) continue
-      const stopHit = long ? c.low <= t.stop : c.high >= t.stop
-      const tpHit = long ? c.high >= t.takeProfit : c.low <= t.takeProfit
-      if (stopHit) {
-        const gapped = long ? c.open < t.stop : c.open > t.stop
-        ;({ slot: cur, closed } = close(
-          cur,
-          t,
-          gapped ? c.open : t.stop,
-          c.time,
-          'stop',
-          input.feeRate,
-        ))
-        break
-      }
-      if (tpHit) {
-        ;({ slot: cur, closed } = close(cur, t, t.takeProfit, c.time, 'target', input.feeRate))
-        break
-      }
+export function stepStrategy(
+  s: RaceStrategy,
+  markets: MarketTick[],
+  nowSec: number,
+  sizing: RaceSizing = RACE_SIZING,
+): StepResult {
+  const byMarket = new Map(markets.map((m) => [m.market, m]))
+  let balance = s.balance
+  const open: LiveTrade[] = []
+  const closed: ClosedLiveTrade[] = []
+  for (const t of s.open) {
+    const m = byMarket.get(t.market)
+    const hit = m ? exitOf(t, m.path) : null
+    if (!m || !hit) {
+      open.push(t)
+      continue
     }
+    const gross = t.units * dir(t.direction) * (hit.exit - t.entry) * t.usdPerQuote
+    const exitFee = t.units * hit.exit * t.usdPerQuote * m.feeRate
+    const c: ClosedLiveTrade = {
+      ...t,
+      exitTime: hit.time,
+      exit: hit.exit,
+      reason: hit.reason,
+      pnl: gross - t.entryFee - exitFee,
+      fees: t.entryFee + exitFee,
+    }
+    balance += c.pnl
+    closed.push(c)
   }
 
-  const s = input.signal
-  if (s && s.time > cur.lastSignalTime) {
-    cur = { ...cur, lastSignalTime: s.time }
-    const p = input.price
+  const lastSignal = { ...s.lastSignal }
+  const opened: LiveTrade[] = []
+  const passed: StepResult['passed'] = []
+  for (const m of markets) {
+    const sig = m.signal
+    if (!sig || sig.time <= (lastSignal[m.market] ?? 0)) continue
+    lastSignal[m.market] = sig.time
+    const p = m.price
     const valid =
       p > 0 &&
-      (s.direction === 'long' ? p > s.stop && p < s.takeProfit : p < s.stop && p > s.takeProfit)
-    if (!cur.open && valid && cur.balance > 0) {
-      const riskFrac = input.riskPct / 100
-      const size = Math.min(riskFrac / (Math.abs(p - s.stop) / p), input.leverage)
-      const notional = size * cur.balance
-      const entryFee = notional * input.feeRate
-      opened = {
-        market: input.market,
-        direction: s.direction,
-        signalTime: s.time,
-        entryTime: input.nowSec,
-        entryBucket: input.path[input.path.length - 1]?.time ?? input.nowSec,
-        entry: p,
-        stop: s.stop,
-        takeProfit: s.takeProfit,
-        notional,
-        entryFee,
-      }
-      cur = { ...cur, balance: cur.balance - entryFee, open: opened }
+      (sig.direction === 'long'
+        ? p > sig.stop && p < sig.takeProfit
+        : p < sig.stop && p > sig.takeProfit)
+    if (!valid || open.some((t) => t.market === m.market)) continue
+    if (m.usdPerQuote == null) {
+      passed.push({ market: m.market, reason: 'no USD rate for its quote currency' })
+      continue
     }
+    const size = sizeRaceTrade({
+      balance,
+      open: open.map((t) => ({ margin: t.margin, riskUsd: tradeRisk(t) })),
+      entry: p,
+      stop: sig.stop,
+      usdPerQuote: m.usdPerQuote,
+      leverage: m.leverage,
+      sizing,
+    })
+    if (!size.ok) {
+      passed.push({ market: m.market, reason: size.reason })
+      continue
+    }
+    const t: LiveTrade = {
+      market: m.market,
+      direction: sig.direction,
+      signalTime: sig.time,
+      entryTime: nowSec,
+      entryBucket: m.path[m.path.length - 1]?.time ?? nowSec,
+      entry: p,
+      stop: sig.stop,
+      takeProfit: sig.takeProfit,
+      units: size.units,
+      usdPerQuote: m.usdPerQuote,
+      margin: size.margin,
+      entryFee: size.valueUsd * m.feeRate,
+    }
+    open.push(t)
+    opened.push(t)
   }
-  return { slot: cur, opened, closed }
+  return {
+    strategy: { ...s, balance, open, lastSignal, closed: [...s.closed, ...closed] },
+    opened,
+    closed,
+    passed,
+  }
 }
 
-/** Unrealized dollars on an open trade (before the exit fee). */
+/** Unrealized dollars on an open trade (before fees). */
 export function openPnl(t: LiveTrade, price: number | undefined): number {
-  return price ? (t.notional * dir(t.direction) * (price - t.entry)) / t.entry : 0
+  return price ? t.units * dir(t.direction) * (price - t.entry) * t.usdPerQuote : 0
 }
 
 export interface LiveSummary {
   ruleId: string
   name: string
+  /** Balance plus open P&L, minus the entry fees open trades still owe. */
   money: number
   pnl: number
   open: (LiveTrade & { pnl: number })[]
@@ -272,12 +377,8 @@ export interface LiveSummary {
 export function summarize(state: RaceState): LiveSummary[] {
   return Object.values(state.strategies)
     .map((s) => {
-      const open = Object.values(s.slots)
-        .flatMap((sl) => (sl.open ? [sl.open] : []))
-        .map((t) => ({ ...t, pnl: openPnl(t, state.prices[t.market]) }))
-      const money =
-        Object.values(s.slots).reduce((a, sl) => a + sl.balance, 0) +
-        open.reduce((a, t) => a + t.pnl, 0)
+      const open = s.open.map((t) => ({ ...t, pnl: openPnl(t, state.prices[t.market]) }))
+      const money = s.balance + open.reduce((a, t) => a + t.pnl - t.entryFee, 0)
       return {
         ruleId: s.ruleId,
         name: s.name,

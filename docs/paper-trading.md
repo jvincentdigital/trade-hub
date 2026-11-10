@@ -8,7 +8,7 @@ only: nothing talks to a broker, nothing can move real money.
 - Starts with **$10,000** (any amount on reset). Reset wipes positions, orders and history.
 - **Market orders** fill at the latest feed price. **Limit orders** wait and fill when the price crosses the limit (a buy limit set above the current price is already "marketable" and fills at once at the better live price).
 - **Stop loss / take profit** on every order (optional, but the plan checks nag if you skip the stop). Stops fill at the observed price, which can be worse than the stop, like a real gap. Targets fill at the target.
-- **Position sizing**: by risk % (units = equity × risk% ÷ stop distance in USD) or by a dollar amount.
+- **Position sizing**: by risk % (units = equity × risk% ÷ stop distance in USD) or by a dollar amount. The ticket and every open position show the size in lots (forex: 1 lot = 100,000 units, 0.01 lot = 1,000; gold: lots of 100 oz) or coins, with $ per pip (forex) or per $1 move (gold); positions also show risk $ at the stop, goal $ at the target and R:R (`src/lib/sizing/sizing.ts`). Real brokers round to 0.01 lots; the demo keeps the exact size.
 - **Costs**: 0.1% per side on crypto (typical taker fee), 0.007% on forex (about a 0.7 pip spread on EUR/USD), 0.02% on gold (about a 40-80 cent spread per ounce).
 - **Margin**: crypto is spot-style (1:1, no leverage). Forex uses 30:1, the EU/UK retail cap; gold 20:1, the EU/UK retail cap for gold. The ticket shows the cash it locks.
 - **P&L in USD** for every pair: JPY/CHF/CAD/GBP quotes are converted with the live pairs (`quoteToUsd`).

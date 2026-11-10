@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
-import { raceStateSchema } from '@/lib/race/live'
+import { parseRaceState } from '@/lib/race/live'
 
 // Live strategy race. On the live site (RACE_URL + RACE_KEY set) it reads the
 // latest state from the race relay worker, which the Mac Mini updates after
@@ -38,12 +38,13 @@ export async function GET() {
       raw = JSON.parse(readFileSync(FILE, 'utf8'))
     }
     if (raw == null) return NextResponse.json({ state: null, installed })
-    const parsed = raceStateSchema.safeParse(raw)
-    if (!parsed.success) {
-      logger.error({ issues: parsed.error.issues }, '[api/race] invalid race state')
+    // An old file (money split per market) is shown in the new layout until the next tick or reset.
+    const parsed = parseRaceState(raw)
+    if (!parsed.ok) {
+      logger.error({ error: parsed.error }, '[api/race] invalid race state')
       return NextResponse.json({ error: 'Race state is not valid' }, { status: 500 })
     }
-    return NextResponse.json({ state: parsed.data, installed })
+    return NextResponse.json({ state: parsed.state, installed })
   } catch (err) {
     logger.error({ err }, '[api/race] read failed')
     return NextResponse.json({ error: 'Could not read the race' }, { status: 500 })
