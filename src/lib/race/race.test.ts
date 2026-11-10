@@ -1,17 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import type { OHLCCandle } from '../types/market'
-import type { BacktestResult, BacktestTrade, Signal } from '../rules/engine'
+import type { Signal } from '../rules/engine'
 import { closedOnly } from './candles'
 import { backtest } from '../rules/engine'
 import { BUILT_IN_RULES } from '../rules/presets'
-import { rankEntries, scoreStrategy, shareOf, WINDOW_DAYS, windowStart } from './leaderboard'
+import { RACE_SIZING, sizeRaceTrade } from './account'
+import {
+  portfolioBacktest,
+  rankEntries,
+  scoreStrategy,
+  WINDOW_DAYS,
+  windowStart,
+  type Candidate,
+} from './leaderboard'
 import {
   createRaceState,
+  parseRaceState,
   raceStateSchema,
-  stepSlot,
+  stepStrategy,
   summarize,
   syncRaceState,
-  type Slot,
+  type MarketTick,
+  type RaceStrategy,
 } from './live'
 
 const H = 3600
@@ -31,7 +41,52 @@ describe('candles', () => {
   })
 })
 
-const slot = (balance = 100): Slot => ({ balance, open: null, lastSignalTime: 0 })
+describe('sizing a new trade (one real account)', () => {
+  const base = { balance: 1000, open: [], entry: 100, stop: 95, usdPerQuote: 1, leverage: 30 }
+
+  it('risks 2% of the balance at the stop', () => {
+    const r = sizeRaceTrade(base)
+    expect(r.ok && r.units).toBeCloseTo(4)
+    expect(r.ok && r.riskUsd).toBeCloseTo(20)
+    expect(r.ok && r.margin).toBeCloseTo(400 / 30)
+    expect(RACE_SIZING).toEqual({ riskPct: 2, maxOpen: 5, maxOpenRiskPct: 10 })
+  })
+
+  it('caps the position value at the free balance x leverage', () => {
+    // 2% on a 0.1% stop would be $20,000 of spot crypto; 1:1 caps it at $1,000
+    const r = sizeRaceTrade({ ...base, stop: 99.9, leverage: 1 })
+    expect(r.ok && r.units).toBeCloseTo(10)
+    expect(r.ok && r.capped).toBe(true)
+    expect(r.ok && r.riskUsd).toBeCloseTo(1)
+    // $900 already tied up in another trade leaves $100
+    const tied = sizeRaceTrade({
+      ...base,
+      stop: 99.9,
+      leverage: 1,
+      open: [{ margin: 900, riskUsd: 5 }],
+    })
+    expect(tied.ok && tied.units).toBeCloseTo(1)
+    expect(sizeRaceTrade({ ...base, leverage: 1, open: [{ margin: 1000, riskUsd: 5 }] })).toEqual({
+      ok: false,
+      reason: 'no free margin',
+    })
+  })
+
+  it('at most 5 open, and total open risk at most 10% of the balance', () => {
+    const four = Array.from({ length: 4 }, () => ({ margin: 10, riskUsd: 20 }))
+    expect(sizeRaceTrade({ ...base, open: four }).ok).toBe(true)
+    expect(sizeRaceTrade({ ...base, open: [...four, { margin: 10, riskUsd: 1 }] })).toEqual({
+      ok: false,
+      reason: '5 trades already open',
+    })
+    // after a $20 loss: 4 x $20 open + $19.60 new = $99.60, over 10% of $980
+    expect(sizeRaceTrade({ ...base, balance: 980, open: four })).toEqual({
+      ok: false,
+      reason: 'open risk would pass 10%',
+    })
+  })
+})
+
 const sig = (over: Partial<Signal> = {}): Signal => ({
   index: 0,
   time: 1000,
@@ -41,210 +96,303 @@ const sig = (over: Partial<Signal> = {}): Signal => ({
   takeProfit: 110,
   ...over,
 })
-const base = { market: 'bitcoin', nowSec: 5000, riskPct: 1, feeRate: 0.001, leverage: 1 }
+const tick = (over: Partial<MarketTick> = {}): MarketTick => ({
+  market: 'bitcoin',
+  signal: null,
+  path: [bar(4000, 100, 100, 100, 100)],
+  price: 100,
+  usdPerQuote: 1,
+  feeRate: 0.001,
+  leverage: 1,
+  ...over,
+})
+const fresh = (): RaceStrategy => createRaceState([{ id: 'a', name: 'A' }], 1000, 1).strategies.a
 
 describe('live forward test step', () => {
-  it('opens on a new signal at the latest price, risk-sized, paying the entry fee', () => {
-    const r = stepSlot(slot(), {
-      ...base,
-      signal: sig(),
-      path: [bar(4000, 100, 100, 100, 100)],
-      price: 100,
-    })
-    // 1% of $100 at a 5% stop = $20 position; 0.1% fee = 2 cents
-    expect(r.opened?.notional).toBeCloseTo(20)
-    expect(r.opened?.entryFee).toBeCloseTo(0.02)
-    expect(r.slot.balance).toBeCloseTo(99.98)
-    expect(r.slot.lastSignalTime).toBe(1000)
-    expect(r.opened?.entryBucket).toBe(4000)
-  })
-
-  it('uses one signal only once and caps the size at the leverage', () => {
-    const first = stepSlot(slot(), {
-      ...base,
-      signal: sig({ stop: 99.9 }),
-      path: [bar(4000, 100, 100, 100, 100)],
-      price: 100,
-    })
-    // 1% risk on a 0.1% stop would be 10x; spot crypto caps it at 1x
-    expect(first.opened?.notional).toBeCloseTo(100)
-    const closedSlot: Slot = { ...first.slot, open: null }
-    const again = stepSlot(closedSlot, {
-      ...base,
-      signal: sig({ stop: 99.9 }),
-      path: [bar(4000, 100, 100, 100, 100)],
-      price: 100,
-    })
-    expect(again.opened).toBeNull()
+  it('opens on a new signal at 2% of the balance; fees are paid at the close', () => {
+    const r = stepStrategy(fresh(), [tick({ signal: sig() })], 5000)
+    const t = r.opened[0]
+    // $20 at a 5% stop = 4 units of $100 = $400; the 0.1% fee (40 cents) is owed
+    expect(t.units).toBeCloseTo(4)
+    expect(t.margin).toBeCloseTo(400)
+    expect(t.entryFee).toBeCloseTo(0.4)
+    expect(t.entryBucket).toBe(4000)
+    expect(r.strategy.balance).toBe(1000)
+    expect(r.strategy.lastSignal.bitcoin).toBe(1000)
+    // the same signal never opens twice
+    const again = stepStrategy({ ...r.strategy, open: [] }, [tick({ signal: sig() })], 6000)
+    expect(again.opened).toHaveLength(0)
   })
 
   it('skips a signal whose stop or target the price already passed', () => {
-    const r = stepSlot(slot(), {
-      ...base,
-      signal: sig(),
-      path: [bar(4000, 111, 111, 111, 111)],
-      price: 111,
-    })
-    expect(r.opened).toBeNull()
-    expect(r.slot.lastSignalTime).toBe(1000)
+    const r = stepStrategy(fresh(), [tick({ signal: sig(), price: 111 })], 5000)
+    expect(r.opened).toHaveLength(0)
+    expect(r.strategy.lastSignal.bitcoin).toBe(1000)
   })
 
-  const opened = () =>
-    stepSlot(slot(), { ...base, signal: sig(), path: [bar(4000, 100, 100, 100, 100)], price: 100 })
-      .slot
+  const opened = () => stepStrategy(fresh(), [tick({ signal: sig() })], 5000).strategy
 
   it('closes at the target on a later candle, both fees counted', () => {
-    const s = opened()
-    const r = stepSlot(s, {
-      ...base,
-      signal: null,
+    const r = stepStrategy(
+      opened(),
       // the entry candle itself is ignored even though it dipped
-      path: [bar(4000, 100, 100, 90, 100), bar(4000 + H, 100, 111, 99, 108)],
-      price: 108,
-    })
-    expect(r.closed?.reason).toBe('target')
-    expect(r.closed?.exit).toBe(110)
-    // +10% of $20 = $2.00, fees 0.02 + 0.022
-    expect(r.closed?.pnl).toBeCloseTo(2 - 0.042)
-    expect(r.slot.balance).toBeCloseTo(100 + 2 - 0.042)
-    expect(r.slot.open).toBeNull()
+      [tick({ path: [bar(4000, 100, 100, 90, 100), bar(4000 + H, 100, 111, 99, 108)] })],
+      9000,
+    )
+    expect(r.closed[0].reason).toBe('target')
+    expect(r.closed[0].exit).toBe(110)
+    // 4 units x $10 = $40, fees 0.40 + 0.44
+    expect(r.closed[0].pnl).toBeCloseTo(40 - 0.84)
+    expect(r.strategy.balance).toBeCloseTo(1000 + 40 - 0.84)
+    expect(r.strategy.open).toHaveLength(0)
   })
 
   it('checks the stop first when a candle touches both, and fills a gap at the open', () => {
-    const both = stepSlot(opened(), {
-      ...base,
-      signal: null,
-      path: [bar(4000 + H, 100, 111, 94, 100)],
-      price: 100,
-    })
-    expect(both.closed?.reason).toBe('stop')
-    expect(both.closed?.exit).toBe(95)
-    expect(both.closed?.pnl).toBeCloseTo(-1 - 0.02 - 0.019)
-
-    const gap = stepSlot(opened(), {
-      ...base,
-      signal: null,
-      path: [bar(4000 + H, 90, 91, 89, 90)],
-      price: 90,
-    })
-    expect(gap.closed?.exit).toBe(90)
+    const both = stepStrategy(opened(), [tick({ path: [bar(4000 + H, 100, 111, 94, 100)] })], 9000)
+    expect(both.closed[0].reason).toBe('stop')
+    expect(both.closed[0].exit).toBe(95)
+    expect(both.closed[0].pnl).toBeCloseTo(-20 - 0.4 - 0.38)
+    const gap = stepStrategy(opened(), [tick({ path: [bar(4000 + H, 90, 91, 89, 90)] })], 9000)
+    expect(gap.closed[0].exit).toBe(90)
   })
 
   it('shorts make money when price falls', () => {
-    const s = stepSlot(slot(), {
-      ...base,
-      signal: sig({ direction: 'short', stop: 105, takeProfit: 90 }),
-      path: [bar(4000, 100, 100, 100, 100)],
-      price: 100,
-    }).slot
-    const r = stepSlot(s, {
-      ...base,
-      signal: null,
-      path: [bar(4000 + H, 99, 99, 89, 90)],
-      price: 90,
-    })
-    expect(r.closed?.reason).toBe('target')
-    expect(r.closed!.pnl).toBeGreaterThan(0)
+    const s = stepStrategy(
+      fresh(),
+      [tick({ signal: sig({ direction: 'short', stop: 105, takeProfit: 90 }) })],
+      5000,
+    ).strategy
+    const r = stepStrategy(s, [tick({ path: [bar(4000 + H, 99, 99, 89, 90)] })], 9000)
+    expect(r.closed[0].reason).toBe('target')
+    expect(r.closed[0].pnl).toBeGreaterThan(0)
   })
 
-  it('creates a valid state split evenly and summarizes money with open P&L', () => {
-    const st = createRaceState([{ id: 'a', name: 'A', markets: ['bitcoin', 'ethereum'] }], 1000, 1)
+  it('every market shares one balance; the 6th signal waits for a free spot', () => {
+    const ids = ['EUR-USD', 'GBP-USD', 'AUD-USD', 'NZD-USD', 'USD-CAD', 'USD-CHF']
+    const r = stepStrategy(
+      fresh(),
+      ids.map((market) => tick({ market, signal: sig(), leverage: 30, feeRate: 0 })),
+      5000,
+    )
+    expect(r.opened).toHaveLength(5)
+    // $20 each from the same $1,000: 4 units at a $5 stop
+    for (const t of r.opened) expect(t.units).toBeCloseTo(4)
+    expect(r.passed).toEqual([{ market: 'USD-CHF', reason: '5 trades already open' }])
+  })
+
+  it('no trade without a USD rate for the quote currency', () => {
+    const r = stepStrategy(
+      fresh(),
+      [tick({ market: 'EUR-GBP', signal: sig(), usdPerQuote: null })],
+      5000,
+    )
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed[0].reason).toMatch(/USD rate/)
+  })
+
+  it('summarizes money as balance + open P&L - fees still owed', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 1000, 1)
     expect(raceStateSchema.safeParse(st).success).toBe(true)
-    expect(st.strategies.a.slots.bitcoin.balance).toBe(500)
-    st.strategies.a.slots.bitcoin = stepSlot(st.strategies.a.slots.bitcoin, {
-      ...base,
-      signal: sig(),
-      path: [bar(4000, 100, 100, 100, 100)],
-      price: 100,
-    }).slot
+    st.strategies.a = opened()
     st.prices.bitcoin = 105
     const [s] = summarize(st)
-    // $100 position (1% of 500 at a 5% stop), +5% = +$5, minus the $0.10 entry fee
-    expect(s.money).toBeCloseTo(1000 + 5 - 0.1)
+    // 4 units x +$5 = +$20, minus the $0.40 entry fee
+    expect(s.money).toBeCloseTo(1000 + 20 - 0.4)
     expect(s.open).toHaveLength(1)
+  })
+
+  it('a new built-in strategy joins with fresh money; running again changes nothing', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 1000, 1)
+    st.strategies.a = opened()
+    const { state, changes } = syncRaceState(st, [
+      { id: 'a', name: 'A' },
+      { id: 'n', name: 'New' },
+    ])
+    expect(changes).toEqual(['New joined the race'])
+    expect(state.strategies.a).toEqual(st.strategies.a)
+    expect(state.strategies.n.balance).toBe(1000)
+    expect(syncRaceState(state, [{ id: 'n', name: 'New' }]).changes).toEqual([])
   })
 })
 
-function result(rs: number[], exitTimes = rs.map((_, i) => i + 1)): BacktestResult {
-  const trades: BacktestTrade[] = rs.map((r, i) => ({
-    direction: 'long',
-    entryTime: 0,
-    exitTime: exitTimes[i],
-    entry: 1,
-    exit: 1,
-    stop: 1,
-    takeProfit: 1,
-    r,
-    reason: r > 0 ? 'target' : 'stop',
-  }))
-  let eq = 1
-  for (const r of rs) eq *= 1 + r * 0.01
-  return {
-    trades,
-    signals: [],
-    stats: {} as BacktestResult['stats'],
-    totalR: 0,
-    startEquity: 1,
-    endEquity: eq,
-    candles: 0,
-    from: null,
-    to: null,
+describe('old race files (money split per market) move to the one-account layout', () => {
+  const trade = (market: string, entry: number, notional: number) => ({
+    market,
+    direction: 'long' as const,
+    signalTime: 1,
+    entryTime: 2,
+    entryBucket: 2,
+    entry,
+    stop: entry * 0.99,
+    takeProfit: entry * 1.02,
+    notional,
+    entryFee: notional * 0.001,
+  })
+  const legacy = {
+    version: 1,
+    startedAt: 1,
+    startMoney: 1000,
+    tickCount: 6,
+    ticks: [],
+    prices: { bitcoin: 101, 'USD-JPY': 160, 'GBP-USD': 1.34 },
+    strategies: {
+      a: {
+        ruleId: 'a',
+        name: 'A',
+        slots: {
+          bitcoin: { balance: 499.9, open: trade('bitcoin', 100, 100), lastSignalTime: 7 },
+          'USD-JPY': { balance: 500, open: trade('USD-JPY', 158, 50), lastSignalTime: 8 },
+          ethereum: { balance: 1.5, open: null, lastSignalTime: 0 },
+        },
+        closed: [
+          {
+            ...trade('ethereum', 10, 5),
+            exitTime: 3,
+            exit: 9.9,
+            reason: 'stop',
+            pnl: -0.06,
+            fees: 0.01,
+          },
+        ],
+      },
+    },
   }
-}
 
-describe('leaderboard', () => {
-  it('splits money evenly and keeps a skipped market share as cash', () => {
-    expect(shareOf(1000, 4)).toBe(250)
+  it('keeps every dollar, the open trades and the signals already used', () => {
+    const r = parseRaceState(legacy)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.migrated).toBe(true)
+    expect(raceStateSchema.safeParse(r.state).success).toBe(true)
+    const a = r.state.strategies.a
+    expect(a.open.map((t) => t.market)).toEqual(['bitcoin', 'USD-JPY'])
+    expect(a.lastSignal).toEqual({ bitcoin: 7, 'USD-JPY': 8, ethereum: 0 })
+    // USD/JPY: $50 of a USD-base pair is 50 units
+    expect(a.open[1].units).toBeCloseTo(50)
+    expect(a.closed[0].units).toBeCloseTo(0.5)
+    // old money: slot cash + notional x move / entry
+    const oldMoney = 499.9 + 500 + 1.5 + (100 * 1) / 100 + (50 * 2) / 158
+    expect(summarize(r.state)[0].money).toBeCloseTo(oldMoney)
+    expect(r.state.sizing).toEqual(RACE_SIZING)
+    // a file in the new layout reads as it is
+    const again = parseRaceState(r.state)
+    expect(again.ok && again.migrated).toBe(false)
+    expect(parseRaceState({ version: 1 }).ok).toBe(false)
+  })
+})
+
+const cand = (
+  market: string,
+  entryTime: number,
+  exitTime: number,
+  over: Partial<Candidate> = {},
+): Candidate => ({
+  market,
+  direction: 'long',
+  entryTime,
+  exitTime,
+  entry: 100,
+  exit: 110,
+  stop: 95,
+  takeProfit: 110,
+  r: 0,
+  reason: 'target',
+  usdPerQuote: 1,
+  feeRate: 0,
+  leverage: 30,
+  ...over,
+})
+
+describe('leaderboard: one account per strategy', () => {
+  it('merges every market in time order and sizes each trade from the balance at entry', () => {
+    const p = portfolioBacktest(1000, [
+      cand('solana', 4, 6),
+      cand('bitcoin', 1, 5),
+      cand('ethereum', 2, 3, { exit: 95, reason: 'stop' }),
+    ])
+    // bitcoin and ethereum open on $1,000 ($20 risk each); ethereum stops first (-$20),
+    // so solana risks 2% of $980 = $19.60 and makes 2R
+    expect(p.trades.map((t) => [t.market, t.balanceAtEntry, +t.pnl.toFixed(2)])).toEqual([
+      ['ethereum', 1000, -20],
+      ['bitcoin', 1000, 40],
+      ['solana', 980, 39.2],
+    ])
+    expect(p.end).toBeCloseTo(1059.2)
+    expect(p.curve.map((x) => +x.toFixed(2))).toEqual([1000, 980, 1020, 1059.2])
+  })
+
+  it('the limits keep a 6th overlapping trade out, and fees come off', () => {
+    const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((m, i) => cand(m, i, 100))
+    const p = portfolioBacktest(1000, six)
+    expect(p.trades).toHaveLength(5)
+    expect(p.passed).toEqual([{ market: 'f', entryTime: 5, reason: '5 trades already open' }])
+    const fee = portfolioBacktest(1000, [cand('a', 1, 2, { feeRate: 0.001 })])
+    // $400 position: 40 cents in, 44 cents out
+    expect(fee.trades[0].pnl).toBeCloseTo(40 - 0.84)
+  })
+
+  it('a daily trade only frees its money at the end of its exit day (no look-ahead)', () => {
+    const D = 1_000 * 86_400
+    // forex wins +$40 on day D (daily candle), crypto enters at D + 5h on hourly candles
+    const p = portfolioBacktest(1000, [
+      cand('GBP-USD', D - 86_400, D, { candleSec: 86_400 }),
+      cand('bitcoin', D + 5 * 3_600, D + 9 * 3_600, { candleSec: 3_600 }),
+    ])
+    const btc = p.trades.find((t) => t.market === 'bitcoin')!
+    expect(btc.balanceAtEntry).toBe(1000)
+    // the next day it is in the balance
+    const q = portfolioBacktest(1000, [
+      cand('GBP-USD', D - 86_400, D, { candleSec: 86_400 }),
+      cand('bitcoin', D + 86_400, D + 86_400 + 3_600, { candleSec: 3_600 }),
+    ])
+    expect(q.trades.find((t) => t.market === 'bitcoin')!.balanceAtEntry).toBeCloseTo(1040)
+  })
+
+  it('scores a strategy: per market, wins, best market, money a month, max drop', () => {
     const e = scoreStrategy({
       ruleId: 'x',
-      riskPct: 1,
       start: 1000,
-      runs: [
-        { id: 'bitcoin', result: result([2, -1]) },
-        { id: 'ethereum', result: result([]) },
-      ],
-      skipped: ['solana', 'ripple'],
+      markets: ['bitcoin', 'ethereum', 'solana'],
+      candidates: [cand('bitcoin', 1, 2), cand('ethereum', 3, 4, { exit: 95, reason: 'stop' })],
+      skipped: ['ripple'],
       days: 90,
     })
-    // bitcoin share $250: +2% = +5, then -1% of 255 = -2.55
-    expect(e.markets[0].profit).toBeCloseTo(5 - 2.55)
-    expect(e.end).toBeCloseTo(1000 + 2.45)
+    expect(e.markets.map((m) => [m.id, m.trades.length, +m.profit.toFixed(2)])).toEqual([
+      ['bitcoin', 1, 40],
+      ['ethereum', 1, -20.8],
+      ['solana', 0, 0],
+    ])
+    expect(e.end).toBeCloseTo(1019.2)
     expect(e.trades).toBe(2)
+    expect(e.passed).toBe(0)
     expect(e.winRate).toBe(0.5)
     expect(e.best).toBe('bitcoin')
-    expect(e.perMonth).toBeCloseTo((2.45 / 90) * 30)
-    // peak 1005, low 1002.45
-    expect(e.maxDrawdown).toBeCloseTo(2.55 / 1005)
-    // per-market result matches the backtest's own compounding
-    expect(e.markets[0].end).toBeCloseTo(250 * result([2, -1]).endEquity)
+    expect(e.skipped).toEqual(['ripple'])
+    expect(e.perMonth).toBeCloseTo((19.2 / 90) * 30)
+    expect(e.maxDrawdown).toBeCloseTo(20.8 / 1040)
   })
 
   it('ranks by end money, ties to fewer trades', () => {
-    const mk = (ruleId: string, rs: number[]) =>
+    const mk = (ruleId: string, exits: number[]) =>
       scoreStrategy({
         ruleId,
-        riskPct: 1,
         start: 1000,
-        runs: [{ id: 'bitcoin', result: result(rs) }],
+        markets: ['bitcoin'],
+        candidates: exits.map((exit, i) => cand('bitcoin', i * 2, i * 2 + 1, { exit })),
         skipped: [],
         days: 30,
       })
     const ranked = rankEntries([
-      mk('lose', [-1]),
+      mk('lose', [95]),
       mk('none', []),
-      mk('win', [3]),
-      mk('busy', [1, -1, 0]),
+      mk('win', [115]),
+      mk('busy', [105, 97.5]),
     ])
-    expect(ranked.map((r) => r.ruleId)[0]).toBe('win')
+    expect(ranked[0].ruleId).toBe('win')
     expect(ranked.at(-1)?.ruleId).toBe('lose')
-    expect(ranked.findIndex((r) => r.ruleId === 'none')).toBeLessThan(
-      ranked.findIndex((r) => r.ruleId === 'lose'),
-    )
-    const tie = rankEntries([mk('flat', [0]), mk('none', [])])
+    const tie = rankEntries([mk('flat', [100]), mk('none', [])])
     expect(tie.map((r) => r.ruleId)).toEqual(['none', 'flat'])
-    const noTrades = mk('none', [])
-    expect(noTrades.best).toBeNull()
-    expect(noTrades.winRate).toBeNull()
+    expect(mk('none', []).best).toBeNull()
+    expect(mk('none', []).winRate).toBeNull()
   })
 })
 
@@ -270,64 +418,13 @@ describe('backtest windows', () => {
     for (const t of res.trades) expect(t.entryTime).toBeGreaterThanOrEqual(windowStart('1h', now))
     const e = scoreStrategy({
       ruleId: rule.id,
-      riskPct: 1,
       start: 1000,
-      runs: [{ id: 'bitcoin', result: result([3]) }],
+      markets: ['bitcoin'],
+      candidates: [cand('bitcoin', 1, 2)],
       skipped: [],
       days: WINDOW_DAYS['1h'],
     })
     expect(e.days).toBe(30)
     expect(e.perMonth).toBeCloseTo(e.profit)
-  })
-})
-
-describe('race state migration (gold joins an existing race)', () => {
-  it('adds gold to each strategy without touching open trades or total money', () => {
-    const old = createRaceState(
-      [
-        { id: 'a', name: 'A', markets: ['bitcoin', 'ethereum'] },
-        { id: 'c', name: 'C', markets: ['bitcoin'] },
-      ],
-      1000,
-      1,
-    )
-    old.strategies.a.slots.bitcoin = stepSlot(old.strategies.a.slots.bitcoin, {
-      ...base,
-      signal: sig(),
-      path: [bar(4000, 100, 100, 100, 100)],
-      price: 100,
-    }).slot
-    old.strategies.a.closed.push({
-      ...old.strategies.a.slots.bitcoin.open!,
-      exitTime: 1,
-      exit: 1,
-      reason: 'stop',
-      pnl: -1,
-      fees: 0,
-    })
-    old.prices.bitcoin = 100
-    const before = summarize(old).find((x) => x.ruleId === 'a')!.money
-    const openBefore = old.strategies.a.slots.bitcoin.open
-
-    const { state, changes } = syncRaceState(old, [
-      { id: 'a', name: 'A', markets: ['bitcoin', 'ethereum', 'pax-gold'] },
-      { id: 'c', name: 'C', markets: ['bitcoin'] },
-      { id: 'n', name: 'New', markets: ['pax-gold'] },
-    ])
-    expect(raceStateSchema.safeParse(state).success).toBe(true)
-    const a = state.strategies.a
-    expect(a.slots['pax-gold']).toEqual({ balance: 1000 / 3, open: null, lastSignalTime: 0 })
-    expect(a.slots.bitcoin.open).toEqual(openBefore)
-    expect(a.closed).toHaveLength(1)
-    expect(summarize(state).find((x) => x.ruleId === 'a')!.money).toBeCloseTo(before)
-    // untouched strategy, and a new one starting fresh
-    expect(state.strategies.c).toEqual(old.strategies.c)
-    expect(state.strategies.n.slots['pax-gold'].balance).toBe(1000)
-    expect(changes).toEqual(['A: added pax-gold', 'New joined the race'])
-    // running it again changes nothing
-    expect(
-      syncRaceState(state, [{ id: 'a', name: 'A', markets: ['bitcoin', 'ethereum', 'pax-gold'] }])
-        .changes,
-    ).toEqual([])
   })
 })

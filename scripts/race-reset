@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Start the strategy race over (docs/strategy-race.md, "Starting over").
+#
+#   make race-reset             (or: scripts/race-reset [START], default 1000)
+#   RACE_FILE=/tmp/test.json scripts/race-reset 1000 --no-push   (a test run, nothing sent)
+#
+# 1. Copies race.json to race.json.bak-<date-time> next to it (kept, never deleted).
+# 2. Starts a fresh race at the current sizing (one account per strategy, 2%
+#    risk per trade) and runs its first tick right away.
+# 3. Saves it and pushes it to the live site, the same push as --push-only.
+# If the tick fails before saving, race.json is left as it was.
+# Play money only: nothing here talks to a broker.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+FILE="${RACE_FILE:-$HOME/.local/share/trade-hub/race.json}"
+START="${1:-1000}"
+
+if [ -f "$FILE" ]; then
+  BAK="$FILE.bak-$(date +%Y-%m-%d-%H%M%S)"
+  cp -p "$FILE" "$BAK"
+  echo "Backed up the old race to $BAK"
+fi
+
+npx tsx scripts/race-tick.ts --reset --start "$START" "${@:2}"

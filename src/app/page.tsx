@@ -7,9 +7,11 @@ import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
 import { summarize } from '@/lib/race/live'
 import { getInstrument } from '@/lib/paper/instruments'
+import { RACE_SIZING } from '@/lib/race/account'
 import {
   closedTrades,
   demoPositions,
+  ifAllHit,
   measure,
   periodStarts,
   racePositions,
@@ -59,6 +61,7 @@ export default function Today() {
   const shown =
     tab === 'look' ? needsLook : tab === 'all' ? rows : rows.filter((r) => r.pos.source === tab)
   const openPnl = rows.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
+  const hit = ifAllHit(rows.map((r) => r.m))
 
   const tabs: { id: Tab; label: string; n: number }[] = [
     { id: 'all', label: 'All', n: rows.length },
@@ -94,6 +97,19 @@ export default function Today() {
           {needsLook.length > 0 &&
             ` ${needsLook.length} need${needsLook.length === 1 ? 's' : ''} a look.`}
         </p>
+        {rows.length > 0 && (
+          <p style={{ fontSize: 13, marginTop: 4 }} data-testid="if-all-hit">
+            If every open trade hits its target:{' '}
+            <b style={{ color: 'var(--green)' }}>{signedUsd(hit.target)}</b>. If every one hits its
+            stop: <b style={{ color: 'var(--red)' }}>{signedUsd(hit.stop)}</b>.
+            {hit.unknown > 0 && (
+              <span style={small}>
+                {' '}
+                ({hit.unknown} without a stop, a target or a dollar rate not counted.)
+              </span>
+            )}
+          </p>
+        )}
       </header>
 
       <section
@@ -202,8 +218,9 @@ function RaceSummary() {
       ) : (
         <>
           <p style={{ ...small, marginTop: 4 }}>
-            {rows.length} strategies, {usd(state.startMoney)} each, checked every hour (
-            {state.tickCount} checks, last {ago(state.ticks.at(-1)?.at ?? state.startedAt)}).
+            {rows.length} strategies, one {usd(state.startMoney)} account each, every trade risking{' '}
+            {state.sizing.riskPct}% of the balance, checked every hour ({state.tickCount} checks,
+            last {ago(state.ticks.at(-1)?.at ?? state.startedAt)}).
           </p>
           <p
             style={{
@@ -411,8 +428,18 @@ function HowTrades() {
                 or 3 times). Win once, lose twice, and you are about even.
               </li>
               <li>
-                <b>Size.</b> Each trade risks 0.5% to 1% of that market’s share of the money if the
-                stop hits. That is why race trades are cents: $1,000 is split over up to 19 markets.
+                <b>Size.</b> Each strategy trades one $1,000 account across all its markets, and
+                every trade risks {RACE_SIZING.riskPct}% of the balance at that moment if the stop
+                hits (about $20 at the start). The size follows from the stop: a wider stop means
+                fewer lots. Forex is shown in lots (1 lot = 100,000 units, so 0.01 lot = 1,000
+                units; 0.1 lot on EUR/USD is about $1 a pip), gold in lots of 100 oz, crypto in
+                coins.
+              </li>
+              <li>
+                <b>Limits, like a real account.</b> At most {RACE_SIZING.maxOpen} trades open, all
+                open stops together at most {RACE_SIZING.maxOpenRiskPct}% of the balance, and a
+                trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex
+                30:1). A signal that does not fit is left out.
               </li>
               <li>
                 <b>Fees.</b> Paid going in and coming out: 0.1% per side on crypto, about 0.007% on

@@ -2,6 +2,7 @@
 import useSWR from 'swr'
 import { OHLCCandle } from '../types/market'
 import { COIN_MAP, METAL_MAP } from '../coingecko'
+import { FOREX_PAIRS } from '../forexPairs'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -32,16 +33,7 @@ export interface ForexPair {
   type: 'forex'
 }
 
-export const FOREX_PAIRS = [
-  { symbol: 'EUR/USD', base: 'EUR', quote: 'USD', invert: true },
-  { symbol: 'GBP/USD', base: 'GBP', quote: 'USD', invert: true },
-  { symbol: 'USD/JPY', base: 'USD', quote: 'JPY', invert: false },
-  { symbol: 'USD/CHF', base: 'USD', quote: 'CHF', invert: false },
-  { symbol: 'AUD/USD', base: 'AUD', quote: 'USD', invert: true },
-  { symbol: 'USD/CAD', base: 'USD', quote: 'CAD', invert: false },
-  { symbol: 'NZD/USD', base: 'NZD', quote: 'USD', invert: true },
-  { symbol: 'EUR/GBP', base: 'EUR', quote: 'GBP', invert: false },
-]
+export { FOREX_PAIRS }
 
 export function transformCryptoPrices(
   data: Record<string, CoinGeckoRow> | undefined,

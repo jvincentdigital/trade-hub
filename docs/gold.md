@@ -36,4 +36,4 @@ TradingView button shows the real `OANDA:XAUUSD`.
   for gold CFDs). Constants at the top of `src/lib/paper/engine.ts`.
 - Rule schema unchanged: `market: 'both'` now means all markets.
 
-Tests: `src/lib/paper/gold.test.ts`, migration test in `src/lib/race/race.test.ts`.
+Tests: `src/lib/paper/gold.test.ts`. The old per-market slot migration for gold is gone since the race moved to one account per strategy (`docs/strategy-race.md`, "Sizing").

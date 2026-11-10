@@ -6,6 +6,10 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**Race sizing (2026-11-10, night), branch `sizing-2pct`.** Each strategy now trades one $1,000 account and every trade risks 2% of its balance (at most 5 open, 10% open risk, margin cap like a real account), in the live race and the past results. Every trade shows lots or coins, $ per pip (or per $1 on gold), risk $, goal $ and R:R (Today cards, `/race`, `/demo`), and Today's header says what all targets or all stops would make. See `docs/strategy-race.md` "Sizing".
+
+- [ ] @john: review the PR, merge, then on the Mac Mini: `cd ~/dev/trade-hub && git pull && make race-reset` (backs up race.json, starts over at 2%, first tick, pushes to the live site).
+
 **Newest (2026-11-10, evening): "Today" home + ready to go live behind a passcode.** The home page is now a daily hub: every open trade (race strategies + demo) as a card with a small candle chart, entry/stop/target lines, P&L in $, distance to stop and target in % and $, a status tag (Near stop, Near target, Running, No stop), and one button. Below: how the race is going (honest: no edge yet), closed trades today and this week, a "How trades are placed" sheet, compact markets. See `docs/dashboard.md`. Audit of every page and button fixed: hydration error on `/strategies` (the localStorage hooks, old item below), 44 px tap targets (bottom nav, back links, timeframe buttons, star and trash buttons with labels), our own rate limit blocking backtests (120 to 300 a minute), "Back to Today" on the 404. Passcode lock (`src/proxy.ts`, `/unlock`), race relay worker on Cloudflare free (`race-worker/`, the hourly tick pushes to it), Vercel env set for Preview and Production, preview checked. See `docs/live.md`.
 
 - [ ] @john: open the preview on the phone (passcode in `~/.local/share/trade-hub/passcode.env` on the Mac Mini), then say "merge and go live" or what to change. Production deploy waits for that yes.

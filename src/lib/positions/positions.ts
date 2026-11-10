@@ -102,27 +102,45 @@ export function measure(p: OpenPosition, price: number | undefined | null): Posi
 export function racePositions(state: RaceState | null | undefined): OpenPosition[] {
   if (!state) return []
   return Object.values(state.strategies).flatMap((s) =>
-    Object.values(s.slots).flatMap((sl) => {
-      const t = sl.open
-      if (!t) return []
-      return [
-        {
-          key: `race:${s.ruleId}:${t.market}`,
-          source: 'race' as const,
-          by: s.name,
-          market: t.market,
-          side: t.direction,
-          entry: t.entry,
-          stop: t.stop,
-          target: t.takeProfit,
-          // Race trades are sized in dollars: units x price move = dollars (like openPnl).
-          units: t.notional / t.entry,
-          usdPerQuote: 1,
-          openedAt: t.entryTime * 1000,
-        },
-      ]
-    }),
+    s.open.map((t) => ({
+      key: `race:${s.ruleId}:${t.market}`,
+      source: 'race' as const,
+      by: s.name,
+      market: t.market,
+      side: t.direction,
+      entry: t.entry,
+      stop: t.stop,
+      target: t.takeProfit,
+      units: t.units,
+      // Fixed at entry, like openPnl, so the card and the race agree.
+      usdPerQuote: t.usdPerQuote,
+      openedAt: t.entryTime * 1000,
+    })),
   )
+}
+
+/**
+ * The header line: dollars if every open trade hits its target, and if every
+ * one hits its stop (from entry, before fees). Trades with no stop, no target
+ * or no USD rate are left out of both sums and counted in `unknown`.
+ */
+export function ifAllHit(rows: PositionMetrics[]): {
+  target: number
+  stop: number
+  unknown: number
+} {
+  let target = 0
+  let stop = 0
+  let unknown = 0
+  for (const m of rows) {
+    if (m.atTargetUsd == null || m.atStopUsd == null) {
+      unknown++
+      continue
+    }
+    target += m.atTargetUsd
+    stop += m.atStopUsd
+  }
+  return { target, stop, unknown }
 }
 
 export function demoPositions(account: PaperAccount, prices: PriceMap): OpenPosition[] {

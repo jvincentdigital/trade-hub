@@ -10,7 +10,11 @@ Play money only. Nothing here talks to a broker.
 ## What the page shows, top to bottom
 
 1. **Header**: date, "play money only", and one line: how many trades are open,
-   their P&L together, and how many need a look.
+   their P&L together, and how many need a look. A second line (added
+   2026-11-10 night): "If every open trade hits its target: +$X. If every one
+   hits its stop: -$Y." Sums from entry, before fees (`ifAllHit` in
+   `positions.ts`); trades without a stop, a target or a dollar rate are left
+   out and counted in a short note.
 2. **Open trades**: one card per open trade, from every race strategy and the
    demo account. Tabs: All, Needs a look (anything not "Running"), Race, Demo.
    Each card has:
@@ -24,8 +28,10 @@ Play money only. Nothing here talks to a broker.
    - P&L in dollars and % since entry (before the exit fee), price now and entry;
    - stop and target: the price, how far away in %, and how many dollars that
      move is worth from here;
-   - size in dollars, the risk (dollars lost at the stop) and the aim (dollars
-     won at the target);
+   - size the way a trader reads it (`src/lib/sizing/sizing.ts`): forex in lots
+     and units (1 lot = 100,000 units, 0.01 lot = 1,000) with $ per pip; gold
+     in lots of 100 oz and ounces with $ per $1 move; crypto in coins; plus the
+     position value, risk $ at the stop, goal $ at the target and R:R;
    - one button: "See it in the Race" or "Manage in Demo".
      Cards sort Near stop first, then No stop, Near target, Running, newest first.
 3. **How trades are placed**: a button next to "Open trades" opens a sheet
@@ -51,9 +57,11 @@ change, saved strategies count) and the two top gainers/losers tables are gone.
 | Price now     | the live price feeds (`useLivePrices`); falls back to the race's last tick price                   |
 | Chart candles | `/api/crypto/candles/[id]?tf=1h` (Kraken) or `/api/forex/ohlc/[pair]?days=90` (Frankfurter, daily) |
 
-Race trades are sized in dollars (notional), so for them units = notional /
-entry and P&L = units x price move, the same as `openPnl` in `live.ts`. Demo
-P&L converts the quote currency to dollars (`quoteToUsd`).
+Race trades store their units and the USD value of one quote unit at entry
+(`usdPerQuote`), so card P&L = units x price move x that rate, the same as
+`openPnl` in `live.ts`. Each risks 2% of its strategy's one $1,000 account
+(`docs/strategy-race.md`, "Sizing"). Demo P&L converts the quote currency to
+dollars with the live pairs (`quoteToUsd`).
 
 ## Files
 

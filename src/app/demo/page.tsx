@@ -31,6 +31,7 @@ import {
   usePaperAccount,
 } from '@/lib/hooks/usePaperAccount'
 import { useRules } from '@/lib/hooks/useRules'
+import { perMoveText, sizeText, sizingLine, sizingOf } from '@/lib/sizing/sizing'
 
 const usd = (n: number, sign = false) =>
   `${sign && n > 0 ? '+' : n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('en-US', {
@@ -140,6 +141,8 @@ function OrderTicket({
   const margin = notional / LEVERAGE[inst.market]
   const riskUsd = sl && ref && q ? Math.abs(ref - sl) * units * q : null
   const rr = sl && tp && ref ? Math.abs(tp - ref) / Math.abs(ref - sl) : null
+  const size = sizingOf({ inst, units, entry: ref || 0, usdPerQuote: q })
+  const per = perMoveText(size)
 
   const warnings = units > 0 ? planWarnings(account, prices, { riskUsd, fromStrategy: false }) : []
 
@@ -293,7 +296,7 @@ function OrderTicket({
         <dt>Size</dt>
         <dd>
           {units > 0
-            ? `${units.toLocaleString('en-US', { maximumFractionDigits: inst.market === 'forex' ? 0 : 6 })} ${inst.market === 'forex' ? 'units' : inst.market === 'metals' ? 'oz' : inst.symbol.split('/')[0]}`
+            ? `${sizeText(inst, size)}${per ? `, ${per}` : ''}`
             : sizeMode === 'risk' && !sl
               ? 'add a stop loss'
               : '-'}
@@ -376,6 +379,14 @@ function Positions({ account, prices }: { account: PaperAccount; prices: PriceMa
           const price = prices[p.instrumentId]
           const q = inst ? quoteToUsd(inst.quote, prices) : null
           const pnl = price && q ? positionPnl(p, price, q) : 0
+          const size = sizingOf({
+            inst,
+            units: p.units,
+            entry: p.entryPrice,
+            stop: p.stopLoss,
+            target: p.takeProfit,
+            usdPerQuote: q,
+          })
           return (
             <div key={p.id} style={row}>
               <div style={{ minWidth: 0 }}>
@@ -386,9 +397,9 @@ function Positions({ account, prices }: { account: PaperAccount; prices: PriceMa
                   {inst?.symbol}
                 </div>
                 <div style={meta}>
-                  {p.units.toLocaleString('en-US', { maximumFractionDigits: 6 })} @{' '}
                   {formatQuote(p.entryPrice, inst)} → {price ? formatQuote(price, inst) : '…'}
                 </div>
+                <div style={meta}>{sizingLine(inst, size)}</div>
                 <div style={meta}>
                   SL {p.stopLoss ? formatQuote(p.stopLoss, inst) : '-'} · TP{' '}
                   {p.takeProfit ? formatQuote(p.takeProfit, inst) : '-'}

@@ -8,7 +8,7 @@
 # Convention: keep targets simple. If a target needs more than a few lines of
 # shell, put the logic in scripts/ and call it from here.
 
-.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick
+.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset
 
 PROJECT_NAME := trade-hub
 
@@ -76,6 +76,9 @@ extract-strategies: ## Turn course transcripts into strategy rules via claude -p
 
 race-tick: ## Strategy race: one live tick for every strategy's play account (state in ~/.local/share/trade-hub/race.json)
 	npx tsx scripts/race-tick.ts
+
+race-reset: ## Strategy race: back up race.json, start over at 2% risk per trade, first tick, push (usage: make race-reset [START=1000])
+	scripts/race-reset $(START)
 
 # ── Help ──────────────────────────────────────────────────
 
