@@ -1,15 +1,28 @@
 import { goalBar, signedShort, usdShort } from '@/lib/positions/today'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
 
+/** Shown in the summary and the list when the race feed fails and there are no rows. */
+export const FAILED_TEXT = "Couldn't load your trades. Trying again in a minute."
+
+/**
+ * The P&L line waits for a real path: at least 4 points over 2 hours or more
+ * (points are an hour apart), else it is a straight ramp that looks unfinished.
+ */
+const sparkReady = (s: { t: number }[]) => s.length >= 4 && s[s.length - 1].t - s[0].t >= 7_200_000
+
 interface Props {
   loading: boolean
+  /** The race feed failed and no trades are known: no $0.00, no "No trades open". */
+  failed: boolean
   /** Open trades right now. */
   count: number
   countLine: string
   pnl: number
   series: { t: number; pnl: number }[]
   sinceText: string | null
-  hit: { stop: number; target: number; unknown: number }
+  hit: { stop: number; target: number }
+  /** "1 trade isn't counted: it has no stop or target." */
+  notCounted: string | null
   lookLine: string | null
   needsLook: boolean
   closedToday: string | null
@@ -20,6 +33,9 @@ interface Props {
 /** The cockpit: open P&L, its path since the first entry, where today could end, one plain line. */
 export function Summary(p: Props) {
   const bar = goalBar(p.hit, p.pnl)
+  // Whole dollars at the bar's ends; cents only on the Now tag.
+  const stopEnd = signedShort(Math.round(p.hit.stop))
+  const targetEnd = signedShort(Math.round(p.hit.target))
   return (
     <section aria-label="Summary" style={{ ...card, padding: '16px 18px' }}>
       <div
@@ -32,27 +48,37 @@ export function Summary(p: Props) {
       >
         <div style={{ minWidth: 0 }}>
           <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>Open P&amp;L</p>
+          {!p.failed && (
+            <p
+              style={{
+                ...num,
+                fontSize: FS.hero,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                letterSpacing: '-0.03em',
+                color: p.count ? tone(p.pnl) : 'var(--text-secondary)',
+              }}
+            >
+              {pnlText(p.count ? p.pnl : 0)}
+            </p>
+          )}
           <p
             style={{
-              ...num,
-              fontSize: FS.hero,
-              fontWeight: 700,
-              lineHeight: 1.1,
-              letterSpacing: '-0.03em',
-              color: p.count ? tone(p.pnl) : 'var(--text-secondary)',
+              fontSize: FS.sm,
+              marginTop: 6,
+              color: p.failed ? 'var(--amber)' : 'var(--text-secondary)',
             }}
           >
-            {pnlText(p.count ? p.pnl : 0)}
-          </p>
-          <p style={{ ...secondary, fontSize: FS.sm, marginTop: 6 }}>
-            {p.count
-              ? p.countLine
-              : p.loading
-                ? 'Loading your trades…'
-                : 'No trades open right now.'}
+            {p.failed
+              ? FAILED_TEXT
+              : p.count
+                ? p.countLine
+                : p.loading
+                  ? 'Loading your trades…'
+                  : 'No trades open right now.'}
           </p>
         </div>
-        {p.series.length > 1 && p.sinceText && (
+        {sparkReady(p.series) && p.sinceText && (
           <Spark series={p.series} pnl={p.pnl} caption={p.sinceText} />
         )}
       </div>
@@ -64,7 +90,7 @@ export function Summary(p: Props) {
           </p>
           <div
             role="img"
-            aria-label={`Now ${pnlText(p.pnl)}, between ${signedShort(p.hit.stop)} if every trade hits its stop and ${signedShort(p.hit.target)} if every one hits its target`}
+            aria-label={`Now ${pnlText(p.pnl)}, between ${stopEnd} if every trade hits its stop and ${targetEnd} if every one hits its target`}
             style={{
               position: 'relative',
               height: 10,
@@ -108,7 +134,7 @@ export function Summary(p: Props) {
                 width: 2,
                 marginLeft: -1,
                 borderRadius: 2,
-                background: '#52525b',
+                background: 'var(--text-muted)',
               }}
             />
             <span
@@ -122,7 +148,7 @@ export function Summary(p: Props) {
                 borderRadius: '50%',
                 background: 'var(--indigo)',
                 border: '3px solid var(--text-primary)',
-                boxShadow: '0 0 0 4px #6366f140',
+                boxShadow: '0 0 0 4px var(--indigo-dim)',
               }}
             />
             <span
@@ -158,20 +184,18 @@ export function Summary(p: Props) {
             <p>
               If all hit the stop
               <b style={{ ...num, display: 'block', fontSize: FS.md, color: 'var(--red)' }}>
-                {signedShort(p.hit.stop)}
+                {stopEnd}
               </b>
             </p>
             <p style={{ textAlign: 'right' }}>
               If all hit the target
               <b style={{ ...num, display: 'block', fontSize: FS.md, color: 'var(--green)' }}>
-                {signedShort(p.hit.target)}
+                {targetEnd}
               </b>
             </p>
           </div>
-          {p.hit.unknown > 0 && (
-            <p style={{ ...secondary, fontSize: FS.xs, marginTop: 4 }}>
-              {p.hit.unknown} without a stop, a target or a dollar rate not counted.
-            </p>
+          {p.notCounted && (
+            <p style={{ ...secondary, fontSize: FS.xs, marginTop: 8 }}>{p.notCounted}</p>
           )}
         </div>
       )}
@@ -187,6 +211,7 @@ export function Summary(p: Props) {
             display: 'flex',
             gap: 8,
             alignItems: 'baseline',
+            textWrap: 'pretty',
           }}
         >
           <span
@@ -196,7 +221,8 @@ export function Summary(p: Props) {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: p.needsLook ? 'var(--amber)' : 'var(--green)',
+              // Green is for money only; a calm line gets a quiet dot.
+              background: p.needsLook ? 'var(--amber)' : 'var(--text-secondary)',
             }}
           />
           <span>{p.lookLine}</span>
@@ -252,7 +278,14 @@ function Spark({
         aria-label={`Open P&L ${caption.toLowerCase()}, now ${pnlText(pnl)}`}
         style={{ display: 'block', width: '100%', height: 'auto' }}
       >
-        <line x1={pad} x2={W - pad} y1={y(0)} y2={y(0)} stroke="#3f3f46" strokeDasharray="3 3" />
+        <line
+          x1={pad}
+          x2={W - pad}
+          y1={y(0)}
+          y2={y(0)}
+          stroke="var(--border-hover)"
+          strokeDasharray="3 3"
+        />
         <path
           d={`M${x(t0)},${y(0)} L${pts.join(' L')} L${x(t1)},${y(0)} Z`}
           fill={color}

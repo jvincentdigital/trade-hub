@@ -97,7 +97,7 @@ export default function RacePage() {
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6 }}>
         Every strategy gets its own play-money account and trades on its own. Which one makes the
         most money? The rules behind each one are on{' '}
-        <Link href="/strategies" style={{ color: 'var(--indigo)' }}>
+        <Link href="/strategies" style={{ color: 'var(--indigo)', padding: '14px 0' }}>
           Strategies
         </Link>
         .

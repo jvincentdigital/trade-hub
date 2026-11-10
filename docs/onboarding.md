@@ -26,7 +26,7 @@ npm install
 make run          # Next dev server on http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The dashboard should render immediately with live crypto + forex prices. If you see empty cards, check the dev-server logs — the free-tier CoinGecko / ExchangeRate APIs are rate-limited and occasionally hiccup.
+Open [http://localhost:3000](http://localhost:3000). The dashboard should render immediately with live crypto + forex prices. If you see empty cards, check the dev-server logs — the free-tier CoinGecko / Kraken / Frankfurter APIs are rate-limited and occasionally hiccup.
 
 ## The Makefile is the interface
 

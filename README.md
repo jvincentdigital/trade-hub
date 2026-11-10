@@ -1,6 +1,6 @@
 # Trade Hub
 
-Personal trading dashboard for crypto and forex: live prices, 14-day candlestick charts, a 21-pattern detector, and personal strategy + watchlist notes. Next.js 16 (App Router), React 19, TypeScript, Tailwind v4. No backend — market data is proxied through Next.js route handlers (free-tier CoinGecko + ExchangeRate API), and user state lives in `localStorage`.
+Personal trading dashboard for crypto and forex: live prices, 14-day candlestick charts, a 21-pattern detector, and personal strategy + watchlist notes. Next.js 16 (App Router), React 19, TypeScript, Tailwind v4. No backend — market data is proxied through Next.js route handlers (free-tier CoinGecko, Kraken and Frankfurter ECB rates), and user state lives in `localStorage`.
 
 ## Commands
 
@@ -51,7 +51,7 @@ Open [http://localhost:3000](http://localhost:3000). Edit `app/page.tsx` — the
 - `docs/product.md` — product scope (what Trade Hub is and isn't)
 - `docs/architecture.md` — data flow, external services, known gaps
 - `TODO.md` — prioritized task list for getting this to production
-- [Next.js 16 docs](https://nextjs.org/docs) — *note: breaking changes from earlier versions*
+- [Next.js 16 docs](https://nextjs.org/docs) — _note: breaking changes from earlier versions_
 
 ## Deploy
 

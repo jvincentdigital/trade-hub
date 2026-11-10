@@ -1,21 +1,35 @@
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
-import type { LiveSummary } from '@/lib/race/live'
+import type { RaceState } from '@/lib/race/live'
 import type { Rule } from '@/lib/rules/schema'
+import type { OpenPosition, PositionMetrics } from '@/lib/positions/positions'
 import { TF_WORD } from '@/lib/positions/today'
 import { usd } from './format'
-import { FS, card, num, secondary } from './ui'
+import { FS, card, num, pnlText, secondary, tone } from './ui'
 
-/** Desktop side card: each strategy with open trades, its account now and slots used. */
+/**
+ * Desktop side card: each strategy with open trades, in the list's order,
+ * with its open P&L from the same rows (live prices), its account money
+ * (balance + that P&L - entry fees still owed) and slots used.
+ */
 export function Strategies(props: {
-  rows: LiveSummary[]
+  /** The race's rows grouped by strategy, as the "By strategy" tab shows them. */
+  groups: { pos: OpenPosition; m: PositionMetrics }[][]
+  state: RaceState
   rules: Map<string, Rule>
   startMoney: number
   maxOpen: number
 }) {
   const { rules, startMoney, maxOpen } = props
-  const busy = props.rows.filter((r) => r.open.length > 0)
-  const waiting = props.rows.length - busy.length
+  const all = Object.values(props.state.strategies)
+  const busy = props.groups.flatMap((g) => {
+    const s = all.find((x) => x.ruleId === g[0].pos.ruleId)
+    if (!s) return []
+    const pnl = g.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
+    const fees = s.open.reduce((a, t) => a + t.entryFee, 0)
+    return [{ ruleId: s.ruleId, name: s.name, n: g.length, pnl, money: s.balance + pnl - fees }]
+  })
+  const waiting = all.length - busy.length
   return (
     <section
       className="today-strats"
@@ -28,7 +42,6 @@ export function Strategies(props: {
       {busy.length === 0 && <p style={{ ...secondary, fontSize: FS.sm }}>None right now.</p>}
       {busy.map((r, i) => {
         const rule = rules.get(r.ruleId)
-        const diff = r.money - startMoney
         return (
           <div
             key={r.ruleId}
@@ -47,19 +60,16 @@ export function Strategies(props: {
                 fontWeight: 600,
                 fontSize: FS.sm,
                 textAlign: 'right',
-                color:
-                  Math.abs(diff) < 0.005
-                    ? 'var(--text-primary)'
-                    : diff > 0
-                      ? 'var(--green)'
-                      : 'var(--red)',
+                color: tone(r.pnl),
               }}
             >
-              {usd(r.money)}
+              {pnlText(r.pnl)}
             </span>
-            <span style={{ ...secondary, fontSize: FS.xs }}>
-              {r.open.length} of {maxOpen} open
+            <span style={{ ...secondary, ...num, fontSize: FS.xs }}>
+              {r.n} of {maxOpen} open
               {rule ? `, ${TF_WORD[rule.timeframe]} candles` : ''}
+              <br />
+              {usd(r.money)} in account
             </span>
             <span
               aria-hidden
@@ -72,7 +82,7 @@ export function Strategies(props: {
                     width: 10,
                     height: 6,
                     borderRadius: 3,
-                    background: k < r.open.length ? 'var(--indigo)' : 'var(--border)',
+                    background: k < r.n ? 'var(--indigo)' : 'var(--border)',
                   }}
                 />
               ))}
@@ -81,7 +91,7 @@ export function Strategies(props: {
         )
       })}
       <p style={{ ...secondary, fontSize: FS.xs, marginTop: 6 }}>
-        Account money now, from {usd(startMoney)} each.
+        Open P&amp;L at live prices. Account money is after entry fees, from {usd(startMoney)} each.
         {waiting > 0 &&
           ` ${waiting} other strateg${waiting === 1 ? 'y is' : 'ies are'} waiting for a signal.`}
       </p>

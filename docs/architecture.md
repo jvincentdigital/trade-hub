@@ -24,7 +24,7 @@ Trade Hub is a working single-user trading dashboard built on Next.js 16 (App Ro
 - `app/` — App Router routes, layouts, and route handlers.
   - `app/api/crypto/prices/route.ts` — proxies CoinGecko `/simple/price` for 10 hardcoded coin IDs; `revalidate: 60`.
   - `app/api/crypto/ohlc/[id]/route.ts` — proxies CoinGecko `/coins/{id}/ohlc?days=14`; normalizes tuples to `{time, open, high, low, close}`; `revalidate: 300`.
-  - `app/api/forex/rates/route.ts` — proxies ExchangeRate API `/latest/USD`; `revalidate: 3600`.
+  - `app/api/forex/rates/route.ts` — proxies Frankfurter (ECB) `/v1/latest?base=USD`; `revalidate: 3600`.
   - `app/api/scanner/route.ts` — MM Confluence v2 setup scanner; parses `tf` (`30min|4H|1D`) and `symbols`, calls `lib/coingecko` helpers for OHLC + volume, runs `detectPatterns` and `scoreSetup`, returns `{ results, skipped }`.
   - `app/error.tsx` / `app/not-found.tsx` — branded error boundary and 404.
   - `app/{crypto,forex,strategies,watchlist}/loading.tsx` — skeleton placeholders.
@@ -47,7 +47,7 @@ Trade Hub is a working single-user trading dashboard built on Next.js 16 (App Ro
 
 1. A page route (e.g. `app/crypto/page.tsx`) is a client component that calls a hook from `lib/hooks/useMarketData.ts`.
 2. The hook uses SWR to fetch one of our own `/api/*` routes — never the upstream service directly.
-3. The route handler calls CoinGecko or ExchangeRate API server-side with `next: { revalidate: N }`, so Next.js caches the upstream response for `N` seconds. This avoids CORS and smooths out rate limits.
+3. The route handler calls CoinGecko, Kraken or Frankfurter server-side with `next: { revalidate: N }`, so Next.js caches the upstream response for `N` seconds. This avoids CORS and smooths out rate limits.
 4. The hook shapes the raw response into the app's domain types (`PriceData`, `ForexRate`, `OHLCCandle`) and returns `{ data, isLoading, error }`.
 5. User state (strategies, watchlist) is read/written via `useStrategies` and `useWatchlist`, which wrap `localStorage`. Components never touch `localStorage` directly.
 
@@ -68,12 +68,12 @@ Added 2026-11-10. Both are pure TypeScript modules with tests, used by client pa
 
 ## External services
 
-| Service          | Endpoint                                                  | Auth | Cache (revalidate) | Notes                                                                                                                                                                       |
-| ---------------- | --------------------------------------------------------- | ---- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CoinGecko        | `api.coingecko.com/api/v3/simple/price`                   | none | 60s                | 10 coins from `COIN_MAP`: BTC, ETH, SOL, XRP, BNB, ADA, AVAX, DOGE, DOT, POL (MATIC retired 2026-11-10: its feed returns nulls)                                             |
-| CoinGecko        | `api.coingecko.com/api/v3/coins/{id}/ohlc?days=N`         | none | 300s               | Detail panel uses `days=14`; scanner uses variable `days` (1/30/180). Granularity is locked by `days` (1→30min, 2–30→4H, 31+→**4-day**, not daily; checked 2026-11-10).     |
-| CoinGecko        | `api.coingecko.com/api/v3/coins/{id}/market_chart?days=N` | none | 300s               | Volume series for the scanner; `days=90` gives hourly prices that `fetchCandles` buckets into 1h/4h/1d candles (`/api/crypto/candles/[id]`, scanner 4H/1D, strategy rules). |
-| ExchangeRate API | `api.exchangerate-api.com/v4/latest/USD`                  | none | 3600s              | 8 pairs derived from USD rates (some inverted). Spot-only — no OHLC, so the scanner currently skips forex.                                                                  |
+| Service           | Endpoint                                                  | Auth | Cache (revalidate) | Notes                                                                                                                                                                       |
+| ----------------- | --------------------------------------------------------- | ---- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CoinGecko         | `api.coingecko.com/api/v3/simple/price`                   | none | 60s                | 10 coins from `COIN_MAP`: BTC, ETH, SOL, XRP, BNB, ADA, AVAX, DOGE, DOT, POL (MATIC retired 2026-11-10: its feed returns nulls)                                             |
+| CoinGecko         | `api.coingecko.com/api/v3/coins/{id}/ohlc?days=N`         | none | 300s               | Detail panel uses `days=14`; scanner uses variable `days` (1/30/180). Granularity is locked by `days` (1→30min, 2–30→4H, 31+→**4-day**, not daily; checked 2026-11-10).     |
+| CoinGecko         | `api.coingecko.com/api/v3/coins/{id}/market_chart?days=N` | none | 300s               | Volume series for the scanner; `days=90` gives hourly prices that `fetchCandles` buckets into 1h/4h/1d candles (`/api/crypto/candles/[id]`, scanner 4H/1D, strategy rules). |
+| Frankfurter (ECB) | `api.frankfurter.dev/v1/latest?base=USD`                  | none | 3600s              | 8 pairs from USD rates: xxx/USD = 1 / rate, USD/xxx = rate, a cross like EUR/GBP = GBP rate / EUR rate (`transformForexRates`). Daily ECB rates, the race's source too.     |
 
 No `.env` files are required today. When a service that needs a key is added, document it in `.env.example` and load via `process.env` in the route handler only — never ship a key to the client.
 
@@ -98,7 +98,7 @@ This is **not** the Next.js most AI training data knows. Before writing framewor
 
 Tracked in `TODO.md`; listed here for architectural awareness (refreshed 2026-11-10):
 
-- Forex data is daily only (free ECB rates via Frankfurter; ExchangeRate API spot updates about once a day). Forex highs/lows are synthesized at ±0.1%, so forex backtests and demo stops are rough. Real intraday forex needs a key (Twelve Data route exists, unset) or a broker practice feed (`docs/demo-brokers.md`).
+- Forex data is daily only (free ECB rates via Frankfurter, for the live rates and the candles alike). Forex highs/lows are synthesized at ±0.1%, so forex backtests and demo stops are rough. Real intraday forex needs a key (Twelve Data route exists, unset) or a broker practice feed (`docs/demo-brokers.md`).
 - The demo account only processes orders while a browser tab is open, and lives in one browser's localStorage.
 - localStorage hooks read storage in `useState` initializers, so pages with saved data can log a hydration mismatch warning on first load (pre-existing pattern; `usePaperAccount` uses `useSyncExternalStore` and avoids it).
 - Sentry DSN still needs to be set by John.

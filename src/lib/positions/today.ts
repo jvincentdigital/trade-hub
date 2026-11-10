@@ -24,9 +24,15 @@ export function usdShort(n: number): string {
   })}`
 }
 
-/** "+$40", "-$19.60", "$0". */
+/**
+ * The minus sign (U+2212), not the hyphen: with tabular figures it fills a
+ * digit's width like "+" does, so "−$1.17" stays tight.
+ */
+export const MINUS = '\u2212'
+
+/** "+$40", "−$19.60", "$0". */
 export const signedShort = (n: number) =>
-  Math.round(Math.abs(n) * 100) === 0 ? '$0' : `${n < 0 ? '-' : '+'}${usdShort(n)}`
+  Math.round(Math.abs(n) * 100) === 0 ? '$0' : `${n < 0 ? MINUS : '+'}${usdShort(n)}`
 
 /** "Gold", "AVAX", "GBP/USD": short enough for a sentence. */
 export function shortName(market: string): string {
@@ -88,22 +94,25 @@ const pctOf = (share: number) => {
   return n < 1 ? 'under 1%' : `${n}%`
 }
 
-/** "48% of the way to target", "At entry; forex prices update once a day". */
+/** "48% of the way to target", "At entry, updates once a day" (forex). */
 export function wayText(p: OpenPosition, price: number | null): string {
   const w = way(p, price)
   if (!w) return 'No live price yet'
   if (w.toward === 'entry')
-    return getInstrument(p.market)?.market === 'forex'
-      ? 'At entry; forex prices update once a day'
-      : 'At entry'
+    return getInstrument(p.market)?.market === 'forex' ? 'At entry, updates once a day' : 'At entry'
   if (w.share == null)
     return w.toward === 'target' ? 'In profit, no target set' : 'In a loss, no stop set'
   const pct = pctOf(w.share)
   return `${pct[0].toUpperCase()}${pct.slice(1)} of the way to ${w.toward}`
 }
 
-/** The plain line under a row's bar: "Risk $20 · Goal +$40 · 48% of the way to target". */
+/**
+ * The plain line under a row: "48% of the way to target". The bar's ends
+ * already show the stop and target dollars; a row without a bar (no stop or
+ * no target) says "No stop · In profit, no target set" instead.
+ */
 export function rowLine(p: OpenPosition, m: PositionMetrics): string {
+  if (track(p, m.price)) return wayText(p, m.price)
   return [
     m.atStopUsd != null ? `Risk ${usdShort(m.atStopUsd)}` : p.stop == null ? 'No stop' : null,
     m.atTargetUsd != null ? `Goal ${signedShort(m.atTargetUsd)}` : null,
@@ -148,6 +157,22 @@ export function lookLine(rows: Row[]): string | null {
   const c = closestToTarget(rows)
   if (!c) return 'Nothing needs a look. No trade is in profit yet.'
   return `Nothing needs a look. Closest: ${name(c.row.pos)}, ${pctOf(c.share)} to target.`
+}
+
+/**
+ * The note under "Where today could end" for trades left out of it:
+ * "1 trade isn't counted: it has no stop or target." The dollar rate is
+ * named only when it is the reason.
+ */
+export function notCountedLine(rows: Row[]): string | null {
+  const out = rows.filter((r) => r.m.atStopUsd == null || r.m.atTargetUsd == null)
+  if (!out.length) return null
+  const one = out.length === 1
+  const head = one ? "1 trade isn't counted" : `${out.length} trades aren't counted`
+  const noLevels = out.filter((r) => r.pos.stop == null || r.pos.target == null).length
+  if (noLevels === out.length) return `${head}: ${one ? 'it has' : 'they have'} no stop or target.`
+  if (noLevels === 0) return `${head}: ${one ? 'its' : 'their'} dollar rate isn't known yet.`
+  return `${head}: no stop, target or dollar rate.`
 }
 
 /** "Closed today: 2 of 2 won, +$13.45 after fees", or null when nothing closed today. */

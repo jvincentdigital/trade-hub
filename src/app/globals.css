@@ -10,6 +10,8 @@
   --text-primary: #f0f0f0;
   --text-secondary: #a1a1aa;
   --text-muted: #52525b;
+  /* Ticks and markers that must show on --border (the entry tick on a row's bar). */
+  --line-strong: #71717a;
   --green: #22c55e;
   --green-dim: #16a34a20;
   --red: #ef4444;
@@ -33,6 +35,12 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard focus: one indigo ring everywhere. */
+:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
 }
 
 ::-webkit-scrollbar {
@@ -101,6 +109,10 @@ body {
 .trade-head:hover {
   background: var(--bg-hover) !important;
 }
+/* The row card clips overflow at its rounded corners, so the ring sits inside. */
+.trade-head:focus-visible {
+  outline-offset: -2px;
+}
 .trade-panel {
   display: grid;
   gap: 14px;
@@ -108,10 +120,17 @@ body {
 @container (min-width: 600px) {
   .trade-head,
   .trade-head[data-pill='no'] {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 1.3fr) auto;
+    /* A fixed P&L column (as in the mockup), so the bar column is the same on every row. */
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 1.3fr) minmax(118px, max-content);
     grid-template-areas: 'mk track pnl' 'meta line status';
     align-items: center;
     column-gap: 16px;
+  }
+  /* One line per row at this width, like the mockup: long strategy names end in "…". */
+  .trade-meta {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .trade-panel {
     grid-template-columns: 1.2fr 1fr;

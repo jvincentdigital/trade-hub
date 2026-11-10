@@ -6,7 +6,7 @@ import type { Rule } from '@/lib/rules/schema'
 import { LEVERAGE } from '@/lib/paper/engine'
 import { formatQuote, getInstrument, type Instrument } from '@/lib/paper/instruments'
 import type { OpenPosition, PositionMetrics, PositionStatus } from '@/lib/positions/positions'
-import { rowLine, signedShort, track, usdShort, whyLevels } from '@/lib/positions/today'
+import { MINUS, rowLine, signedShort, track, usdShort, whyLevels } from '@/lib/positions/today'
 import { fmtLots, perMoney, qty, rrText, sizingOf } from '@/lib/sizing/sizing'
 import { MiniChart } from './MiniChart'
 import { pct, usd } from './format'
@@ -26,6 +26,8 @@ interface Props {
   m: PositionMetrics
   /** Every candle loaded for this market (the chart shows the latest). */
   candles: OHLCCandle[]
+  /** The candle fetch is still running (no candles yet means "loading", not "none"). */
+  candlesLoading: boolean
   rule?: Rule
   now: number
   open: boolean
@@ -33,7 +35,8 @@ interface Props {
   onClose: () => void
 }
 
-export function TradeRow({ pos, m, candles, rule, now, open, onToggle, onClose }: Props) {
+export function TradeRow(props: Props) {
+  const { pos, m, candles, candlesLoading, rule, now, open, onToggle, onClose } = props
   const inst = getInstrument(pos.market)
   const name = inst?.label ?? inst?.symbol ?? pos.market
   const id = rowId(pos.key)
@@ -121,7 +124,10 @@ export function TradeRow({ pos, m, candles, rule, now, open, onToggle, onClose }
             style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .2s' }}
           />
         </span>
-        <span style={{ ...secondary, gridArea: 'meta', fontSize: FS.sm, minWidth: 0 }}>
+        <span
+          className="trade-meta"
+          style={{ ...secondary, gridArea: 'meta', fontSize: FS.sm, minWidth: 0 }}
+        >
           {pos.by}, <span style={{ whiteSpace: 'nowrap' }}>opened {clock(pos.openedAt, now)}</span>
         </span>
         {pill && (
@@ -148,7 +154,9 @@ export function TradeRow({ pos, m, candles, rule, now, open, onToggle, onClose }
               ...secondary,
               ...num,
               gridArea: 'track',
-              display: 'flex',
+              // Fixed label columns, so the bar starts and ends at the same x on every row.
+              display: 'grid',
+              gridTemplateColumns: 'minmax(5.5em, max-content) 1fr minmax(8.5em, max-content)',
               alignItems: 'center',
               gap: 8,
               fontSize: FS.xs,
@@ -158,7 +166,9 @@ export function TradeRow({ pos, m, candles, rule, now, open, onToggle, onClose }
           >
             <span>Stop {m.atStopUsd != null && signedShort(m.atStopUsd)}</span>
             <StopTargetBar entryAt={bar.entryAt} nowAt={bar.nowAt} />
-            <span>Target {m.atTargetUsd != null && signedShort(m.atTargetUsd)}</span>
+            <span style={{ textAlign: 'right' }}>
+              Target {m.atTargetUsd != null && signedShort(m.atTargetUsd)}
+            </span>
           </span>
         )}
         <span style={{ ...secondary, gridArea: 'line', fontSize: FS.xs }}>{rowLine(pos, m)}</span>
@@ -170,6 +180,7 @@ export function TradeRow({ pos, m, candles, rule, now, open, onToggle, onClose }
           m={m}
           inst={inst}
           candles={candles}
+          candlesLoading={candlesLoading}
           rule={rule}
           onClose={onClose}
         />
@@ -186,7 +197,6 @@ function StopTargetBar({ entryAt, nowAt }: { entryAt: number; nowAt: number | nu
     <span
       style={{
         position: 'relative',
-        flex: 1,
         minWidth: 60,
         height: 6,
         borderRadius: 999,
@@ -215,7 +225,7 @@ function StopTargetBar({ entryAt, nowAt }: { entryAt: number; nowAt: number | nu
           width: 2,
           marginLeft: -1,
           borderRadius: 2,
-          background: '#71717a',
+          background: 'var(--line-strong)',
         }}
       />
       {n != null && (
@@ -243,10 +253,16 @@ function Panel(props: {
   m: PositionMetrics
   inst: Instrument | undefined
   candles: OHLCCandle[]
+  candlesLoading: boolean
   rule?: Rule
   onClose: () => void
 }) {
   const { id, pos, m, inst, rule, onClose } = props
+  // Same as Esc: collapse, then keep focus on this row's head.
+  const close = () => {
+    onClose()
+    document.getElementById(`head-${id}`)?.focus()
+  }
   const q = (v: number) => formatQuote(v, inst)
   const forex = inst?.market === 'forex'
   const candles = props.candles.slice(forex ? -40 : -48)
@@ -276,6 +292,7 @@ function Panel(props: {
         <figure style={{ margin: 0 }}>
           <MiniChart
             candles={candles}
+            loading={props.candlesLoading}
             entry={pos.entry}
             stop={pos.stop}
             target={pos.target}
@@ -298,9 +315,13 @@ function Panel(props: {
           }}
         >
           <span>
-            Now <b style={{ color: 'var(--text-primary)' }}>{m.price ? q(m.price) : '-'}</b>{' '}
+            Now <b style={{ color: 'var(--text-primary)' }}>{m.price ? q(m.price) : '-'}</b>
+            {/* The trade's move, not the price's: a sell gains when the price falls. */}
             {m.pnlPct != null && (
-              <span style={{ color: tone(m.pnlPct) }}>{pct(m.pnlPct, true)}</span>
+              <>
+                {' · trade '}
+                <span style={{ color: tone(m.pnlPct) }}>{pct(m.pnlPct, true)}</span>
+              </>
             )}
           </span>
           <span>
@@ -320,7 +341,7 @@ function Panel(props: {
             color="var(--red)"
             price={pos.stop != null ? q(pos.stop) : 'None set'}
             away={m.toStopPct != null ? `${pct(m.toStopPct)} away` : null}
-            dollars={m.toStopUsd != null ? `-${usdShort(m.toStopUsd)} from here` : null}
+            dollars={m.toStopUsd != null ? `${MINUS}${usdShort(m.toStopUsd)} from here` : null}
           />
           <Level
             title="Target"
@@ -372,7 +393,7 @@ function Panel(props: {
           />
           <Cell
             dt="Risk at stop"
-            dd={size.riskUsd != null ? `-${usdShort(size.riskUsd)}` : 'Not capped'}
+            dd={size.riskUsd != null ? `${MINUS}${usdShort(size.riskUsd)}` : 'Not capped'}
             color="var(--red)"
             small="from entry, before fees"
           />
@@ -401,16 +422,7 @@ function Panel(props: {
             {pos.source === 'demo' ? 'Manage in Demo' : 'See it in the Race'}
             <ChevronRight size={16} aria-hidden color="var(--text-secondary)" />
           </Link>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              ...button,
-              background: 'var(--text-primary)',
-              color: 'var(--bg-primary)',
-              border: 0,
-            }}
-          >
+          <button type="button" onClick={close} style={button}>
             Close
           </button>
         </div>

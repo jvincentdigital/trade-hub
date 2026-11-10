@@ -18,7 +18,7 @@ only: nothing talks to a broker, nothing can move real money.
 
 ## Honest limits
 
-- **Forex prices update about once a day** (free ExchangeRate API). Forex here suits slow swing practice, not intraday. For real-time forex practice see `docs/demo-brokers.md` (OANDA practice).
+- **Forex prices update about once a day** (free ECB rates via Frankfurter, the same source as the race). Forex here suits slow swing practice, not intraday. For real-time forex practice see `docs/demo-brokers.md` (OANDA practice).
 - **Crypto prices** are CoinGecko, refreshed about once a minute; a stop can be skipped past between checks.
 - Orders, stops and targets are processed **only while Trade Hub is open in a tab** (`components/paper/PaperEngine.tsx` in the root layout). Close the tab and nothing fills until you come back; the first price after that decides.
 - One browser only (localStorage). Clearing site data wipes it.

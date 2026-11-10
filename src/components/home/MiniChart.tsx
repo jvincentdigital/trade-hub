@@ -2,6 +2,8 @@ import type { OHLCCandle } from '@/lib/types/market'
 
 interface Props {
   candles: OHLCCandle[]
+  /** Still fetching: with no candles, "Loading chart…" instead of "not available". */
+  loading: boolean
   entry: number
   stop?: number
   target?: number
@@ -21,7 +23,8 @@ const PAD_R = 10
  * Small candle chart with the trade's entry, stop and target as labelled
  * lines and the current price as a dot. Light SVG, no chart library.
  */
-export function MiniChart({ candles, entry, stop, target, price, openedAt, fmt, label }: Props) {
+export function MiniChart(props: Props) {
+  const { candles, loading, entry, stop, target, price, openedAt, fmt, label } = props
   if (!candles.length) {
     return (
       <div
@@ -35,7 +38,7 @@ export function MiniChart({ candles, entry, stop, target, price, openedAt, fmt, 
           borderRadius: 12,
         }}
       >
-        Loading chart…
+        {loading ? 'Loading chart…' : 'Chart not available right now.'}
       </div>
     )
   }
@@ -65,7 +68,15 @@ export function MiniChart({ candles, entry, stop, target, price, openedAt, fmt, 
     return (
       <g key={name}>
         <line x1={0} x2={W} y1={y(v)} y2={y(v)} stroke={color} strokeDasharray={dash} />
-        <rect x={x} y={ly - 8} width={w} height={15} rx={4} fill="#111111" opacity={0.92} />
+        <rect
+          x={x}
+          y={ly - 8}
+          width={w}
+          height={15}
+          rx={4}
+          fill="var(--bg-secondary)"
+          opacity={0.92}
+        />
         <text x={x + 5} y={ly + 3.5} fontSize={10.5} fill={color} fontWeight={600}>
           {text}
         </text>
@@ -97,13 +108,13 @@ export function MiniChart({ candles, entry, stop, target, price, openedAt, fmt, 
           x2={openIdx * step + step / 2}
           y1={0}
           y2={H}
-          stroke="#3f3f46"
+          stroke="var(--border-hover)"
           strokeDasharray="2 3"
         />
       )}
       {candles.map((c, i) => {
         const up = c.close >= c.open
-        const color = up ? '#22c55e' : '#ef4444'
+        const color = up ? 'var(--green)' : 'var(--red)'
         const x = i * step + step / 2
         const top = y(Math.max(c.open, c.close))
         const h = Math.max(1, Math.abs(y(c.open) - y(c.close)))
@@ -114,11 +125,18 @@ export function MiniChart({ candles, entry, stop, target, price, openedAt, fmt, 
           </g>
         )
       })}
-      {line(target, '#22c55e', 'Target', '5 4')}
-      {line(stop, '#ef4444', 'Stop', '5 4')}
-      {line(entry, '#a1a1aa', 'Entry', '2 3', true)}
+      {line(target, 'var(--green)', 'Target', '5 4')}
+      {line(stop, 'var(--red)', 'Stop', '5 4')}
+      {line(entry, 'var(--text-secondary)', 'Entry', '2 3', true)}
       {price != null && price > 0 && (
-        <circle cx={dotX} cy={y(price)} r={4.5} fill="#6366f1" stroke="#f0f0f0" strokeWidth={1.6} />
+        <circle
+          cx={dotX}
+          cy={y(price)}
+          r={4.5}
+          fill="var(--indigo)"
+          stroke="var(--text-primary)"
+          strokeWidth={1.6}
+        />
       )}
     </svg>
   )

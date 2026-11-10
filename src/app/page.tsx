@@ -6,7 +6,6 @@ import { HelpCircle } from 'lucide-react'
 import { useCandleMap, useCryptoPrices, useForexRates } from '@/lib/hooks/useMarketData'
 import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
-import { summarize } from '@/lib/race/live'
 import { RACE_SIZING } from '@/lib/race/account'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
 import { getInstrument } from '@/lib/paper/instruments'
@@ -25,13 +24,14 @@ import {
   closedTodayLine,
   lookLine,
   needsLook,
+  notCountedLine,
   openCountLine,
   pnlSeries,
   priceFor,
 } from '@/lib/positions/today'
 import { HowSheet } from '@/components/home/HowSheet'
 import { Strategies } from '@/components/home/Strategies'
-import { Summary } from '@/components/home/Summary'
+import { FAILED_TEXT, Summary } from '@/components/home/Summary'
 import { TradeRow, rowId } from '@/components/home/TradeRow'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from '@/components/home/ui'
 import { formatChange, changeColor } from '@/lib/utils/formatters'
@@ -52,15 +52,20 @@ export default function Page() {
 
 /**
  * The open row and the sheet live in the URL (?trade=, ?how=1), so the
- * browser Back button closes them. Opening pushes one history entry; opening
- * another row replaces it; closing goes back when we pushed, else replaces.
+ * browser Back button closes them. Opening pushes one history entry tagged
+ * `todayOverlay` (opening another row replaces it, keeping the tag); closing
+ * goes back from a tagged entry, else replaces. The tag sits in
+ * history.state, which Next keeps, so it survives leaving Today and coming
+ * back. Only pass our own key: Next skips its URL sync for states with `__NA`.
  */
 function useUrlState() {
   const params = useSearchParams()
-  const pushes = useRef(0)
+  // Set from our own history.back() until its popstate (a frame or more), so a
+  // second close in that gap does nothing instead of leaving Today.
+  const closing = useRef(false)
   useEffect(() => {
     const onPop = () => {
-      pushes.current = Math.max(0, pushes.current - 1)
+      closing.current = false
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -71,10 +76,9 @@ function useUrlState() {
     if (value == null) p.delete(key)
     else p.set(key, value)
     const url = `${window.location.pathname}${p.size ? `?${p}` : ''}`
-    if (push) {
-      pushes.current++
-      window.history.pushState(null, '', url)
-    } else window.history.replaceState(null, '', url)
+    const todayOverlay = push || window.history.state?.todayOverlay === true
+    if (push) window.history.pushState({ todayOverlay }, '', url)
+    else window.history.replaceState({ todayOverlay }, '', url)
   }, [])
   const open = useCallback(
     (key: string, value: string) => write(key, value, !params.has(key)),
@@ -82,9 +86,11 @@ function useUrlState() {
   )
   const close = useCallback(
     (key: string) => {
-      if (!params.has(key)) return
-      if (pushes.current > 0) window.history.back()
-      else write(key, null, false)
+      if (!params.has(key) || closing.current) return
+      if (window.history.state?.todayOverlay === true) {
+        closing.current = true
+        window.history.back()
+      } else write(key, null, false)
     },
     [params, write],
   )
@@ -111,7 +117,9 @@ function Today() {
       all.map((pos) => ({ pos, m: measure(pos, priceFor(pos, prices, state?.prices)) })),
     )
   }, [state, account, prices])
-  const { candles } = useCandleMap(rows.map((r) => r.pos.market))
+  const { candles, isLoading: candlesLoading } = useCandleMap(rows.map((r) => r.pos.market))
+  // The race feed failed and there is nothing to show: say so, not "no trades".
+  const failed = !!raceError && rows.length === 0
 
   const openPnl = rows.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
   const look = rows.filter((r) => needsLook(r.m.status))
@@ -125,7 +133,7 @@ function Today() {
       ),
     [rows, candles, now, openPnl],
   )
-  const strategies = useMemo(() => (state ? summarize(state) : []), [state])
+  const strategyCount = state ? Object.keys(state.strategies).length : 0
   const startMoney = state?.startMoney ?? 1000
   const sizing = state?.sizing ?? RACE_SIZING
   const closedToday = useMemo(
@@ -173,6 +181,7 @@ function Today() {
       pos={r.pos}
       m={r.m}
       candles={candles[r.pos.market] ?? []}
+      candlesLoading={candlesLoading}
       rule={r.pos.ruleId ? RULES.get(r.pos.ruleId) : undefined}
       now={now}
       open={trade === r.pos.key}
@@ -227,15 +236,17 @@ function Today() {
         <div className="today-side">
           <Summary
             loading={raceLoading}
+            failed={failed}
             count={rows.length}
             countLine={openCountLine(
               rows.map((r) => r.pos),
-              strategies.length || BUILT_IN_RULES.length,
+              strategyCount || BUILT_IN_RULES.length,
             )}
             pnl={openPnl}
             series={series}
             sinceText={series.length > 1 ? `Since ${clock(series[0].t, now)}` : null}
             hit={ifAllHit(rows.map((r) => r.m))}
+            notCounted={notCountedLine(rows)}
             lookLine={lookLine(rows)}
             needsLook={look.length > 0}
             closedToday={closedToday}
@@ -244,7 +255,8 @@ function Today() {
           />
           {state && (
             <Strategies
-              rows={strategies}
+              groups={groups.filter((g) => g[0].pos.source === 'race')}
+              state={state}
               rules={RULES}
               startMoney={startMoney}
               maxOpen={sizing.maxOpen}
@@ -309,7 +321,7 @@ function Today() {
                 </button>
               ))}
             </div>
-            {raceError && (
+            {raceError && rows.length > 0 && (
               <p style={{ fontSize: FS.sm, color: 'var(--amber)', marginBottom: 10 }}>
                 Could not load the race trades right now.
               </p>
@@ -317,10 +329,16 @@ function Today() {
             <div style={{ display: 'grid', gap: 10 }}>
               {rows.length === 0 ? (
                 <Empty>
-                  {raceLoading ? 'Loading your trades…' : 'No trades open right now.'}{' '}
-                  <Link href="/demo" style={{ color: 'var(--indigo)' }}>
-                    Place a demo trade
-                  </Link>
+                  {failed ? (
+                    FAILED_TEXT
+                  ) : (
+                    <>
+                      {raceLoading ? 'Loading your trades…' : 'No trades open right now.'}{' '}
+                      <Link href="/demo" style={{ color: 'var(--indigo)' }}>
+                        Place a demo trade
+                      </Link>
+                    </>
+                  )}
                 </Empty>
               ) : tab === 'all' ? (
                 rows.map(renderRow)
@@ -417,8 +435,10 @@ function Empty({ children }: { children: React.ReactNode }) {
 const small: React.CSSProperties = { fontSize: FS.xs, color: 'var(--text-secondary)' }
 
 function Markets() {
-  const { prices, isLoading } = useCryptoPrices()
+  const { prices: all, isLoading } = useCryptoPrices()
   const { rates } = useForexRates()
+  // Coins the feed has a price for; none when it failed (no "+0.00%" tiles).
+  const prices = all.filter((p) => p.price > 0)
   const movers = [...prices]
     .sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h))
     .slice(0, 6)
@@ -428,7 +448,7 @@ function Markets() {
     { href: '/crypto', label: 'Crypto' },
     { href: '/forex', label: 'Forex' },
     { href: '/gold', label: 'Gold' },
-    { href: '/strategies', label: 'Signals' },
+    { href: '/strategies', label: 'Strategies' },
     { href: '/watchlist', label: 'Watchlist' },
   ]
   return (
@@ -447,12 +467,13 @@ function Markets() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
           gap: 6,
           marginTop: 8,
         }}
       >
         {isLoading && <p style={small}>Loading…</p>}
+        {!isLoading && !prices.length && <p style={small}>Prices not available right now.</p>}
         {movers.map((m) => (
           <Link
             key={m.id}
@@ -462,6 +483,7 @@ function Markets() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              gap: 8,
               padding: '0 10px',
               borderRadius: 8,
               background: 'var(--bg-secondary)',

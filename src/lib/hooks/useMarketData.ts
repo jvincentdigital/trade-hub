@@ -5,7 +5,13 @@ import { COIN_MAP, METAL_MAP } from '../coingecko'
 import { FOREX_PAIRS } from '../forexPairs'
 import { getInstrument } from '../paper/instruments'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+// Throws on an error status, so SWR keeps the last good data and retries
+// instead of handing the page an `{ error }` body as if it were prices.
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`${url} ${res.status}`)
+  return res.json()
+}
 
 export type CoinGeckoRow = {
   usd?: number
@@ -52,10 +58,18 @@ export function transformCryptoPrices(
   }))
 }
 
+/**
+ * Pair prices from USD-based rates (1 USD buys data[X] of X): EUR/USD is
+ * 1 / data.EUR, USD/JPY is data.JPY, and a cross like EUR/GBP is
+ * data.GBP / data.EUR. A missing currency gives 0 (no price).
+ */
 export function transformForexRates(data: Record<string, number> | undefined): ForexPair[] {
   if (!data) return []
+  const perUsd = (c: string) => (c === 'USD' ? 1 : data[c])
   return FOREX_PAIRS.map((pair) => {
-    const rate = pair.invert ? 1 / (data[pair.base] ?? 1) : (data[pair.quote] ?? 1)
+    const q = perUsd(pair.quote)
+    const b = perUsd(pair.base)
+    const rate = q > 0 && b > 0 ? q / b : 0
     return {
       id: pair.symbol.replace('/', '-'),
       symbol: pair.symbol,
@@ -115,12 +129,6 @@ export function useForexRates() {
   return { rates: transformForexRates(data), error, isLoading, refresh: mutate }
 }
 
-const okFetcher = async (url: string) => {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`${url} ${res.status}`)
-  return res.json()
-}
-
 const candleUrl = (market: string) =>
   getInstrument(market)?.market === 'forex'
     ? `/api/forex/ohlc/${market}?days=90`
@@ -138,7 +146,7 @@ export function useCandleMap(markets: string[]) {
   const { data, isLoading } = useSWR(
     unique.length ? ['candle-map', ...unique] : null,
     async ([, ...ms]: string[]) => {
-      const got = await Promise.allSettled(ms.map((m) => okFetcher(candleUrl(m))))
+      const got = await Promise.allSettled(ms.map((m) => fetcher(candleUrl(m))))
       return Object.fromEntries(
         ms.flatMap((m, i) => {
           const r = got[i]

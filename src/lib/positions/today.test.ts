@@ -6,6 +6,7 @@ import {
   goalBar,
   lookLine,
   needsLook,
+  notCountedLine,
   openCountLine,
   pnlSeries,
   priceFor,
@@ -48,7 +49,7 @@ describe('money', () => {
     expect(usdShort(-19.6)).toBe('$19.60')
     expect(usdShort(1234.5)).toBe('$1,234.50')
     expect(signedShort(40)).toBe('+$40')
-    expect(signedShort(-13.456)).toBe('-$13.46')
+    expect(signedShort(-13.456)).toBe('\u2212$13.46')
     expect(signedShort(0.001)).toBe('$0')
   })
 })
@@ -98,21 +99,20 @@ describe('track (stop-to-target bar)', () => {
 })
 
 describe('row line', () => {
-  it('risk, goal and how far along', () => {
-    expect(rowLine(long, measure(long, 109.6))).toBe(
-      'Risk $20 · Goal +$40 · 48% of the way to target',
-    )
-    expect(rowLine(long, measure(long, 97))).toBe('Risk $20 · Goal +$40 · 30% of the way to stop')
-    expect(rowLine(short, measure(short, 99.99))).toBe(
-      'Risk $20 · Goal +$40 · Under 1% of the way to target',
-    )
+  it('how far along (the bar ends already show risk and goal)', () => {
+    expect(rowLine(long, measure(long, 109.6))).toBe('48% of the way to target')
+    expect(rowLine(long, measure(long, 97))).toBe('30% of the way to stop')
+    expect(rowLine(short, measure(short, 99.99))).toBe('Under 1% of the way to target')
+  })
+
+  it('no bar: risk and goal stay in the line', () => {
+    const noTarget = { ...long, target: undefined }
+    expect(rowLine(noTarget, measure(noTarget, 97))).toBe('Risk $20 · 30% of the way to stop')
   })
 
   it('at entry: forex says why it is not moving', () => {
     const fx = { ...long, market: 'GBP-USD' }
-    expect(rowLine(fx, measure(fx, 100))).toBe(
-      'Risk $20 · Goal +$40 · At entry; forex prices update once a day',
-    )
+    expect(rowLine(fx, measure(fx, 100))).toBe('At entry, updates once a day')
     expect(wayText(long, 100)).toBe('At entry')
   })
 
@@ -174,13 +174,30 @@ describe('closed today', () => {
     ]
     expect(closedTodayLine(rows, now)).toBe('Closed today: 2 of 2 won, +$13.45 after fees')
     expect(closedTodayLine([closed(-20, now - 1000), closed(5, now - 2000)], now)).toBe(
-      'Closed today: 1 of 2 won, -$15 after fees',
+      'Closed today: 1 of 2 won, \u2212$15 after fees',
     )
   })
 
   it('hidden when nothing closed today', () => {
     expect(closedTodayLine([closed(5, now - 86_400_000)], now)).toBeNull()
     expect(closedTodayLine([], now)).toBeNull()
+  })
+})
+
+describe('not counted note', () => {
+  it('names the reason, the dollar rate only when it is the one', () => {
+    const bare = { ...long, key: 'n', stop: undefined }
+    const noRate = { ...long, key: 'r', usdPerQuote: null }
+    expect(notCountedLine([row(long, 100)])).toBeNull()
+    expect(notCountedLine([row(long, 100), row(bare, 100)])).toBe(
+      "1 trade isn't counted: it has no stop or target.",
+    )
+    expect(notCountedLine([row(noRate, 100), row(noRate, 100)])).toBe(
+      "2 trades aren't counted: their dollar rate isn't known yet.",
+    )
+    expect(notCountedLine([row(bare, 100), row(noRate, 100)])).toBe(
+      "2 trades aren't counted: no stop, target or dollar rate.",
+    )
   })
 })
 
