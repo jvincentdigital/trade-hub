@@ -253,11 +253,13 @@ export interface BacktestResult {
 export function backtest(
   rule: Rule,
   candles: OHLCCandle[],
-  opts: { startEquity?: number; feeRate?: number; leverage?: number } = {},
+  opts: { startEquity?: number; feeRate?: number; leverage?: number; tradeFrom?: number } = {},
 ): BacktestResult {
   const startEquity = opts.startEquity ?? 10_000
   const feeRate = opts.feeRate ?? 0
   const leverage = opts.leverage ?? 1
+  // Earlier candles still warm up the indicators, but only signals from here on trade.
+  const tradeFrom = opts.tradeFrom ?? -Infinity
   const riskFrac = rule.riskPct / 100
   const ind = new Indicators(candles)
   const trades: BacktestTrade[] = []
@@ -317,7 +319,7 @@ export function backtest(
     const s = evaluate(rule, candles, i, ind)
     if (s) {
       signals.push(s)
-      if (!pos && i < candles.length - 1) pending = s
+      if (!pos && i < candles.length - 1 && s.time >= tradeFrom) pending = s
     }
   }
   if (pos) {

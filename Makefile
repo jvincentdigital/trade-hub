@@ -8,7 +8,7 @@
 # Convention: keep targets simple. If a target needs more than a few lines of
 # shell, put the logic in scripts/ and call it from here.
 
-.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies
+.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick
 
 PROJECT_NAME := trade-hub
 
@@ -73,6 +73,9 @@ docs: ## Serve docs locally (usage: make docs PORT=3000)
 
 extract-strategies: ## Turn course transcripts into strategy rules via claude -p (usage: make extract-strategies [DIR=...])
 	scripts/extract-strategies $(DIR)
+
+race-tick: ## Strategy race: one live tick for every strategy's play account (state in ~/.local/share/trade-hub/race.json)
+	npx tsx scripts/race-tick.ts
 
 # ── Help ──────────────────────────────────────────────────
 

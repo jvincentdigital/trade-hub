@@ -18,6 +18,10 @@ Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draf
 - Tests went from 37 to 70, and the e2e smoke now has 8 tests covering `/demo`. Typecheck, lint, build and e2e all pass.
 - Course: the MacBook transcription had crashed (PyAV bug), so it now runs on the Mac Mini (`scripts/transcribe-course.py`). `make extract-strategies` turned the first 8 videos into rules with timestamped sources, and the Market Maker PDF gave 2 more.
 
+**Added later (2026-11-10 afternoon): Strategy race, `/race`.** Every built-in strategy gets its own play-money account ($1,000 default, editable). "Last 90 days" ranks them by end money (money split evenly over each strategy's markets, fees on); tap a row for per-market results and trades. "Live from today" is a forward test: `make race-tick` opens/closes trades per strategy into `~/.local/share/trade-hub/race.json`; first tick ran by hand (9 trades opened). The hourly launchd job is written (`scripts/launchd/`) but **not installed**. See `docs/strategy-race.md`.
+
+- [ ] @john: say yes to the hourly race job, then install it with the 3 commands in `docs/strategy-race.md`.
+
 **How to review (about 10 min)**
 
 1. Phone screenshots: `~/jvd-outputs/2026-11-10/trade-hub/` (01 to 06).

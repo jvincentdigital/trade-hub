@@ -195,3 +195,14 @@ describe('streak condition', () => {
     expect(sigs.every((s) => s.direction === 'long')).toBe(true)
   })
 })
+
+describe('backtest tradeFrom', () => {
+  it('warms up indicators on early candles but only trades signals from tradeFrom on', () => {
+    const c = series(40, 1)
+    const all = backtest(base, c)
+    const late = backtest(base, c, { tradeFrom: c[30].time })
+    expect(all.trades[0].entryTime).toBeLessThan(c[30].time)
+    expect(late.trades.length).toBeGreaterThan(0)
+    expect(late.trades.every((t) => t.entryTime > c[30].time)).toBe(true)
+  })
+})

@@ -48,6 +48,7 @@ src/
     strategies/         #   Strategy rules + live scanner + trade plans (localStorage)
       _components/      #     StrategyRules.tsx, RuleEditor.tsx, SetupScanner.tsx
     demo/               #   Demo account: play-money paper trading
+    race/               #   Strategy race: 90-day leaderboard + live forward test (docs/strategy-race.md)
     watchlist/          #   User-selected pairs (localStorage)
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
