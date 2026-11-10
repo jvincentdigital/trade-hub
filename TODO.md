@@ -4,6 +4,46 @@ Rank-ordered path from the current working dashboard → production-ready. Start
 
 Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
+## Where we left off (2026-11-10 night)
+
+Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draft PR #1** https://github.com/jvincentdigital/trade-hub/pull/1 (do not merge without John). Nothing deployed, no real money or broker touched, no paid APIs.
+
+**What changed**
+
+- **Fixed: live crypto prices were down.** CoinGecko sends `null` for the retired MATIC coin and the strict schema 502'd `/api/crypto/prices` for all coins. Schema is now null-tolerant and MATIC became POL.
+- **Fixed: scanner 4H/1D never worked.** CoinGecko `/ohlc` returns 4-day bars above 30 days. Real 1h/4h/1d candles are now built from hourly prices (`/api/crypto/candles/[id]`).
+- **New `/demo` demo account** ("Cuenta demo"): play money, market/limit orders, SL/TP, risk sizing, fees, live P&L, equity curve, stats, plan checks from John's Trading Plan. See `docs/paper-trading.md`.
+- **New strategy rules** on `/strategies`: check live, backtest, chart signals, one-tap demo trade, editable copies. Two rules come from the Market Maker PDF. See `docs/strategy-rules.md` and `docs/strategies/marvel-fx-method.md`.
+- `docs/demo-brokers.md`: OANDA practice (forex) and Alpaca paper (crypto) are the free picks. Research only, no sign-ups.
+- Tests went from 37 to 70, and the e2e smoke now has 8 tests covering `/demo`. Typecheck, lint, build and e2e all pass.
+- Course: the MacBook transcription had crashed (PyAV bug), so it now runs on the Mac Mini (`scripts/transcribe-course.py`). `make extract-strategies` turned the first 8 videos into rules with timestamped sources, and the Market Maker PDF gave 2 more.
+
+**How to review (about 10 min)**
+
+1. Phone screenshots: `~/jvd-outputs/2026-11-10/trade-hub/` (01 to 06).
+2. `make run`, then open `/demo`. Buy BTC with a stop and watch the P&L, then close it.
+3. `/strategies`: press "All 18" on EMA 50 pullback. Then try "Check now", and "Place demo trade" if a signal shows.
+
+**Choices I made (change if wrong)**
+
+- Demo costs: crypto 0.1% per side, forex about 0.7 pip. Forex margin 30:1, crypto 1:1 (constants at the top of `src/lib/paper/engine.ts`).
+- Plan checks warn but don't block.
+- Built-in rules are read-only; "Duplicate" makes an editable copy.
+- Kept the old trade-plans key `tradehub.strategies.v1` so saved plans survive.
+- Forex stays on the free daily feeds; I didn't sign up for Twelve Data or anything else.
+- Course rules (BTC only, 90 days, fees on; CoinGecko rate-limited the other coins): none positive yet. Best was MFX level 3 peak reversal (9 trades, 56% wins, -1.0R).
+- Disk: my footprint is about 1.1 GB (node_modules + .next). The drop from 162 to about 130 GB free was mostly a separate job downloading a 15 GB FLUX.2 image model into ~/.cache/huggingface at 00:58. I didn't touch it.
+
+**Next steps**
+
+- [ ] @john: review PR #1 on a phone. Say merge or change.
+- [ ] Course transcripts: running on the Mac Mini into `~/jvd-outputs/trading/transcripts/` (progress in `_progress.md`). When all 21 are done, run `make extract-strategies` on the branch and review the diff to `src/lib/rules/marvel.ts`. At 01:46, 9 of 21 were done (all of "Lo demas" plus 1 practice video); the 8 "Lo demas" ones were already turned into 2 rules tonight (MFX level 3 peak reversal, MFX EMA 12/36 pullback). A second pass is queued for the theory videos that were copied later. Expect all 21 by about 03:00.
+- [ ] @john: sign up for OANDA practice (forex, real-time) and/or Alpaca paper (crypto) if you want broker-side demo fills. Stop if either asks for a card. Then we build `docs/demo-brokers.md` step by step (needs a passcode on the app first).
+- [ ] Practice in the demo for 2+ weeks with one rule before any real money. No rule has an edge yet after fees (backtest table in `docs/strategy-rules.md`).
+- [ ] Rule conditions to add when there's intraday forex data: Asian range / initial high-low of the day, ADR filter, 2-hour time stop, EMA-based targets.
+- [ ] Pre-existing: dashboard sparklines fire 10 CoinGecko calls at once, and some get rate-limited (500), which leaves blank sparklines. Fix: stagger them or cache them longer.
+- [ ] Known pre-existing issue: `useStrategies`/`useTradePlans`/`useWatchlist` read localStorage in `useState`, which can log a hydration warning when data is saved.
+
 ## Reliability (the app breaks silently today)
 
 - [x] Add `app/error.tsx` and `app/not-found.tsx` with branded, useful UI — currently unhandled errors fall through to Next.js defaults.
