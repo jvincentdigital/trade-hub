@@ -62,6 +62,14 @@ describe('transformForexRates', () => {
     expect(usdjpy?.price).toBe(150)
   })
 
+  it('crosses non-USD pairs (EUR/GBP = GBP per USD / EUR per USD)', () => {
+    const out = transformForexRates({ EUR: 0.892, GBP: 0.745, JPY: 158 })
+    expect(out.find((p) => p.symbol === 'EUR/GBP')?.price).toBeCloseTo(0.835, 3)
+    expect(out.find((p) => p.symbol === 'GBP/USD')?.price).toBeCloseTo(1 / 0.745, 5)
+    // A currency missing from the feed gives no price, not a made-up 1.
+    expect(out.find((p) => p.symbol === 'USD/CAD')?.price).toBe(0)
+  })
+
   it('emits one entry per configured FOREX_PAIRS', () => {
     const out = transformForexRates({
       EUR: 0.8,

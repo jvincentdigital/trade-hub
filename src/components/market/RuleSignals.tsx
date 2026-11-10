@@ -93,7 +93,7 @@ export function RuleSignals({ instrumentId }: { instrumentId: string }) {
       {!rule && (
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
           Pick a rule to mark every candle where it would have entered. Edit rules on{' '}
-          <Link href="/strategies" style={{ color: 'var(--indigo)' }}>
+          <Link href="/strategies" style={{ color: 'var(--indigo)', padding: '15px 0' }}>
             Strategies
           </Link>
           .

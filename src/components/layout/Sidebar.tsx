@@ -68,6 +68,7 @@ export function Sidebar() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px',
+                minHeight: 44,
                 padding: '9px 1rem',
                 margin: '1px 8px',
                 borderRadius: '7px',

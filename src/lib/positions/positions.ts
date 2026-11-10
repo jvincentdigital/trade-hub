@@ -12,6 +12,8 @@ export interface OpenPosition {
   source: 'race' | 'demo'
   /** Strategy name, or "Demo". */
   by: string
+  /** Race strategy id (to look up its rule); none for demo trades. */
+  ruleId?: string
   market: string
   side: Side
   entry: number
@@ -106,6 +108,7 @@ export function racePositions(state: RaceState | null | undefined): OpenPosition
       key: `race:${s.ruleId}:${t.market}`,
       source: 'race' as const,
       by: s.name,
+      ruleId: s.ruleId,
       market: t.market,
       side: t.direction,
       entry: t.entry,

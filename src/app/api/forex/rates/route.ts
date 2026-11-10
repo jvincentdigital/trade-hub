@@ -8,10 +8,12 @@ export async function GET(request: Request) {
   if (!limit.ok) return rateLimitResponse(limit)
 
   try {
-    const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD', {
+    // ECB rates via Frankfurter, the source the race opens and closes forex on.
+    // (ExchangeRate API rounds to 2-3 digits: CAD 1.41 against the ECB's 1.4136.)
+    const res = await fetch('https://api.frankfurter.dev/v1/latest?base=USD', {
       next: { revalidate: 3600 },
     })
-    if (!res.ok) throw new Error(`ExchangeRate ${res.status}`)
+    if (!res.ok) throw new Error(`Frankfurter ${res.status}`)
     const raw = await res.json()
     const parsed = forexRatesResponseSchema.safeParse(raw)
     if (!parsed.success) {

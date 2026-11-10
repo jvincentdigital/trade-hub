@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Trade Hub is a single-user web dashboard for crypto and forex markets: live prices, candlestick charts, a 21-pattern detector that runs client-side on OHLC data, structured strategy rules (signals, backtests), a play-money demo account (`/demo`, paper trading), trade plans and a watchlist. No accounts, no database (one passcode on the live site); user state persists in `localStorage`. External market data is proxied through Next.js route handlers (free-tier CoinGecko and ExchangeRate API, no keys). Deploys to Vercel (project `trade-hub`, linked; preview only so far) behind a passcode, with the live race fed by a free Cloudflare Worker (`race-worker/`). See `docs/live.md`.
+Trade Hub is a single-user web dashboard for crypto and forex markets: live prices, candlestick charts, a 21-pattern detector that runs client-side on OHLC data, structured strategy rules (signals, backtests), a play-money demo account (`/demo`, paper trading), trade plans and a watchlist. No accounts, no database (one passcode on the live site); user state persists in `localStorage`. External market data is proxied through Next.js route handlers (free-tier CoinGecko, Kraken and Frankfurter ECB rates, no keys). Deploys to Vercel (project `trade-hub`, linked; preview only so far) behind a passcode, with the live race fed by a free Cloudflare Worker (`race-worker/`). See `docs/live.md`.
 
 ## Tech Stack
 
@@ -37,7 +37,7 @@ Complex commands that need real bash logic live in `scripts/` and are called fro
 ```
 src/
   app/                  # Next.js App Router
-    api/                #   Route handlers (proxy CoinGecko + ExchangeRate API)
+    api/                #   Route handlers (proxy CoinGecko, Kraken, Frankfurter)
       crypto/prices/    #     GET  live prices for 10 coins
       crypto/ohlc/[id]/ #     GET  OHLC candles (granularity from days param; >30 days = 4-day bars)
       crypto/candles/[id]/ #  GET  real 1h/4h/1d candles from Kraken (720 each)
@@ -54,7 +54,7 @@ src/
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
     layout.tsx          #   Root layout + sidebar
-    page.tsx            #   Today: open trades with charts, race summary, closed trades (docs/dashboard.md)
+    page.tsx            #   Today: summary card + one row per open trade, opens in place (docs/dashboard.md)
     unlock/             #   Passcode page (src/proxy.ts locks everything else; docs/live.md)
   components/
     layout/Sidebar.tsx  # Responsive nav (desktop sidebar / mobile bottom bar)
@@ -85,7 +85,7 @@ AGENTS.md               # Critical notes for AI agents (Next.js 16 specifics)
 
 ## Architecture
 
-Single Next.js app, no backend service or database. The client does most of the work: SWR hooks in `lib/hooks/useMarketData.ts` fetch from our own API routes, which proxy CoinGecko and ExchangeRate API (free tier, no auth) to sidestep CORS and add ISR caching. OHLC candles feed a client-side detector (`lib/patterns/`) that scores 21 candlestick patterns and surfaces the top results on the crypto detail panel. User-owned state lives in `localStorage`: `trade-hub-paper-account` (demo account), `trade-hub-rules` (own strategy rules), `tradehub.strategies.v1` (trade plans), `trade-hub-watchlist`. The demo account is play money only; it never talks to a broker. See `docs/architecture.md` for a deeper walkthrough.
+Single Next.js app, no backend service or database. The client does most of the work: SWR hooks in `lib/hooks/useMarketData.ts` fetch from our own API routes, which proxy CoinGecko, Kraken and Frankfurter (free tier, no auth) to sidestep CORS and add ISR caching. OHLC candles feed a client-side detector (`lib/patterns/`) that scores 21 candlestick patterns and surfaces the top results on the crypto detail panel. User-owned state lives in `localStorage`: `trade-hub-paper-account` (demo account), `trade-hub-rules` (own strategy rules), `tradehub.strategies.v1` (trade plans), `trade-hub-watchlist`. The demo account is play money only; it never talks to a broker. See `docs/architecture.md` for a deeper walkthrough.
 
 ## Key Workflows
 
@@ -128,8 +128,7 @@ Current integrations (all unauthenticated, free tier):
 
 - **CoinGecko** — `api.coingecko.com/api/v3/simple/price`, `/coins/{id}/ohlc` and `/coins/{id}/market_chart`
 - **Kraken public OHLC**: `api.kraken.com/0/public/OHLC?pair=<PAIR>&interval=<60|240|1440>`: real candles for crypto and gold (PAXGUSD) in the candles route, rules, backtests, the scanner's 4H/1D and the race. No key or account. Returns the last 720 candles (30 days of 1h, 120 days of 4h, about 2 years of 1d) plus the forming one, under a result key that is Kraken's own pair name (`XXBTZUSD` for `XBTUSD`). Public limit about 1 call a second: `src/lib/kraken.ts` spaces calls 1.1 s apart, caches each pair + size 5 minutes and retries once. Pairs in `KRAKEN_PAIRS` (DOGE is `XDGUSD`).
-- **Frankfurter (ECB)**: daily forex rates
-- **ExchangeRate API** — `api.exchangerate-api.com/v4/latest/USD`
+- **Frankfurter (ECB)**: daily forex rates. `/api/forex/rates` reads `api.frankfurter.dev/v1/latest?base=USD`, the same ECB source the race and the forex candles use (it replaced ExchangeRate API on 2026-11-10, which rounds to 2-3 digits: CAD 1.41 against the ECB's 1.4136).
 
 ## Conventions
 

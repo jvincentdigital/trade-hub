@@ -571,7 +571,7 @@ function IconButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      style={{ ...ghost, padding: 0, width: 36, justifyContent: 'center' }}
+      style={{ ...ghost, padding: 0, width: 44, justifyContent: 'center' }}
     >
       {children}
     </button>

@@ -675,7 +675,7 @@ const input: React.CSSProperties = {
   padding: '9px 10px',
   color: 'var(--text-primary)',
   fontSize: 14,
-  minHeight: 40,
+  minHeight: 44,
 }
 const button: React.CSSProperties = {
   border: 'none',
