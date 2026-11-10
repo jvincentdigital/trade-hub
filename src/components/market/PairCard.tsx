@@ -38,11 +38,16 @@ export function PairCard({ item, selected, watched, onSelect, onWatch, sparkline
                 e.stopPropagation()
                 onWatch()
               }}
+              aria-label={
+                watched ? `Remove ${item.symbol} from watchlist` : `Add ${item.symbol} to watchlist`
+              }
+              aria-pressed={watched}
               style={{
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                padding: '0',
+                padding: '16px',
+                margin: '-16px',
                 display: 'flex',
               }}
             >

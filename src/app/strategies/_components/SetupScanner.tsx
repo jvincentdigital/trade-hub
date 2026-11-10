@@ -64,6 +64,8 @@ export default function SetupScanner() {
               onClick={() => setTf(t)}
               style={{
                 padding: '5px 10px',
+                minHeight: '44px',
+                minWidth: '44px',
                 borderRadius: '6px',
                 fontSize: '11px',
                 cursor: 'pointer',

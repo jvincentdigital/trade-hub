@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useStoredState } from './useStoredState'
 import { Strategy } from '../types/strategy'
 import { strategiesArraySchema } from '../schemas'
 
@@ -23,7 +23,7 @@ const loadInitial = (): Strategy[] => {
 }
 
 export function useStrategies() {
-  const [strategies, setStrategies] = useState<Strategy[]>(loadInitial)
+  const [strategies, setStrategies] = useStoredState<Strategy[]>(loadInitial, [])
 
   const save = (list: Strategy[]) => {
     setStrategies(list)

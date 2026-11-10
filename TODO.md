@@ -6,6 +6,11 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**Newest (2026-11-10, evening): "Today" home + ready to go live behind a passcode.** The home page is now a daily hub: every open trade (race strategies + demo) as a card with a small candle chart, entry/stop/target lines, P&L in $, distance to stop and target in % and $, a status tag (Near stop, Near target, Running, No stop), and one button. Below: how the race is going (honest: no edge yet), closed trades today and this week, a "How trades are placed" sheet, compact markets. See `docs/dashboard.md`. Audit of every page and button fixed: hydration error on `/strategies` (the localStorage hooks, old item below), 44 px tap targets (bottom nav, back links, timeframe buttons, star and trash buttons with labels), our own rate limit blocking backtests (120 to 300 a minute), "Back to Today" on the 404. Passcode lock (`src/proxy.ts`, `/unlock`), race relay worker on Cloudflare free (`race-worker/`, the hourly tick pushes to it), Vercel env set for Preview and Production, preview checked. See `docs/live.md`.
+
+- [ ] @john: open the preview on the phone (passcode in `~/.local/share/trade-hub/passcode.env` on the Mac Mini), then say "merge and go live" or what to change. Production deploy waits for that yes.
+- [ ] Later, if wanted: trailing stop, break-even, partial profits (the explainer says they are missing).
+
 **Latest (2026-11-10 late night): real candles.** Crypto and gold candles now come from Kraken's free public OHLC (`src/lib/kraken.ts`, no key) instead of CoinGecko's one price per hour. The old 1h candles were flat, every flat candle counted as a Dragonfly and Gravestone Doji, so every 1h rule's reversal check passed: old 1h backtests and the old "Last 90 days" board were misleading. `/race` now shows "Past results" with a window per strategy (1h: 30 days, 4h: 120, daily: 365), the live tick uses real candles, and the pattern detector ignores zero-range candles. BNB is on Kraken too. See `docs/strategy-race.md` "Real candles".
 
 Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draft PR #1** https://github.com/jvincentdigital/trade-hub/pull/1 (do not merge without John). Nothing deployed, no real money or broker touched, no paid APIs.
@@ -50,7 +55,7 @@ Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draf
 - [ ] Practice in the demo for 2+ weeks with one rule before any real money. No rule has an edge yet after fees (backtest table in `docs/strategy-rules.md`).
 - [ ] Rule conditions to add when there's intraday forex data: Asian range / initial high-low of the day, ADR filter, 2-hour time stop, EMA-based targets.
 - [x] Pre-existing: dashboard sparklines fire 10 CoinGecko calls at once, and some get rate-limited (500), which leaves blank sparklines. Fix: stagger them or cache them longer. (fixed 2026-11-10, 5c1aa67: one at a time, 10 min refresh, route serves last good candles on 429)
-- [ ] Known pre-existing issue: `useStrategies`/`useTradePlans`/`useWatchlist` read localStorage in `useState`, which can log a hydration warning when data is saved.
+- [x] Known pre-existing issue: `useStrategies`/`useTradePlans`/`useWatchlist` read localStorage in `useState`, which can log a hydration warning when data is saved. (fixed 2026-11-10: `useStoredState` loads after mount, `useRules` too)
 
 ## Reliability (the app breaks silently today)
 

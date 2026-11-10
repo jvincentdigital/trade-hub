@@ -404,20 +404,19 @@ function HowTrades() {
               <li>
                 <b>Stop loss.</b> Just past the recent swing (the lowest low before a buy, the
                 highest high before a sell, over the last 5 to 10 candles) plus a small buffer, so
-                normal wiggles don&apos;t knock the trade out.
+                normal wiggles don’t knock the trade out.
               </li>
               <li>
                 <b>Take profit.</b> Most strategies aim for 2 times the stop distance (a few use 1.5
                 or 3 times). Win once, lose twice, and you are about even.
               </li>
               <li>
-                <b>Size.</b> Each trade risks 0.5% to 1% of that market&apos;s share of the money if
-                the stop hits. That is why race trades are cents: $1,000 is split over up to 19
-                markets.
+                <b>Size.</b> Each trade risks 0.5% to 1% of that market’s share of the money if the
+                stop hits. That is why race trades are cents: $1,000 is split over up to 19 markets.
               </li>
               <li>
                 <b>Fees.</b> Paid going in and coming out: 0.1% per side on crypto, about 0.007% on
-                forex, 0.02% on gold. P&amp;L on the cards is before the exit fee.
+                forex, 0.02% on gold. P&L on the cards is before the exit fee.
               </li>
               <li>
                 <b>One at a time.</b> Each strategy holds at most one trade per market.

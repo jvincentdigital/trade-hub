@@ -149,6 +149,7 @@ function TradePlansSection() {
             border: 'none',
             borderRadius: '7px',
             padding: '7px 12px',
+            minHeight: '44px',
             cursor: 'pointer',
             color: 'white',
             fontSize: '12px',

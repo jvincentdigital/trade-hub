@@ -64,8 +64,9 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           display: 'inline-flex',
           alignItems: 'center',
           gap: '6px',
-          fontSize: '12px',
-          color: 'var(--text-muted)',
+          minHeight: '44px',
+          fontSize: '13px',
+          color: 'var(--text-secondary)',
           textDecoration: 'none',
         }}
       >
@@ -112,6 +113,7 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
             border: 'none',
             borderRadius: '7px',
             padding: '7px 12px',
+            minHeight: '44px',
             color: 'white',
             fontSize: '12px',
             fontWeight: 500,
@@ -134,6 +136,8 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
               }}
               style={{
                 padding: '5px 10px',
+                minHeight: '44px',
+                minWidth: '44px',
                 borderRadius: '6px',
                 fontSize: '11px',
                 cursor: 'pointer',
@@ -151,6 +155,8 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
           aria-pressed={tv}
           style={{
             padding: '5px 10px',
+            minHeight: '44px',
+            minWidth: '44px',
             borderRadius: '6px',
             fontSize: '11px',
             cursor: 'pointer',
@@ -311,7 +317,9 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
       <Link
         href={`/demo?symbol=${pair}`}
         style={{
-          display: 'inline-block',
+          display: 'inline-flex',
+          alignItems: 'center',
+          minHeight: '44px',
           marginTop: '12px',
           fontSize: '12px',
           color: 'var(--indigo)',

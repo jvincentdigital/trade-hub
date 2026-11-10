@@ -24,7 +24,7 @@ export default function NotFound() {
           maxWidth: '420px',
         }}
       >
-        That route doesn&apos;t exist in Trade Hub. Head back to the dashboard to pick a market.
+        That route doesn&apos;t exist in Trade Hub. Head back to Today to see your trades.
       </p>
       <Link
         href="/"
@@ -33,13 +33,16 @@ export default function NotFound() {
           background: 'var(--indigo)',
           borderRadius: '7px',
           padding: '8px 14px',
+          minHeight: '44px',
+          display: 'inline-flex',
+          alignItems: 'center',
           color: 'white',
           fontSize: '12px',
           fontWeight: 500,
           textDecoration: 'none',
         }}
       >
-        Back to dashboard
+        Back to Today
       </Link>
     </div>
   )

@@ -73,7 +73,7 @@ export function RuleSignals({ instrumentId }: { instrumentId: string }) {
           value={ruleId}
           onChange={(e) => setRuleId(e.target.value)}
           style={{
-            minHeight: 36,
+            minHeight: 44,
             borderRadius: 7,
             border: '0.5px solid var(--border)',
             background: 'var(--bg-secondary)',

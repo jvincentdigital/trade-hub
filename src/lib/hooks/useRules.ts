@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useStoredState } from './useStoredState'
 import { rulesArraySchema, type Rule } from '../rules/schema'
 import { BUILT_IN_RULES } from '../rules/presets'
 
@@ -24,7 +24,7 @@ const loadInitial = (): Rule[] => {
 
 /** Built-in rules (read-only) followed by the user's own. */
 export function useRules() {
-  const [custom, setCustom] = useState<Rule[]>(loadInitial)
+  const [custom, setCustom] = useStoredState<Rule[]>(loadInitial, [])
 
   const save = (list: Rule[]) => {
     setCustom(list)

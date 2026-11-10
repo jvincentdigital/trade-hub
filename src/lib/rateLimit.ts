@@ -19,7 +19,8 @@ interface Config {
 
 const LIMITS: Record<Scope, Config> = {
   scanner: { max: 30, windowMs: 60_000 },
-  data: { max: 120, windowMs: 60_000 },
+  // One all-markets backtest is about 35 calls; 120 a minute blocked a few in a row (audit 2026-11-10).
+  data: { max: 300, windowMs: 60_000 },
 }
 
 const buckets: Map<string, Entry> = new Map()
@@ -68,6 +69,6 @@ export function rateLimitResponse(result: RateLimitResult): NextResponse {
         'X-RateLimit-Reset': String(Math.ceil(result.resetAt / 1000)),
         'Retry-After': String(retryAfter),
       },
-    }
+    },
   )
 }

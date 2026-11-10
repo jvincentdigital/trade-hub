@@ -687,7 +687,7 @@ const smallButton: React.CSSProperties = {
   color: 'var(--text-secondary)',
   fontSize: 12,
   cursor: 'pointer',
-  minHeight: 36,
+  minHeight: 44,
 }
 const row: React.CSSProperties = {
   display: 'flex',
@@ -832,7 +832,7 @@ function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             style={{
               flex: 1,
-              minHeight: 36,
+              minHeight: 44,
               border: 'none',
               borderRadius: 6,
               fontSize: 12,

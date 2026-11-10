@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Trade Hub is a single-user web dashboard for crypto and forex markets: live prices, candlestick charts, a 21-pattern detector that runs client-side on OHLC data, structured strategy rules (signals, backtests), a play-money demo account (`/demo`, paper trading), trade plans and a watchlist. No auth, no database — user state persists in `localStorage`. External market data is proxied through Next.js route handlers (free-tier CoinGecko and ExchangeRate API, no keys). Intended deploy target is Vercel (not yet linked).
+Trade Hub is a single-user web dashboard for crypto and forex markets: live prices, candlestick charts, a 21-pattern detector that runs client-side on OHLC data, structured strategy rules (signals, backtests), a play-money demo account (`/demo`, paper trading), trade plans and a watchlist. No accounts, no database (one passcode on the live site); user state persists in `localStorage`. External market data is proxied through Next.js route handlers (free-tier CoinGecko and ExchangeRate API, no keys). Deploys to Vercel (project `trade-hub`, linked; preview only so far) behind a passcode, with the live race fed by a free Cloudflare Worker (`race-worker/`). See `docs/live.md`.
 
 ## Tech Stack
 
@@ -54,7 +54,8 @@ src/
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
     layout.tsx          #   Root layout + sidebar
-    page.tsx            #   Dashboard (aggregated sentiment)
+    page.tsx            #   Today: open trades with charts, race summary, closed trades (docs/dashboard.md)
+    unlock/             #   Passcode page (src/proxy.ts locks everything else; docs/live.md)
   components/
     layout/Sidebar.tsx  # Responsive nav (desktop sidebar / mobile bottom bar)
     market/             # PairCard, PatternBadge, PriceChart, CandleChart, RuleSignals

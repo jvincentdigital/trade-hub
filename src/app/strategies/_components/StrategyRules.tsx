@@ -589,7 +589,7 @@ const ghost: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 5,
-  minHeight: 36,
+  minHeight: 44,
   padding: '0 12px',
   borderRadius: 7,
   border: '0.5px solid var(--border)',

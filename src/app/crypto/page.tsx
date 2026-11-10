@@ -41,6 +41,7 @@ export default function CryptoPage() {
             border: '0.5px solid var(--border)',
             borderRadius: '7px',
             padding: '6px 10px',
+            minHeight: '44px',
             cursor: 'pointer',
             color: 'var(--text-secondary)',
             display: 'flex',
