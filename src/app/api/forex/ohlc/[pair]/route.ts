@@ -4,7 +4,7 @@ import { frankfurterResponseSchema } from '@/lib/schemas'
 import { frankfurterToCandles, frankfurterUrl } from '@/lib/frankfurter'
 import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/rateLimit'
 
-const ALLOWED_DAYS = new Set([7, 14, 30, 90, 180, 365])
+const ALLOWED_DAYS = new Set([7, 14, 30, 90, 180, 365, 730])
 const PAIR_RE = /^([A-Z]{3})-([A-Z]{3})$/
 
 export async function GET(request: Request, { params }: { params: Promise<{ pair: string }> }) {

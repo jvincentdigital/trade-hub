@@ -6,6 +6,8 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**Latest (2026-11-10 late night): real candles.** Crypto and gold candles now come from Kraken's free public OHLC (`src/lib/kraken.ts`, no key) instead of CoinGecko's one price per hour. The old 1h candles were flat, every flat candle counted as a Dragonfly and Gravestone Doji, so every 1h rule's reversal check passed: old 1h backtests and the old "Last 90 days" board were misleading. `/race` now shows "Past results" with a window per strategy (1h: 30 days, 4h: 120, daily: 365), the live tick uses real candles, and the pattern detector ignores zero-range candles. BNB is on Kraken too. See `docs/strategy-race.md` "Real candles".
+
 Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draft PR #1** https://github.com/jvincentdigital/trade-hub/pull/1 (do not merge without John). Nothing deployed, no real money or broker touched, no paid APIs.
 
 **What changed**
@@ -47,7 +49,7 @@ Unattended night run on the Mac Mini. Branch `night/2026-11-10-tradehub`, **draf
 - [ ] @john: sign up for OANDA practice (forex, real-time) and/or Alpaca paper (crypto) if you want broker-side demo fills. Stop if either asks for a card. Then we build `docs/demo-brokers.md` step by step (needs a passcode on the app first).
 - [ ] Practice in the demo for 2+ weeks with one rule before any real money. No rule has an edge yet after fees (backtest table in `docs/strategy-rules.md`).
 - [ ] Rule conditions to add when there's intraday forex data: Asian range / initial high-low of the day, ADR filter, 2-hour time stop, EMA-based targets.
-- [ ] Pre-existing: dashboard sparklines fire 10 CoinGecko calls at once, and some get rate-limited (500), which leaves blank sparklines. Fix: stagger them or cache them longer.
+- [x] Pre-existing: dashboard sparklines fire 10 CoinGecko calls at once, and some get rate-limited (500), which leaves blank sparklines. Fix: stagger them or cache them longer. (fixed 2026-11-10, 5c1aa67: one at a time, 10 min refresh, route serves last good candles on 429)
 - [ ] Known pre-existing issue: `useStrategies`/`useTradePlans`/`useWatchlist` read localStorage in `useState`, which can log a hydration warning when data is saved.
 
 ## Reliability (the app breaks silently today)

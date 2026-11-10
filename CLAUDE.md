@@ -40,7 +40,7 @@ src/
     api/                #   Route handlers (proxy CoinGecko + ExchangeRate API)
       crypto/prices/    #     GET  live prices for 10 coins
       crypto/ohlc/[id]/ #     GET  OHLC candles (granularity from days param; >30 days = 4-day bars)
-      crypto/candles/[id]/ #  GET  90 days of 1h/4h/1d candles built from hourly prices
+      crypto/candles/[id]/ #  GET  real 1h/4h/1d candles from Kraken (720 each)
       forex/rates/      #     GET  USD-based rates for 8 pairs
       scanner/          #     GET  MM Confluence v2 setup scanner (crypto-only)
     crypto/             #   Crypto explorer (grid + detail panel w/ chart + patterns)
@@ -49,7 +49,7 @@ src/
     strategies/         #   Strategy rules + live scanner + trade plans (localStorage)
       _components/      #     StrategyRules.tsx, RuleEditor.tsx, SetupScanner.tsx
     demo/               #   Demo account: play-money paper trading
-    race/               #   Strategy race: 90-day leaderboard + live forward test (docs/strategy-race.md)
+    race/               #   Strategy race: past-results leaderboard + live forward test (docs/strategy-race.md)
     watchlist/          #   User-selected pairs (localStorage)
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
@@ -62,6 +62,7 @@ src/
     ui/                 # Badge, Card primitives
   lib/
     coingecko.ts        # COIN_MAP + fetchOHLC / fetchVolumes helpers
+    kraken.ts           # Kraken public OHLC: real candles for rules, backtests, race
     hooks/              # useMarketData, usePaperAccount, useRules, useTradePlans, useWatchlist
     paper/              # Demo account engine: orders, fills, fees, stats, plan checks (pure, tested)
     rules/              # Strategy rules: schema, signals, backtest, built-in + course rules (pure, tested)
@@ -122,9 +123,11 @@ The `docs/` folder is the single source of truth for institutional knowledge.
 
 This project uses CLI tools for all third-party service interactions. Before using any external API or SDK, check `.env*` files for existing credentials and project configuration. Prefer CLI tools (`aws`, `vercel`, `supabase`, `gh`, `stripe`, `gcloud`, etc.) over web dashboards or raw API calls. See the `cli-first` skill for details.
 
-Current integrations (both unauthenticated, free tier):
+Current integrations (all unauthenticated, free tier):
 
 - **CoinGecko** — `api.coingecko.com/api/v3/simple/price`, `/coins/{id}/ohlc` and `/coins/{id}/market_chart`
+- **Kraken public OHLC**: `api.kraken.com/0/public/OHLC?pair=<PAIR>&interval=<60|240|1440>`: real candles for crypto and gold (PAXGUSD) in the candles route, rules, backtests, the scanner's 4H/1D and the race. No key or account. Returns the last 720 candles (30 days of 1h, 120 days of 4h, about 2 years of 1d) plus the forming one, under a result key that is Kraken's own pair name (`XXBTZUSD` for `XBTUSD`). Public limit about 1 call a second: `src/lib/kraken.ts` spaces calls 1.1 s apart, caches each pair + size 5 minutes and retries once. Pairs in `KRAKEN_PAIRS` (DOGE is `XDGUSD`).
+- **Frankfurter (ECB)**: daily forex rates
 - **ExchangeRate API** — `api.exchangerate-api.com/v4/latest/USD`
 
 ## Conventions

@@ -10,17 +10,18 @@ import { getInstrument, INSTRUMENTS } from '@/lib/paper/instruments'
 import { backtest } from '@/lib/rules/engine'
 import { ruleInstrumentIds } from '@/lib/rules/data'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
-import { resample, TF_HOURS } from '@/lib/race/candles'
 import {
-  RACE_DAYS,
   rankEntries,
   scoreStrategy,
   shareOf,
   type MarketRun,
   type RaceEntry,
   type TradeMoney,
+  WINDOW_DAYS,
+  windowStart,
 } from '@/lib/race/leaderboard'
 import { summarize, type RaceState } from '@/lib/race/live'
+import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
 
 const RULES = BUILT_IN_RULES.map((rule) => ({
@@ -29,6 +30,10 @@ const RULES = BUILT_IN_RULES.map((rule) => ({
 }))
 const NAME = new Map(BUILT_IN_RULES.map((r) => [r.id, r.name]))
 const sym = (id: string) => getInstrument(id)?.label ?? getInstrument(id)?.symbol ?? id
+const TF = new Map(BUILT_IN_RULES.map((r) => [r.id, r.timeframe]))
+const isForex = (id: string) => getInstrument(id)?.market === 'forex'
+/** Forex loads two years so a one-year window still has a year to warm up the 200 EMA. */
+const FOREX_DAYS = 730
 
 const money = (n: number, opts: { sign?: boolean; cents?: boolean } = {}) => {
   const abs = Math.abs(n).toLocaleString('en-US', {
@@ -72,8 +77,9 @@ export default function RacePage() {
       <div role="note" style={warn}>
         <TriangleAlert size={16} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden />
         <span>
-          Play money only, nothing here touches a broker or real money. 90 days of past candles and
-          a few weeks of live ticks are mostly luck: a winner here can lose next month.
+          Play money only, nothing here touches a broker or real money. A few weeks to a year of
+          past candles and a few weeks of live ticks are mostly luck: a winner here can lose next
+          month.
         </span>
       </div>
 
@@ -101,7 +107,7 @@ export default function RacePage() {
   )
 }
 
-// ── Last 90 days ─────────────────────────────────────────────────────────
+// ── Past results ─────────────────────────────────────────────────────────
 
 type Load =
   | { state: 'loading'; done: number; total: number; what: string }
@@ -109,9 +115,28 @@ type Load =
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** One fetch per forex pair, and one per coin and candle size some rule uses. */
+type Job = { id: string; tf: RuleTimeframe | null }
+function loadJobs(): Job[] {
+  const markets = [...new Set(RULES.flatMap((r) => r.markets))]
+  return markets.flatMap((id): Job[] => {
+    if (isForex(id)) return [{ id, tf: null }]
+    const tfs = new Set(RULES.filter((r) => r.markets.includes(id)).map((r) => r.rule.timeframe))
+    return [...tfs].map((tf) => ({ id, tf }))
+  })
+}
+const jobName = (j: Job) => (j.tf ? `${sym(j.id)} ${j.tf}` : sym(j.id))
+const keyName = (k: string) =>
+  k
+    .split(':')
+    .map((x, i) => (i ? x : sym(x)))
+    .join(' ')
+const dataKey = (id: string, tf: RuleTimeframe) => (isForex(id) ? id : `${id}:${tf}`)
+
 function Backtests({ start }: { start: number }) {
   const markets = useMemo(() => [...new Set(RULES.flatMap((r) => r.markets))], [])
-  const first: Load = { state: 'loading', done: 0, total: markets.length, what: sym(markets[0]) }
+  const jobs = useMemo(() => loadJobs(), [])
+  const first: Load = { state: 'loading', done: 0, total: jobs.length, what: jobName(jobs[0]) }
   const [load, setLoad] = useState<Load>(first)
   const [open, setOpen] = useState<string | null>(null)
   const run = useRef(0)
@@ -120,55 +145,56 @@ function Backtests({ start }: { start: number }) {
     const me = ++run.current
     const data = new Map<string, OHLCCandle[]>()
     const skipped: string[] = []
-    // One fetch per market, one at a time: the free CoinGecko tier rate-limits
-    // bursts. Crypto comes as 1h candles and is merged into 4h/1d below, so
-    // every strategy reuses the same fetch.
-    for (const [n, id] of markets.entries()) {
-      const forex = getInstrument(id)?.market === 'forex'
-      const get = () => (forex ? fetchForexOHLC(id, 365) : fetchCryptoCandles(id, '1h'))
+    // One fetch at a time: Kraken's free public feed allows about one call a
+    // second (our route spaces and caches them too). Crypto and gold get real
+    // candles per size a rule uses; strategies on the same size share them.
+    for (const [n, { id, tf }] of jobs.entries()) {
+      const get = () => (tf ? fetchCryptoCandles(id, tf) : fetchForexOHLC(id, FOREX_DAYS))
       try {
         data.set(
-          id,
+          tf ? dataKey(id, tf) : id,
           await get().catch(async () => {
             await sleep(5000)
             return get()
           }),
         )
       } catch {
-        skipped.push(id)
+        skipped.push(tf ? dataKey(id, tf) : id)
       }
-      if (!forex) await sleep(1200)
+      if (tf) await sleep(1100)
       if (run.current !== me) return
       // State only changes after an await, never synchronously inside the effect.
-      const next = markets[n + 1]
-      if (next) setLoad({ state: 'loading', done: n + 1, total: markets.length, what: sym(next) })
+      const next = jobs[n + 1]
+      if (next) setLoad({ state: 'loading', done: n + 1, total: jobs.length, what: jobName(next) })
     }
     if (run.current !== me) return
-    const tradeFrom = Math.floor(Date.now() / 1000) - RACE_DAYS * 86_400
+    const nowSec = Math.floor(Date.now() / 1000)
     const runs: Record<string, MarketRun[]> = {}
     for (const { rule, markets: ids } of RULES) {
       runs[rule.id] = ids.flatMap((id) => {
-        const c = data.get(id)
-        if (!c?.length) return []
+        const candles = data.get(dataKey(id, rule.timeframe))
+        if (!candles?.length) return []
         const market = getInstrument(id)?.market ?? 'crypto'
-        const tf = market === 'forex' ? '1d' : rule.timeframe
-        const candles = market === 'forex' ? c : resample(c, TF_HOURS[tf])
         return [
           {
             id,
-            result: backtest({ ...rule, timeframe: tf }, candles, {
-              startEquity: 1,
-              feeRate: FEE_RATE[market],
-              leverage: LEVERAGE[market],
-              // Forex loads a year so the 200 EMA can warm up; it only trades the last 90 days.
-              tradeFrom: market === 'forex' ? tradeFrom : undefined,
-            }),
+            result: backtest(
+              { ...rule, timeframe: market === 'forex' ? '1d' : rule.timeframe },
+              candles,
+              {
+                startEquity: 1,
+                feeRate: FEE_RATE[market],
+                leverage: LEVERAGE[market],
+                // Every market trades only the rule's window; older candles warm up the indicators.
+                tradeFrom: windowStart(rule.timeframe, nowSec),
+              },
+            ),
           },
         ]
       })
     }
     setLoad({ state: 'done', runs, skipped, at: Date.now() })
-  }, [markets])
+  }, [jobs])
 
   useEffect(() => {
     // Kick off once on open; a newer run (or leaving the page) stops the old loop.
@@ -189,7 +215,8 @@ function Backtests({ start }: { start: number }) {
           riskPct: rule.riskPct,
           start,
           runs: load.runs[rule.id] ?? [],
-          skipped: ids.filter((id) => load.skipped.includes(id)),
+          skipped: ids.filter((id) => load.skipped.includes(dataKey(id, rule.timeframe))),
+          days: WINDOW_DAYS[rule.timeframe],
         }),
       ),
     )
@@ -201,7 +228,7 @@ function Backtests({ start }: { start: number }) {
     <section style={card} aria-labelledby="bt-title">
       <div style={sectionHead}>
         <h2 id="bt-title" style={h2}>
-          Last 90 days
+          Past results
         </h2>
         <button
           style={ghost}
@@ -210,7 +237,7 @@ function Backtests({ start }: { start: number }) {
             void go()
           }}
           disabled={load.state === 'loading'}
-          aria-label="Run the 90-day race again"
+          aria-label="Run the past results again"
         >
           <RefreshCw size={14} /> {load.state === 'loading' ? 'Running…' : 'Run again'}
         </button>
@@ -219,7 +246,10 @@ function Backtests({ start }: { start: number }) {
         Backtest on past candles, fees included. Each strategy&apos;s money is split evenly over
         every market it trades ({money(start)} over {markets.length} markets is{' '}
         {money(shareOf(start, markets.length), { cents: true })} each), and each share trades on its
-        own. A market whose data did not load keeps its share as cash.
+        own. A market whose data did not load keeps its share as cash. Each strategy trades only as
+        far back as real candles of its size go: {WINDOW_DAYS['1h']} days for 1h rules,{' '}
+        {WINDOW_DAYS['4h']} days for 4h rules, {WINDOW_DAYS['1d']} days for daily rules. Windows
+        differ, so compare the a-month column too.
       </p>
       <CandleNote />
 
@@ -232,7 +262,7 @@ function Backtests({ start }: { start: number }) {
             <div style={{ ...barFill, width: `${(load.done / load.total) * 100}%` }} />
           </div>
           <p style={{ ...small, marginTop: 6 }}>
-            One market at a time so the free data feed does not block us. About half a minute.
+            One at a time so the free data feeds do not block us. About a minute.
           </p>
         </div>
       ) : (
@@ -240,12 +270,12 @@ function Backtests({ start }: { start: number }) {
           {winner && (
             <p style={{ fontSize: 15, marginTop: 14, lineHeight: 1.5 }}>
               {winner.trades === 0 ? (
-                'No strategy traded in the last 90 days.'
+                'No strategy traded in its window.'
               ) : (
                 <>
                   Most money: <b>{NAME.get(winner.ruleId)}</b> turned {money(start)} into{' '}
-                  <b style={{ color: color(winner.profit) }}>{money(winner.end)}</b> (
-                  {money(winner.profit, { sign: true })}, about{' '}
+                  <b style={{ color: color(winner.profit) }}>{money(winner.end)}</b> in the past{' '}
+                  {winner.days} days ({money(winner.profit, { sign: true })}, about{' '}
                   {money(winner.perMonth, { sign: true, cents: Math.abs(winner.perMonth) < 10 })} a
                   month).
                   {winner.profit <= 0 && ' Even the best one lost money after fees.'}
@@ -253,7 +283,7 @@ function Backtests({ start }: { start: number }) {
               )}
             </p>
           )}
-          <ol style={list} aria-label="90-day leaderboard">
+          <ol style={list} aria-label="Past results leaderboard">
             {entries.map((e, i) => (
               <li key={e.ruleId} style={{ borderTop: '0.5px solid var(--border)' }}>
                 <button
@@ -269,6 +299,9 @@ function Backtests({ start }: { start: number }) {
                     expanded={open === e.ruleId}
                   />
                   <span style={rowStats}>
+                    <span>
+                      past {e.days} days ({TF.get(e.ruleId)} candles)
+                    </span>
                     <span>
                       {money(e.perMonth, { sign: true, cents: Math.abs(e.perMonth) < 10 })}/mo
                     </span>
@@ -286,12 +319,12 @@ function Backtests({ start }: { start: number }) {
           </ol>
           {load.skipped.length > 0 && (
             <p style={{ ...small, color: 'var(--amber)' }}>
-              Skipped after a retry (free data feed busy): {load.skipped.map(sym).join(', ')}. Their
-              share stayed as cash. Press Run again in a minute.
+              Skipped after a retry (free data feed busy): {load.skipped.map(keyName).join(', ')}.
+              Their share stayed as cash. Press Run again in a minute.
             </p>
           )}
           <p style={small}>
-            Ran {when(load.at / 1000)}. The first weeks of crypto and gold only warm up the
+            Ran {when(load.at / 1000)}. In 1h and 4h windows the first candles only warm up the
             indicators. Forex daily highs and lows are estimated, so its stops are rough.
           </p>
         </>
@@ -357,7 +390,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
               .map((m) => (
                 <tr key={m.id}>
                   <td style={{ ...td, textAlign: 'left' }}>{sym(m.id)}</td>
-                  <td style={td}>{candleKind(m.id)}</td>
+                  <td style={td}>{candleKind(m.id, TF.get(entry.ruleId))}</td>
                   <td style={td}>{m.trades.length}</td>
                   <td style={td}>{money(m.end, { cents: true })}</td>
                   <td style={{ ...td, color: color(m.profit) }}>
@@ -386,7 +419,7 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
           how: reasonText(t),
           pnl: t.pnl,
         }))}
-        empty="No trades in these 90 days."
+        empty="No trades in this window."
       />
       {trades.length > 20 && (
         <button style={{ ...ghost, marginTop: 8 }} onClick={() => setAll(!all)}>
@@ -451,7 +484,8 @@ function TradeList({
   )
 }
 
-const candleKind = (id: string) => (getInstrument(id)?.market === 'forex' ? 'daily' : 'hourly')
+const candleKind = (id: string, tf: RuleTimeframe | undefined) =>
+  isForex(id) ? 'daily' : (tf ?? '-')
 
 /** Which candles each market group uses, so fewer forex trades make sense. */
 function CandleNote() {
@@ -459,9 +493,9 @@ function CandleNote() {
   const items = [
     {
       k: `Crypto (${count('crypto')})`,
-      v: "hourly prices, built into each rule's 1h, 4h or 1d candles",
+      v: "real 1h, 4h and 1d candles from Kraken (free public data), in each rule's own size",
     },
-    { k: 'Gold (1)', v: 'hourly too, price tracked by PAX Gold' },
+    { k: 'Gold (1)', v: 'real Kraken candles too, price tracked by PAX Gold' },
     {
       k: `Forex (${count('forex')})`,
       v: 'daily candles only (free ECB rates), so forex rules trade far less and 1h/4h rules run on daily candles there',

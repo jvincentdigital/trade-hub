@@ -1,12 +1,22 @@
 import type { BacktestResult, BacktestTrade } from '../rules/engine'
 import { maxDrawdown } from '../paper/stats'
+import type { RuleTimeframe } from '../rules/schema'
 
-// "Last 90 days" race: pure scoring. Each strategy gets the same starting
+// "Past results" race: pure scoring. Each strategy gets the same starting
 // money, split evenly over every market it can trade. Each market share is its
 // own little play account (the backtest), and the strategy's end money is the
 // sum of its shares. A market whose data failed keeps its share as cash.
 
-export const RACE_DAYS = 90
+/**
+ * How far back each rule's backtest trades, by its candle size. Kraken keeps
+ * 720 candles per size: 30 days of 1h, 120 days of 4h, about 2 years of 1d
+ * (daily rules trade the last year so the other year warms up the indicators).
+ * Every market of a strategy, forex included, trades the same window.
+ */
+export const WINDOW_DAYS: Record<RuleTimeframe, number> = { '1h': 30, '4h': 120, '1d': 365 }
+
+/** First second a rule's backtest may open a trade in. */
+export const windowStart = (tf: RuleTimeframe, nowSec: number) => nowSec - WINDOW_DAYS[tf] * 86_400
 
 export interface MarketRun {
   id: string
@@ -29,6 +39,8 @@ export interface MarketMoney {
 
 export interface RaceEntry {
   ruleId: string
+  /** Days the backtest could trade in. */
+  days: number
   start: number
   end: number
   profit: number
@@ -66,10 +78,9 @@ export function scoreStrategy(args: {
   start: number
   runs: MarketRun[]
   skipped: string[]
-  days?: number
+  days: number
 }): RaceEntry {
-  const { ruleId, riskPct, start, runs, skipped } = args
-  const days = args.days ?? RACE_DAYS
+  const { ruleId, riskPct, start, runs, skipped, days } = args
   const share = shareOf(start, runs.length + skipped.length)
   const markets = runs.map(({ id, result }) => {
     const trades = tradeMoney(id, result, share, riskPct)
@@ -85,6 +96,7 @@ export function scoreStrategy(args: {
   const best = traded.length ? traded.reduce((a, b) => (b.profit > a.profit ? b : a)).id : null
   return {
     ruleId,
+    days,
     start,
     end,
     profit: end - start,

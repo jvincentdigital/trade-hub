@@ -5,11 +5,11 @@ import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/ra
 import {
   COIN_MAP,
   fetchOHLC,
-  fetchCandles,
   fetchVolumes,
   type Timeframe,
   type VolumePoint,
 } from '@/lib/coingecko'
+import { fetchKrakenCandles } from '@/lib/kraken'
 import {
   scoreSetup,
   getDirection,
@@ -88,12 +88,13 @@ async function buildSetup(id: string, tf: Timeframe): Promise<BuildOutcome> {
   const meta = COIN_MAP[id]
   if (!meta) return { ok: false, reason: 'unknown-symbol' }
 
-  // /ohlc gives 4-day bars above 30 days, so 4H and 1D are built from hourly
-  // prices (see fetchCandles). 1D context uses the 365-day 4-day bars as a
+  // /ohlc gives 4-day bars above 30 days, so 4H and 1D use real Kraken
+  // candles (see lib/kraken). 1D context uses the 365-day 4-day bars as a
   // weekly-ish proxy (no weekly endpoint on the free tier).
+  const kraken = (k: '4h' | '1d') => fetchKrakenCandles(id, k).catch(() => null)
   const [candles, higherCandles, vols] = await Promise.all([
-    tf === '30min' ? fetchOHLC(id, 1) : fetchCandles(id, tf === '4H' ? '4h' : '1d'),
-    tf === '30min' ? fetchOHLC(id, 30) : tf === '4H' ? fetchCandles(id, '1d') : fetchOHLC(id, 365),
+    tf === '30min' ? fetchOHLC(id, 1) : kraken(tf === '4H' ? '4h' : '1d'),
+    tf === '30min' ? fetchOHLC(id, 30) : tf === '4H' ? kraken('1d') : fetchOHLC(id, 365),
     fetchVolumes(id, tf === '30min' ? 1 : 90),
   ])
 

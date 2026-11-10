@@ -28,7 +28,7 @@ Built-ins are read-only so their backtests stay comparable over time.
 ## What you can do with a rule
 
 - **Check now**: loads the latest candles and shows a signal on the last 2 candles, with stop and target. **Place demo buy/sell** sends it to the demo account sized at the rule's risk %, after the plan checks.
-- **Backtest / All N**: runs the rule over ~90 days (crypto) or ~1 year of daily forex, fees included, one trade at a time, and shows trades, win rate, profit factor, max drawdown and result per market.
+- **Backtest / All N**: runs the rule over every real candle we have (crypto and gold from Kraken: 30 days of 1h, 120 days of 4h, about 2 years of 1d) or ~1 year of daily forex, fees included, one trade at a time, and shows trades, win rate, profit factor, max drawdown and result per market.
 - **Chart**: opens the market's detail page with every signal marked (BUY/SELL arrows) under the normal chart.
 
 ## How the backtest works (`backtest` in `src/lib/rules/engine.ts`)
@@ -43,7 +43,16 @@ Read results with care: 90 days and a handful of trades is mostly noise. A
 rule earns trust with many trades across many markets, and then in the demo
 account.
 
-## First results (2026-11-10, last 90 days, fees on)
+## Candles
+
+Crypto and gold candles come from Kraken's free public OHLC (`src/lib/kraken.ts`,
+via `/api/crypto/candles/[id]`): real highs and lows, 720 candles per size. Before
+2026-11-10 night they were built from CoinGecko's one price per hour, so 1h
+candles were flat and every `pattern` condition passed on them; the results
+below are from that time and are not trustworthy for 1h rules. The pattern
+detector now ignores zero-range candles.
+
+## First results (2026-11-10, last 90 days, fees on, old hourly-price candles)
 
 | Rule                                | Trades | Total                                     |
 | ----------------------------------- | ------ | ----------------------------------------- |

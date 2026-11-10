@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { OHLCCandle } from '../types/market'
 import type { BacktestResult, BacktestTrade, Signal } from '../rules/engine'
-import { closedOnly, resample } from './candles'
-import { rankEntries, scoreStrategy, shareOf } from './leaderboard'
+import { closedOnly } from './candles'
+import { backtest } from '../rules/engine'
+import { BUILT_IN_RULES } from '../rules/presets'
+import { rankEntries, scoreStrategy, shareOf, WINDOW_DAYS, windowStart } from './leaderboard'
 import {
   createRaceState,
   raceStateSchema,
@@ -22,21 +24,6 @@ const bar = (time: number, o: number, h: number, l: number, c: number): OHLCCand
 })
 
 describe('candles', () => {
-  it('resamples 1h into 4h on UTC boundaries', () => {
-    const t0 = 1_700_000_000 - (1_700_000_000 % (4 * H))
-    const hourly = [
-      bar(t0, 10, 12, 9, 11),
-      bar(t0 + H, 11, 15, 10, 14),
-      bar(t0 + 2 * H, 14, 14, 8, 9),
-      bar(t0 + 3 * H, 9, 10, 9, 10),
-      bar(t0 + 4 * H, 10, 11, 10, 11),
-    ]
-    const four = resample(hourly, 4)
-    expect(four).toHaveLength(2)
-    expect(four[0]).toEqual(bar(t0, 10, 15, 8, 10))
-    expect(four[1]).toEqual(bar(t0 + 4 * H, 10, 11, 10, 11))
-  })
-
   it('drops the candle that is still forming', () => {
     const c = [bar(0, 1, 1, 1, 1), bar(4 * H, 1, 1, 1, 1)]
     expect(closedOnly(c, 4, 8 * H)).toHaveLength(2)
@@ -217,6 +204,7 @@ describe('leaderboard', () => {
         { id: 'ethereum', result: result([]) },
       ],
       skipped: ['solana', 'ripple'],
+      days: 90,
     })
     // bitcoin share $250: +2% = +5, then -1% of 255 = -2.55
     expect(e.markets[0].profit).toBeCloseTo(5 - 2.55)
@@ -239,6 +227,7 @@ describe('leaderboard', () => {
         start: 1000,
         runs: [{ id: 'bitcoin', result: result(rs) }],
         skipped: [],
+        days: 30,
       })
     const ranked = rankEntries([
       mk('lose', [-1]),
@@ -256,6 +245,39 @@ describe('leaderboard', () => {
     const noTrades = mk('none', [])
     expect(noTrades.best).toBeNull()
     expect(noTrades.winRate).toBeNull()
+  })
+})
+
+describe('backtest windows', () => {
+  it('matches the real candles Kraken keeps per size', () => {
+    const now = 1_800_000_000
+    expect(WINDOW_DAYS).toEqual({ '1h': 30, '4h': 120, '1d': 365 })
+    expect(now - windowStart('1h', now)).toBe(30 * 86_400)
+    expect(now - windowStart('4h', now)).toBe(120 * 86_400)
+    expect(now - windowStart('1d', now)).toBe(365 * 86_400)
+  })
+
+  it('a 1h rule only trades inside its 30 days, and money a month uses that window', () => {
+    // 60 days of zig-zag 1h candles: the rule could fire anywhere.
+    const now = 1_800_000_000
+    const t0 = now - 60 * 86_400
+    const candles = Array.from({ length: 60 * 24 }, (_, i) => {
+      const mid = 100 + 5 * Math.sin(i / 6)
+      return bar(t0 + i * H, mid - 0.3, mid + 1, mid - 1, mid + 0.3)
+    })
+    const rule = BUILT_IN_RULES.find((r) => r.timeframe === '1h')!
+    const res = backtest(rule, candles, { startEquity: 1, tradeFrom: windowStart('1h', now) })
+    for (const t of res.trades) expect(t.entryTime).toBeGreaterThanOrEqual(windowStart('1h', now))
+    const e = scoreStrategy({
+      ruleId: rule.id,
+      riskPct: 1,
+      start: 1000,
+      runs: [{ id: 'bitcoin', result: result([3]) }],
+      skipped: [],
+      days: WINDOW_DAYS['1h'],
+    })
+    expect(e.days).toBe(30)
+    expect(e.perMonth).toBeCloseTo(e.profit)
   })
 })
 

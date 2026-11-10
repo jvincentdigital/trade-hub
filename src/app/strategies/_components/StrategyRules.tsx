@@ -131,7 +131,7 @@ function RuleCard({
         what: `Backtesting ${getInstrument(id)?.symbol} (${n + 1}/${targets.length})…`,
       })
       try {
-        // The free CoinGecko tier rate-limits bursts: one retry after a pause.
+        // The free data feeds rate-limit bursts: one retry after a pause.
         const data = await loadRuleCandles(rule, id).catch(async () => {
           await new Promise((r) => setTimeout(r, 4000))
           return loadRuleCandles(rule, id)

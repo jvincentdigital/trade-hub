@@ -5,9 +5,11 @@ keyless like everything else.
 
 ## Where the price comes from
 
-CoinGecko id `pax-gold`: PAX Gold (PAXG) is a token backed by and tracking one
-troy ounce of gold. The free tier gives it hourly like any coin, so gold gets
-the same 1h/4h/1d candles as crypto (unlike forex, which is daily only). It can
+PAX Gold (PAXG) is a token backed by and tracking one troy ounce of gold.
+Live prices come from CoinGecko (id `pax-gold`); candles for rules, backtests
+and the race come from Kraken's free public OHLC (pair `PAXGUSD`, real 1h/4h/1d
+candles, see `src/lib/kraken.ts`), the same as crypto (unlike forex, which is
+daily only). It can
 drift a little from spot XAU/USD (token premium, weekends when gold markets are
 closed but PAXG still trades). The page says "price tracked by PAX Gold"; its
 TradingView button shows the real `OANDA:XAUUSD`.
@@ -20,7 +22,7 @@ TradingView button shows the real `OANDA:XAUUSD`.
 | `/gold`       | Detail page: our candle chart + patterns, TradingView toggle, strategy signals, demo link                                               |
 | `/demo`       | "Gold (XAU/USD)" in the market list, sized in ounces                                                                                    |
 | `/strategies` | Every rule set to "All (crypto, forex, gold)" (6 of 7 built-ins) can check, backtest and chart gold. MM Confluence v2 stays crypto-only |
-| `/race`       | Gold is one more market in each all-markets strategy, in both the 90-day and live race                                                  |
+| `/race`       | Gold is one more market in each all-markets strategy, in both the past-results and live race                                            |
 
 ## Model choices
 

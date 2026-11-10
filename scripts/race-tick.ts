@@ -4,8 +4,9 @@
  *   npx tsx scripts/race-tick.ts            (or: make race-tick)
  *   npx tsx scripts/race-tick.ts --reset --start 1000
  *
- * Fetches fresh candles once per market (CoinGecko free for crypto and gold,
- * Frankfurter for forex; no keys, sequential with pauses), asks every built-in strategy for its latest
+ * Fetches fresh candles per market (Kraken's free public OHLC for crypto and
+ * gold, one call per candle size in use, about 1 a second; Frankfurter for
+ * forex; no keys), asks every built-in strategy for its latest
  * signal on closed candles, and opens/closes trades in that strategy's own
  * play-money account. State: ~/.local/share/trade-hub/race.json
  * (override with RACE_FILE). Play money only: nothing here talks to a broker.
@@ -18,8 +19,10 @@ import { latestSignal } from '../src/lib/rules/engine'
 import { ruleInstrumentIds } from '../src/lib/rules/data'
 import { getInstrument, INSTRUMENTS } from '../src/lib/paper/instruments'
 import { FEE_RATE, LEVERAGE } from '../src/lib/paper/engine'
-import { closedOnly, resample, TF_HOURS } from '../src/lib/race/candles'
-import { fetchForexDaily, fetchHourlyCandles } from '../src/lib/race/feeds'
+import { closedOnly, TF_HOURS } from '../src/lib/race/candles'
+import { fetchForexDaily } from '../src/lib/race/feeds'
+import { fetchKrakenCandles } from '../src/lib/kraken'
+import type { RuleTimeframe } from '../src/lib/rules/schema'
 import {
   createRaceState,
   MAX_TICK_LOG,
@@ -52,14 +55,16 @@ function save(state: RaceState) {
   renameSync(tmp, FILE)
 }
 
-async function fetchMarket(id: string): Promise<OHLCCandle[]> {
-  const inst = getInstrument(id)
-  const get = () => (inst?.market === 'forex' ? fetchForexDaily(id) : fetchHourlyCandles(id))
+const isForex = (id: string) => getInstrument(id)?.market === 'forex'
+
+/** Forex: daily, one polite retry. Crypto/gold: lib/kraken spaces, caches and retries itself. */
+async function fetchMarket(id: string, tf: RuleTimeframe): Promise<OHLCCandle[]> {
+  if (!isForex(id)) return fetchKrakenCandles(id, tf)
   try {
-    return await get()
+    return await fetchForexDaily(id)
   } catch {
-    await sleep(30_000) // the free CoinGecko tier rate-limits bursts: one polite retry
-    return get()
+    await sleep(30_000)
+    return fetchForexDaily(id)
   }
 }
 
@@ -82,18 +87,25 @@ async function main() {
   state = synced.state
   for (const c of synced.changes) console.log(`  ${c}`)
 
-  const needed = [...new Set(rules.flatMap((r) => r.markets))]
+  // Crypto/gold: 1h always (stop/target checks walk 1h candles) plus every
+  // size a rule uses. Forex: one daily series. Keys are `${id}:${tf}`.
+  const key = (id: string, tf: RuleTimeframe) => (isForex(id) ? id : `${id}:${tf}`)
+  const jobs = new Map<string, { id: string; tf: RuleTimeframe }>()
+  for (const id of new Set(rules.flatMap((r) => r.markets))) {
+    jobs.set(key(id, '1h'), { id, tf: '1h' })
+    for (const r of rules)
+      if (r.markets.includes(id)) jobs.set(key(id, r.rule.timeframe), { id, tf: r.rule.timeframe })
+  }
   const data = new Map<string, OHLCCandle[]>()
-  const skipped: string[] = []
-  for (const [n, id] of needed.entries()) {
+  const skipped = new Set<string>()
+  for (const [n, [k, { id, tf }]] of [...jobs.entries()].entries()) {
     try {
-      data.set(id, await fetchMarket(id))
-      process.stdout.write(`  ${n + 1}/${needed.length} ${id} ok\n`)
+      data.set(k, await fetchMarket(id, tf))
+      process.stdout.write(`  ${n + 1}/${jobs.size} ${k} ok\n`)
     } catch (e) {
-      skipped.push(id)
-      process.stdout.write(`  ${n + 1}/${needed.length} ${id} skipped (${(e as Error).message})\n`)
+      skipped.add(id)
+      process.stdout.write(`  ${n + 1}/${jobs.size} ${k} skipped (${(e as Error).message})\n`)
     }
-    if (getInstrument(id)?.market !== 'forex') await sleep(6000)
   }
 
   const nowSec = Math.floor(Date.now() / 1000)
@@ -103,13 +115,13 @@ async function main() {
   for (const { rule, markets } of rules) {
     const acct = state.strategies[rule.id]
     for (const id of markets) {
-      const path = data.get(id)
+      const path = data.get(key(id, '1h'))
+      const own = data.get(key(id, rule.timeframe))
       const slot = acct.slots[id]
-      if (!path?.length || !slot) continue
+      if (!path?.length || !own?.length || !slot) continue
       const market = getInstrument(id)?.market ?? 'crypto'
       const tf = market === 'forex' ? '1d' : rule.timeframe
-      const signalCandles =
-        market === 'forex' ? path : closedOnly(resample(path, TF_HOURS[tf]), TF_HOURS[tf], nowSec)
+      const signalCandles = market === 'forex' ? own : closedOnly(own, TF_HOURS[tf], nowSec)
       const signal = latestSignal({ ...rule, timeframe: tf }, signalCandles)
       const price = path[path.length - 1].close
       state.prices[id] = price
@@ -138,13 +150,14 @@ async function main() {
   }
 
   state.tickCount += 1
-  state.ticks = [...state.ticks, { at: Date.now(), checked, opened, closed, skipped }].slice(
-    -MAX_TICK_LOG,
-  )
+  state.ticks = [
+    ...state.ticks,
+    { at: Date.now(), checked, opened, closed, skipped: [...skipped] },
+  ].slice(-MAX_TICK_LOG)
   save(state)
 
   console.log(
-    `${new Date().toISOString()} tick #${state.tickCount}: ${checked} checks, ${opened} opened, ${closed} closed, ${skipped.length} markets skipped`,
+    `${new Date().toISOString()} tick #${state.tickCount}: ${checked} checks, ${opened} opened, ${closed} closed, ${skipped.size} markets skipped`,
   )
   for (const s of summarize(state)) {
     console.log(
