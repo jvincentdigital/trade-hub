@@ -85,12 +85,20 @@ export function CandleChart({ candles, patterns = [], height = 400 }: CandleChar
 
   useEffect(() => {
     if (!markersRef.current) return
-    const markers: SeriesMarker<Time>[] = patterns.map((p) => ({
+    // A busy chart (dozens of hits) hides the candles: keep only strong bullish or
+    // bearish hits there, and drop the names when there are still many. The full
+    // list stays under the chart.
+    const shown =
+      patterns.length > 20
+        ? patterns.filter((p) => p.type !== 'neutral' && p.confidence >= 0.8)
+        : patterns
+    const named = shown.length <= 15
+    const markers: SeriesMarker<Time>[] = shown.map((p) => ({
       time: p.time as UTCTimestamp,
       position: p.type === 'bearish' ? 'aboveBar' : 'belowBar',
       color: p.type === 'bullish' ? '#22c55e' : p.type === 'bearish' ? '#ef4444' : '#f59e0b',
       shape: p.type === 'bullish' ? 'arrowUp' : p.type === 'bearish' ? 'arrowDown' : 'circle',
-      text: p.name,
+      text: named ? p.name : undefined,
     }))
     markersRef.current.setMarkers(markers)
   }, [patterns])

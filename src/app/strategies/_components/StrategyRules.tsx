@@ -281,14 +281,50 @@ function CheckResult({ check, rule, pair }: { check: Check; rule: Rule; pair: st
       </div>
     )
   }
+  return <BacktestTable check={check} rule={rule} />
+}
+
+function BacktestTable({
+  check,
+  rule,
+}: {
+  check: Extract<Check, { state: 'backtest' }>
+  rule: Rule
+}) {
+  // "How much money would I make": the same backtest in dollars, from a start John picks.
+  const [start, setStart] = useState(1000)
   const totalTrades = check.rows.reduce((a, r) => a + r.result.trades.length, 0)
   const totalR = check.rows.reduce((a, r) => a + r.result.totalR, 0)
   return (
     <div style={resultBox}>
       <p style={{ marginBottom: 6 }}>
         Backtest, last ~{days(check.rows[0].result)} days, fees included, {rule.riskPct}% risk per
-        trade from $10,000:
+        trade. Starting money:
       </p>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ color: 'var(--text-muted)' }}>$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={1}
+          step={100}
+          value={start}
+          onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))}
+          aria-label="Starting money in dollars"
+          style={{
+            width: 120,
+            minHeight: 44,
+            padding: '0 10px',
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            background: 'transparent',
+            color: 'inherit',
+            font: 'inherit',
+          }}
+        />
+        <span style={{ color: 'var(--text-muted)' }}>practice money, not real</span>
+      </label>
+      <MoneyLine rows={check.rows} start={start} />
       <div style={{ overflowX: 'auto' }}>
         <table
           style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}
@@ -301,6 +337,7 @@ function CheckResult({ check, rule, pair }: { check: Check; rule: Rule; pair: st
               <th style={th}>PF</th>
               <th style={th}>Max DD</th>
               <th style={th}>Result</th>
+              <th style={th}>Money</th>
             </tr>
           </thead>
           <tbody>
@@ -326,6 +363,14 @@ function CheckResult({ check, rule, pair }: { check: Check; rule: Rule; pair: st
                     {ret >= 0 ? '+' : ''}
                     {ret.toFixed(1)}%
                   </td>
+                  <td
+                    style={{
+                      ...th,
+                      color: ret > 0 ? 'var(--green)' : ret < 0 ? 'var(--red)' : undefined,
+                    }}
+                  >
+                    {usd((start * ret) / 100, true)}
+                  </td>
                 </tr>
               )
             })}
@@ -349,6 +394,34 @@ function CheckResult({ check, rule, pair }: { check: Check; rule: Rule; pair: st
         {check.note && ` ${check.note}`}
       </p>
     </div>
+  )
+}
+
+const usd = (n: number, sign = false) =>
+  `${sign && n > 0 ? '+' : n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+
+/** The best market in plain dollars: what the start became, and about how much a month. */
+function MoneyLine({
+  rows,
+  start,
+}: {
+  rows: { id: string; result: BacktestResult }[]
+  start: number
+}) {
+  const best = [...rows].sort(
+    (x, y) => y.result.endEquity / y.result.startEquity - x.result.endEquity / x.result.startEquity,
+  )[0]
+  if (!best || !best.result.trades.length)
+    return <p style={{ marginBottom: 8 }}>No trades in this test, so no money made or lost.</p>
+  const end = (start * best.result.endEquity) / best.result.startEquity
+  const d = Math.max(1, days(best.result))
+  const perMonth = ((end - start) / d) * 30
+  return (
+    <p style={{ marginBottom: 8, fontSize: 15 }}>
+      Best market, {getInstrument(best.id)?.symbol}: {usd(start)} became{' '}
+      <b style={{ color: end >= start ? 'var(--green)' : 'var(--red)' }}>{usd(end)}</b> in {d} days,
+      about <b>{usd(perMonth, true)}</b> a month.
+    </p>
   )
 }
 
