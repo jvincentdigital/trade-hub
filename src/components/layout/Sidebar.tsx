@@ -28,11 +28,12 @@ export function Sidebar() {
       <aside
         className="desktop-sidebar"
         style={{
-          width: '200px',
+          // Safe areas: clear the status bar and, in landscape, the notch (globals.css).
+          width: 'calc(200px + env(safe-area-inset-left))',
           minHeight: '100vh',
           background: 'var(--bg-secondary)',
           borderRight: '0.5px solid var(--border)',
-          padding: '1.5rem 0',
+          padding: 'calc(1.5rem + env(safe-area-inset-top)) 0 1.5rem env(safe-area-inset-left)',
           position: 'fixed',
           left: 0,
           top: 0,
