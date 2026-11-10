@@ -9,12 +9,30 @@ interface SparklineProps {
   height?: number
 }
 
+// The free CoinGecko tier rate-limits bursts, and a grid asks for 10 sparklines
+// at once: run them one after another with a short gap instead.
+let queue: Promise<unknown> = Promise.resolve()
+function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
+  const run = queue.then(job, job)
+  queue = run.then(
+    () => new Promise((r) => setTimeout(r, 1500)),
+    () => new Promise((r) => setTimeout(r, 1500)),
+  )
+  return run
+}
+
 export function Sparkline({ id, market, width = 80, height = 30 }: SparklineProps) {
   const key = `spark-${market}-${id}`
   const { data } = useSWR(
     key,
-    () => (market === 'crypto' ? fetchCryptoOHLC(id, 7) : fetchForexOHLC(id, 30)),
-    { refreshInterval: 60_000, revalidateOnFocus: false },
+    () => oneAtATime(() => (market === 'crypto' ? fetchCryptoOHLC(id, 7) : fetchForexOHLC(id, 30))),
+    // A 7-day line barely moves in a minute; refresh every 10 minutes, retry gently on errors.
+    {
+      refreshInterval: 600_000,
+      revalidateOnFocus: false,
+      errorRetryInterval: 30_000,
+      errorRetryCount: 6,
+    },
   )
 
   if (!data || data.length < 2) {

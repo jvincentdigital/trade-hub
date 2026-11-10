@@ -6,6 +6,11 @@ import { checkRateLimit, getClientIdentifier, rateLimitResponse } from '@/lib/ra
 
 const ALLOWED_DAYS = new Set([1, 7, 14, 30, 90, 180, 365])
 
+// Last good answer per coin and range. CoinGecko's free tier refuses bursts
+// (429); serving the last good candles beats an empty chart.
+type Candle = { time: number; open: number; high: number; low: number; close: number }
+const lastGood = new Map<string, Candle[]>()
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const limit = checkRateLimit('data', getClientIdentifier(request))
   if (!limit.ok) return rateLimitResponse(limit)
@@ -44,8 +49,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       low: c[3],
       close: c[4],
     }))
+    lastGood.set(`${id}:${days}`, candles)
     return NextResponse.json(candles)
   } catch (err) {
+    const stale = lastGood.get(`${id}:${days}`)
+    if (stale) return NextResponse.json(stale, { headers: { 'x-stale': '1' } })
     logger.error({ id, err }, '[api/crypto/ohlc] fetch failed')
     return NextResponse.json({ error: 'Failed to fetch OHLC' }, { status: 500 })
   }
