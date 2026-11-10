@@ -5,7 +5,7 @@ import { CandlestickChart, Copy, FlaskConical, Pencil, Play, Trash2 } from 'luci
 import { DemoBadge } from '@/components/paper/DemoBadge'
 import { useRules } from '@/lib/hooks/useRules'
 import { setPaperAccount, useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
-import { equityOf, FEE_RATE, placeOrder, sizeByRisk } from '@/lib/paper/engine'
+import { equityOf, FEE_RATE, LEVERAGE, placeOrder, sizeByRisk } from '@/lib/paper/engine'
 import { formatQuote, getInstrument, INSTRUMENTS, quoteToUsd } from '@/lib/paper/instruments'
 import {
   backtest,
@@ -16,6 +16,7 @@ import {
   type Signal,
 } from '@/lib/rules/engine'
 import { loadRuleCandles, ruleInstrumentIds } from '@/lib/rules/data'
+import { planWarnings } from '@/lib/paper/plan'
 import type { Rule } from '@/lib/rules/schema'
 import { RuleEditor } from './RuleEditor'
 
@@ -75,7 +76,12 @@ type Check =
   | { state: 'loading'; what: string }
   | { state: 'error'; text: string }
   | { state: 'signal'; signal: Signal | null; note: string | null; last: number }
-  | { state: 'backtest'; rows: { id: string; result: BacktestResult }[]; note: string | null }
+  | {
+      state: 'backtest'
+      rows: { id: string; result: BacktestResult }[]
+      skipped: string[]
+      note: string | null
+    }
 
 function RuleCard({
   rule,
@@ -111,29 +117,35 @@ function RuleCard({
   const runBacktest = async (all: boolean) => {
     const targets = all ? ids : [pair]
     const rows: { id: string; result: BacktestResult }[] = []
+    const skipped: string[] = []
     let note: string | null = null
-    for (const id of targets) {
+    for (const [n, id] of targets.entries()) {
       setCheck({
         state: 'loading',
-        what: `Backtesting ${getInstrument(id)?.symbol} (${rows.length + 1}/${targets.length})…`,
+        what: `Backtesting ${getInstrument(id)?.symbol} (${n + 1}/${targets.length})…`,
       })
       try {
-        const data = await loadRuleCandles(rule, id)
+        // The free CoinGecko tier rate-limits bursts: one retry after a pause.
+        const data = await loadRuleCandles(rule, id).catch(async () => {
+          await new Promise((r) => setTimeout(r, 4000))
+          return loadRuleCandles(rule, id)
+        })
         note = data.note ?? note
         const market = getInstrument(id)?.market ?? 'crypto'
         rows.push({
           id,
           result: backtest({ ...rule, timeframe: data.tf }, data.candles, {
             feeRate: FEE_RATE[market],
+            leverage: LEVERAGE[market],
           }),
         })
       } catch {
-        // skip pairs the free feed refused; the table shows what ran
+        skipped.push(id)
       }
     }
     setCheck(
       rows.length
-        ? { state: 'backtest', rows, note }
+        ? { state: 'backtest', rows, skipped, note }
         : { state: 'error', text: 'No candle data came back. Try again in a minute.' },
     )
   }
@@ -326,6 +338,12 @@ function CheckResult({ check, rule, pair }: { check: Check; rule: Rule; pair: st
           {totalR.toFixed(1)}R total.
         </p>
       )}
+      {check.skipped.length > 0 && (
+        <p style={{ marginTop: 6 }}>
+          Skipped (free data feed busy, try again in a minute):{' '}
+          {check.skipped.map((id) => getInstrument(id)?.symbol ?? id).join(', ')}
+        </p>
+      )}
       <p style={{ color: 'var(--text-muted)', marginTop: 6 }}>
         Few trades means the result is mostly luck. Past candles do not promise future results.
         {check.note && ` ${check.note}`}
@@ -352,6 +370,13 @@ function SignalTrade({ signal, rule, pair }: { signal: Signal; rule: Rule; pair:
         })
       : 0
   const buy = signal.direction === 'long'
+  const warnings =
+    units > 0 && live && q
+      ? planWarnings(account, prices, {
+          riskUsd: Math.abs(live - signal.stop) * units * q,
+          fromStrategy: true,
+        })
+      : []
 
   const place = () => {
     const r = placeOrder(
@@ -401,6 +426,16 @@ function SignalTrade({ signal, rule, pair }: { signal: Signal; rule: Rule; pair:
         </button>
         <DemoBadge />
       </div>
+      {warnings.length > 0 && (
+        <ul
+          aria-label="Plan checks"
+          style={{ color: 'var(--amber)', marginTop: 6, paddingLeft: 16 }}
+        >
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
       {msg && (
         <p role="status" style={{ marginTop: 6, color: msg.ok ? 'var(--green)' : 'var(--red)' }}>
           {msg.text}{' '}

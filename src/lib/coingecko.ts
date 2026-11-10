@@ -17,7 +17,8 @@ export const COIN_MAP: Record<string, CoinMeta> = {
   'avalanche-2': { name: 'Avalanche', symbol: 'AVAX' },
   dogecoin: { name: 'Dogecoin', symbol: 'DOGE' },
   polkadot: { name: 'Polkadot', symbol: 'DOT' },
-  'matic-network': { name: 'Polygon', symbol: 'MATIC' },
+  // MATIC was migrated to POL; CoinGecko's matic-network feed went stale (null 24h change).
+  'polygon-ecosystem-token': { name: 'Polygon', symbol: 'POL' },
 }
 
 export type Timeframe = '30min' | '4H' | '1D'

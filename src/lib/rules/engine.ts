@@ -236,15 +236,21 @@ export interface BacktestResult {
  * Walk the candles once. A signal on candle i enters at the next candle's
  * open; stop and target are the signal's levels. If a candle touches both,
  * the stop is assumed first (conservative). One position at a time.
- * Equity compounds at `rule.riskPct` per trade from `startEquity`.
+ * Each trade risks `rule.riskPct` of equity, but the position value is capped
+ * at equity × leverage (1 for crypto), like a real account, so a stop very
+ * close to the entry can't create an impossible position. Fees are charged on
+ * the position value at entry and exit. All math is in fractions of equity,
+ * so it works for any quote currency.
  */
 export function backtest(
   rule: Rule,
   candles: OHLCCandle[],
-  opts: { startEquity?: number; feeRate?: number } = {},
+  opts: { startEquity?: number; feeRate?: number; leverage?: number } = {},
 ): BacktestResult {
   const startEquity = opts.startEquity ?? 10_000
   const feeRate = opts.feeRate ?? 0
+  const leverage = opts.leverage ?? 1
+  const riskFrac = rule.riskPct / 100
   const ind = new Indicators(candles)
   const trades: BacktestTrade[] = []
   const signals: Signal[] = []
@@ -257,9 +263,11 @@ export function backtest(
     if (!pos) return
     const risk = Math.abs(pos.fill - pos.stop)
     const move = (exit - pos.fill) * (pos.direction === 'long' ? 1 : -1)
-    const fees = (feeRate * (pos.fill + exit)) / risk
-    const r = move / risk - fees
-    equity *= 1 + (r * rule.riskPct) / 100
+    // Position value as a fraction of equity: sized by risk, capped by leverage.
+    const size = Math.min(riskFrac / (risk / pos.fill), leverage)
+    const pnlFrac = size * (move / pos.fill) - size * feeRate * ((pos.fill + exit) / pos.fill)
+    const r = pnlFrac / riskFrac
+    equity *= 1 + pnlFrac
     curve.push(equity)
     trades.push({
       direction: pos.direction,

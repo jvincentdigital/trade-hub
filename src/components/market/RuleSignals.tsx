@@ -7,7 +7,7 @@ import { CandleChart } from './CandleChart'
 import { useRules } from '@/lib/hooks/useRules'
 import { backtest } from '@/lib/rules/engine'
 import { loadRuleCandles } from '@/lib/rules/data'
-import { FEE_RATE } from '@/lib/paper/engine'
+import { FEE_RATE, LEVERAGE } from '@/lib/paper/engine'
 import { getInstrument } from '@/lib/paper/instruments'
 import type { PatternHit } from '@/lib/types/market'
 
@@ -28,6 +28,7 @@ export function RuleSignals({ instrumentId }: { instrumentId: string }) {
     rule && data && inst
       ? backtest({ ...rule, timeframe: data.tf }, data.candles, {
           feeRate: FEE_RATE[inst.market],
+          leverage: LEVERAGE[inst.market],
         })
       : null
   const markers: PatternHit[] =

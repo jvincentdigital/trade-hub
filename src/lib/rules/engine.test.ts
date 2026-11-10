@@ -171,3 +171,17 @@ describe('presets', () => {
     }
   })
 })
+
+describe('backtest sizing', () => {
+  it('caps the position at equity × leverage when the stop is very tight', () => {
+    // 0.01% stop with 1% risk would need 100× equity; at 1× leverage the
+    // loss on a stop-out is limited to about the stop distance plus fees.
+    const rule: Rule = { ...base, stop: { kind: 'percent', pct: 0.01 }, rr: 1000 }
+    const falling = [
+      ...series(10, 1),
+      ...series(5, -2, series(10, 1)[9].close, 1_700_000_000 + 10 * H),
+    ]
+    const r = backtest(rule, falling, { feeRate: 0.001, leverage: 1 })
+    expect(r.endEquity).toBeGreaterThan(r.startEquity * 0.95)
+  })
+})

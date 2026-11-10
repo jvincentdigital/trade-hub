@@ -23,6 +23,7 @@ import {
 } from '@/lib/paper/instruments'
 import type { PaperAccount, Side } from '@/lib/paper/schema'
 import { computeStats } from '@/lib/paper/stats'
+import { planWarnings } from '@/lib/paper/plan'
 import {
   resetPaperAccount,
   setPaperAccount,
@@ -139,6 +140,8 @@ function OrderTicket({
   const margin = notional / LEVERAGE[inst.market]
   const riskUsd = sl && ref && q ? Math.abs(ref - sl) * units * q : null
   const rr = sl && tp && ref ? Math.abs(tp - ref) / Math.abs(ref - sl) : null
+
+  const warnings = units > 0 ? planWarnings(account, prices, { riskUsd, fromStrategy: false }) : []
 
   const submit = () => {
     const r = placeOrder(
@@ -302,6 +305,23 @@ function OrderTicket({
         <dd>{rr !== null ? `${rr.toFixed(2)} : 1` : '-'}</dd>
       </dl>
 
+      {warnings.length > 0 && (
+        <ul
+          aria-label="Plan checks"
+          style={{
+            fontSize: 11,
+            color: 'var(--amber)',
+            margin: '0 0 10px',
+            paddingLeft: 16,
+            display: 'grid',
+            gap: 2,
+          }}
+        >
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
       <button
         onClick={submit}
         disabled={!(units > 0)}
