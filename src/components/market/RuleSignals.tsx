@@ -31,14 +31,21 @@ export function RuleSignals({ instrumentId }: { instrumentId: string }) {
           leverage: LEVERAGE[inst.market],
         })
       : null
+  // Only the trades the backtest took (not every signal), unlabeled so they
+  // stay readable on a phone: arrow = entry, dot = exit.
   const markers: PatternHit[] =
-    result?.signals.map((s) => ({
-      name: s.direction === 'long' ? 'BUY' : 'SELL',
-      type: s.direction === 'long' ? 'bullish' : 'bearish',
-      confidence: 100,
-      index: s.index,
-      time: s.time,
-    })) ?? []
+    result?.trades
+      .flatMap((t): PatternHit[] => [
+        {
+          name: '',
+          type: t.direction === 'long' ? 'bullish' : 'bearish',
+          confidence: 100,
+          index: 0,
+          time: t.entryTime,
+        },
+        { name: '', type: 'neutral', confidence: 100, index: 0, time: t.exitTime },
+      ])
+      .sort((a, b) => a.time - b.time) ?? []
 
   if (!inst) return null
   return (
@@ -109,7 +116,8 @@ export function RuleSignals({ instrumentId }: { instrumentId: string }) {
             {result.trades.length} trades, win rate{' '}
             {result.stats.winRate === null ? '-' : `${Math.round(result.stats.winRate * 100)}%`},{' '}
             {result.totalR >= 0 ? '+' : ''}
-            {result.totalR.toFixed(1)}R after fees.
+            {result.totalR.toFixed(1)}R after fees. Arrows: entries (green buy, red sell); amber
+            dots: exits.
           </p>
           <CandleChart candles={data.candles} patterns={markers} height={320} />
           {data.note && (

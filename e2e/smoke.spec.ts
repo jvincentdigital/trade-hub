@@ -13,7 +13,9 @@ for (const { path, heading } of routes) {
   test(`${path} renders without console errors`, async ({ page }) => {
     const consoleErrors: string[] = []
     page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text())
+      // Vercel Analytics' script only exists on Vercel; locally it 404s.
+      if (msg.type() === 'error' && !msg.location().url.includes('/_vercel/'))
+        consoleErrors.push(msg.text())
     })
     page.on('pageerror', (err) => {
       consoleErrors.push(`pageerror: ${err.message}`)
