@@ -127,7 +127,7 @@ export function HowSheet(props: {
             ],
             [
               'Target.',
-              `About ${mainRr} times the stop distance${otherRr.length ? `; ${otherRr.join('; ')}` : ''}. The fill comes a little after the signal, so each trade shows its own ratio.`,
+              `About ${mainRr} times the stop distance${otherRr.length ? `; ${otherRr.join('; ')}` : ''}. The fill comes a little after the signal, so the stop and target move with it and keep that ratio.`,
             ],
             [
               'Size.',

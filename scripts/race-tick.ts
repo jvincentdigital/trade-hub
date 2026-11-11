@@ -217,6 +217,8 @@ async function tick() {
         usdPerQuote: usdPerQuoteFor(inst, price, prices),
         feeRate: FEE_RATE[inst.market],
         leverage: LEVERAGE[inst.market],
+        // Built-in rules keep their planned R at the fill (entryLevels in live.ts).
+        reanchor: p.kind === 'rule',
       })
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing)

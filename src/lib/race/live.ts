@@ -238,6 +238,8 @@ export interface MarketTick {
   leverage: number
   /** Stored on a trade this signal opens (Claude's picks: the reason). */
   note?: string
+  /** Move the signal's stop and target to the fill price (built-in rules, see entryLevels). */
+  reanchor?: boolean
 }
 
 export interface StepResult {
@@ -249,6 +251,30 @@ export interface StepResult {
 }
 
 const dir = (d: 'long' | 'short') => (d === 'long' ? 1 : -1)
+
+/**
+ * Stop and target for a trade that fills at `price`, or null when the price
+ * has already left the signal's stop-to-target range. With `reanchor` (the
+ * built-in rules, 2026-11-11 post-mortem) the signal's own distances are
+ * measured from the fill instead of the signal's close, so the trade keeps
+ * the planned reward to risk: BNB's 2R plan filled higher and became 1.53R
+ * with the old fixed levels. The size always comes from the fill-to-stop
+ * distance, so the dollars at the stop stay 2% either way.
+ */
+export function entryLevels(
+  sig: Pick<Signal, 'direction' | 'entry' | 'stop' | 'takeProfit'>,
+  price: number,
+  reanchor = false,
+): { stop: number; takeProfit: number } | null {
+  const valid =
+    price > 0 &&
+    (sig.direction === 'long'
+      ? price > sig.stop && price < sig.takeProfit
+      : price < sig.stop && price > sig.takeProfit)
+  if (!valid) return null
+  if (!reanchor) return { stop: sig.stop, takeProfit: sig.takeProfit }
+  return { stop: price - (sig.entry - sig.stop), takeProfit: price + (sig.takeProfit - sig.entry) }
+}
 
 /** Dollars lost if the stop is hit, from entry, before fees. */
 export const tradeRisk = (t: LiveTrade) => t.units * Math.abs(t.entry - t.stop) * t.usdPerQuote
@@ -321,12 +347,8 @@ export function stepStrategy(
     if (!sig || sig.time <= (lastSignal[m.market] ?? 0)) continue
     lastSignal[m.market] = sig.time
     const p = m.price
-    const valid =
-      p > 0 &&
-      (sig.direction === 'long'
-        ? p > sig.stop && p < sig.takeProfit
-        : p < sig.stop && p > sig.takeProfit)
-    if (!valid || open.some((t) => t.market === m.market)) continue
+    const levels = entryLevels(sig, p, m.reanchor)
+    if (!levels || open.some((t) => t.market === m.market)) continue
     // Bitcoin only among crypto; one pound/dollar bet per account (account.ts).
     const block = newTradeBlock({ market: m.market, direction: sig.direction }, open)
     if (block) {
@@ -341,7 +363,7 @@ export function stepStrategy(
       balance,
       open: open.map((t) => ({ margin: t.margin, riskUsd: tradeRisk(t) })),
       entry: p,
-      stop: sig.stop,
+      stop: levels.stop,
       usdPerQuote: m.usdPerQuote,
       leverage: m.leverage,
       sizing,
@@ -357,8 +379,8 @@ export function stepStrategy(
       entryTime: nowSec,
       entryBucket: m.path[m.path.length - 1]?.time ?? nowSec,
       entry: p,
-      stop: sig.stop,
-      takeProfit: sig.takeProfit,
+      stop: levels.stop,
+      takeProfit: levels.takeProfit,
       units: size.units,
       usdPerQuote: m.usdPerQuote,
       margin: size.margin,

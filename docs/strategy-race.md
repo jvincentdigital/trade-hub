@@ -218,6 +218,25 @@ pound/dollar rule, and `checkPicks` applies the same check in Claude's order
 pick as `REJECT`. Its prompt now gives the account's real balance instead of
 "$1,000".
 
+## Stop and target follow the fill (2026-11-11 post-mortem)
+
+A built-in rule's signal comes with a stop and a target measured from the
+signal candle's close. The trade opens later, at the live price, so with fixed
+levels the plan drifted: BNB was planned at 2R and filled at 1.53R. Since
+2026-11-11 the race keeps the rule's own distances and measures them from the
+fill (`entryLevels` in `src/lib/race/live.ts`, `reanchor` on the market tick,
+set for built-in rules in `scripts/race-tick.ts`):
+
+- stop = fill minus (signal entry minus signal stop), target = fill plus
+  (signal target minus signal entry), the same for a sell, mirrored;
+- the size still comes from the fill-to-stop distance, so a stop still costs
+  exactly 2%, and a target now pays exactly the planned R;
+- a signal is still skipped when the price has already passed its original
+  stop or target (no chasing a move that is over).
+
+London breakout already sets its levels around the fill price, and Claude's
+picks are checked against the price at the fill, so neither is moved.
+
 ## Closing every trade by hand (John, 2026-11-11)
 
 At 13:04 AST John asked to "close all the trades and take the profit" after

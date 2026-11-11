@@ -21,6 +21,7 @@ import {
 } from './leaderboard'
 import {
   createRaceState,
+  entryLevels,
   parseRaceState,
   raceStateSchema,
   stepStrategy,
@@ -147,6 +148,41 @@ describe('live forward test step', () => {
     const r = stepStrategy(fresh(), [tick({ signal: sig(), price: 111 })], 5000)
     expect(r.opened).toHaveLength(0)
     expect(r.strategy.lastSignal.bitcoin).toBe(1000)
+  })
+
+  it('re-anchor: a rule trade that fills away from the signal keeps its planned 2R', () => {
+    // Signal at 100: stop 95 (5 away), target 110 (10 away, 2R). The fill comes at 102.
+    const old = stepStrategy(fresh(), [tick({ signal: sig(), price: 102 })], 5000).opened[0]
+    expect(old.stop).toBe(95)
+    expect(old.takeProfit).toBe(110)
+    expect((old.takeProfit - old.entry) / (old.entry - old.stop)).toBeCloseTo(8 / 7) // drifted
+    const t = stepStrategy(fresh(), [tick({ signal: sig(), price: 102, reanchor: true })], 5000)
+      .opened[0]
+    expect(t.stop).toBeCloseTo(97)
+    expect(t.takeProfit).toBeCloseTo(112)
+    expect((t.takeProfit - t.entry) / (t.entry - t.stop)).toBeCloseTo(2)
+    // the size comes from the fill-to-stop distance: $20 at the stop exactly
+    expect(t.units * (t.entry - t.stop)).toBeCloseTo(20)
+    // a short moves the same way, mirrored
+    const s = stepStrategy(
+      fresh(),
+      [
+        tick({
+          signal: sig({ direction: 'short', stop: 105, takeProfit: 90 }),
+          price: 99,
+          reanchor: true,
+        }),
+      ],
+      5000,
+    ).opened[0]
+    expect(s.stop).toBeCloseTo(104)
+    expect(s.takeProfit).toBeCloseTo(89)
+  })
+
+  it('re-anchor still skips a signal whose original stop or target the price already passed', () => {
+    expect(entryLevels(sig(), 111, true)).toBeNull()
+    expect(entryLevels(sig(), 94, true)).toBeNull()
+    expect(entryLevels(sig(), 100, true)).toEqual({ stop: 95, takeProfit: 110 })
   })
 
   const opened = () => stepStrategy(fresh(), [tick({ signal: sig() })], 5000).strategy
