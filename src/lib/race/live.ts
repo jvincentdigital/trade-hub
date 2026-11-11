@@ -4,7 +4,8 @@ import type { Signal } from '../rules/engine'
 import { LEVERAGE } from '../paper/engine'
 import { getInstrument } from '../paper/instruments'
 import { usdPerQuoteFor } from '../sizing/sizing'
-import { RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
+import { newTradeBlock, RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
+import { dailyCloseDue } from './session'
 
 // "Live from today" race: a forward test. Every hour a tick looks at fresh
 // candles. Each strategy trades ONE play account across all its markets (one
@@ -48,8 +49,12 @@ export type LiveTrade = z.infer<typeof liveTradeSchema>
 export const closedLiveTradeSchema = liveTradeSchema.extend({
   exitTime: z.number(),
   exit: z.number(),
-  /** time: its deadline passed; news: closed before red news (lab bots). A first-target close is a "target" with part1Of set. */
-  reason: z.enum(['stop', 'target', 'time', 'news']),
+  /**
+   * manual = closed by you; session = the 12:45 AST daily close (./session.ts);
+   * time: its deadline passed; news: closed before red news (lab bots). A
+   * first-target close is a "target" with part1Of set.
+   */
+  reason: z.enum(['stop', 'target', 'manual', 'session', 'time', 'news']),
   /** Set on the first-target close of a trade: the share of the units it closed. */
   part1Of: z.number().optional(),
   /** Net dollars, both fees included. */
@@ -57,6 +62,16 @@ export const closedLiveTradeSchema = liveTradeSchema.extend({
   fees: z.number(),
 })
 export type ClosedLiveTrade = z.infer<typeof closedLiveTradeSchema>
+
+/** How a closed race trade ended, in the words the pages show. */
+export const REASON_TEXT: Record<ClosedLiveTrade['reason'], string> = {
+  stop: 'hit stop',
+  target: 'hit target',
+  manual: 'closed by you',
+  session: 'closed at 12:45',
+  time: 'closed at its time limit',
+  news: 'closed before red news',
+}
 
 export const raceStrategySchema = z.object({
   ruleId: z.string(),
@@ -69,6 +84,31 @@ export const raceStrategySchema = z.object({
   closed: z.array(closedLiveTradeSchema),
 })
 export type RaceStrategy = z.infer<typeof raceStrategySchema>
+
+/** A funded test trade (./funded.ts): a race trade plus the strategy whose signal opened it. */
+export const fundedTradeSchema = liveTradeSchema.extend({ strategy: z.string() })
+export type FundedTrade = z.infer<typeof fundedTradeSchema>
+export const closedFundedTradeSchema = closedLiveTradeSchema.extend({ strategy: z.string() })
+export type ClosedFundedTrade = z.infer<typeof closedFundedTradeSchema>
+
+/** The funded test account (John, 2026-11-11): one $10,000 account, FTMO-style limits. */
+export const fundedSchema = z.object({
+  startMoney: z.number().positive(),
+  /** Milliseconds. */
+  startedAt: z.number(),
+  /** Start money plus every closed trade's net P&L. */
+  balance: z.number(),
+  open: z.array(fundedTradeSchema),
+  closed: z.array(closedFundedTradeSchema),
+  /** Newest signal acted on, per "<strategy>:<market>", so one signal makes one trade. */
+  lastSignal: z.record(z.string(), z.number()),
+  status: z.enum(['active', 'passed', 'failed']),
+  /** Which rule broke, or how it passed, in plain words. */
+  statusNote: z.string().optional(),
+  /** Unix seconds of the check that failed or passed it. */
+  statusAt: z.number().optional(),
+})
+export type FundedState = z.infer<typeof fundedSchema>
 
 export const tickLogSchema = z.object({
   at: z.number(),
@@ -95,6 +135,10 @@ export const raceStateSchema = z.object({
   /** Latest price per market seen by the last tick, for open P&L. */
   prices: z.record(z.string(), z.number()),
   strategies: z.record(z.string(), raceStrategySchema),
+  /** The funded test account; started by the first tick that runs this code. */
+  funded: fundedSchema.optional(),
+  /** Unix seconds of the check that did the last 12:45 AST daily close (./session.ts). */
+  dailyCloseAt: z.number().optional(),
 })
 export type RaceState = z.infer<typeof raceStateSchema>
 
@@ -166,7 +210,7 @@ const legacyStateSchema = z.object({
         legacyTradeSchema.extend({
           exitTime: z.number(),
           exit: z.number(),
-          reason: z.enum(['stop', 'target']),
+          reason: z.enum(['stop', 'target', 'manual']),
           pnl: z.number(),
           fees: z.number(),
         }),
@@ -248,6 +292,8 @@ export interface MarketTick {
   leverage: number
   /** Stored on a trade this signal opens (Claude's picks: the reason). */
   note?: string
+  /** Move the signal's stop and target to the fill price (built-in rules, see entryLevels). */
+  reanchor?: boolean
   /** Lab bots: first target of a trade this signal opens (half closes there). */
   target1?: number
   /** Lab bots: latest time a trade this signal opens may stay open. */
@@ -268,7 +314,7 @@ export interface StepResult {
   strategy: RaceStrategy
   opened: LiveTrade[]
   closed: ClosedLiveTrade[]
-  /** Signals a limit kept out (5 open, 10% open risk, no free margin), with the reason. */
+  /** Signals a rule or limit kept out (crypto, pound/dollar, 5 open, 10% open risk, no free margin), with the reason. */
   passed: { market: string; reason: string }[]
   /** Confirmed-exit trades: reaches that nothing confirmed, ignored (logged as LONE WICK). */
   wicks: LoneWick[]
@@ -285,6 +331,50 @@ export interface LoneWick {
 }
 
 const dir = (d: 'long' | 'short') => (d === 'long' ? 1 : -1)
+
+/**
+ * Stop and target for a trade that fills at `price`, or null when the price
+ * has already left the signal's stop-to-target range. With `reanchor` (the
+ * built-in rules, 2026-11-11 post-mortem) the signal's own distances are
+ * measured from the fill instead of the signal's close, so the trade keeps
+ * the planned reward to risk: BNB's 2R plan filled higher and became 1.53R
+ * with the old fixed levels. The size always comes from the fill-to-stop
+ * distance, so the dollars at the stop stay 2% either way.
+ */
+export function entryLevels(
+  sig: Pick<Signal, 'direction' | 'entry' | 'stop' | 'takeProfit'>,
+  price: number,
+  reanchor = false,
+): { stop: number; takeProfit: number } | null {
+  const valid =
+    price > 0 &&
+    (sig.direction === 'long'
+      ? price > sig.stop && price < sig.takeProfit
+      : price < sig.stop && price > sig.takeProfit)
+  if (!valid) return null
+  if (!reanchor) return { stop: sig.stop, takeProfit: sig.takeProfit }
+  return { stop: price - (sig.entry - sig.stop), takeProfit: price + (sig.takeProfit - sig.entry) }
+}
+
+/** A trade closed at `exit`: both fees paid now, net P&L in `pnl`. */
+export function bookClose<T extends LiveTrade>(
+  t: T,
+  exit: number,
+  timeSec: number,
+  reason: ClosedLiveTrade['reason'],
+  feeRate: number,
+): T & Pick<ClosedLiveTrade, 'exitTime' | 'exit' | 'reason' | 'pnl' | 'fees'> {
+  const gross = t.units * dir(t.direction) * (exit - t.entry) * t.usdPerQuote
+  const exitFee = t.units * exit * t.usdPerQuote * feeRate
+  return {
+    ...t,
+    exitTime: timeSec,
+    exit,
+    reason,
+    pnl: gross - t.entryFee - exitFee,
+    fees: t.entryFee + exitFee,
+  }
+}
 
 /** Dollars lost if the stop is hit, from entry, before fees. */
 export const tradeRisk = (t: LiveTrade) => t.units * Math.abs(t.entry - t.stop) * t.usdPerQuote
@@ -411,27 +501,25 @@ function confirmedExitsOf(t: LiveTrade, path: OHLCCandle[], wicks: LoneWick[]): 
   return out
 }
 
+/** A trade (or part of one) once closed: the exit fields on top of the trade's own. */
+export type Closed<T extends LiveTrade> = T &
+  Pick<ClosedLiveTrade, 'exitTime' | 'exit' | 'reason' | 'pnl' | 'fees' | 'part1Of'>
+
 /** Close `share` of a trade's units at an exit: the closed part and what stays open. */
-function closePart(
-  t: LiveTrade,
+function closePart<T extends LiveTrade>(
+  t: T,
   x: Exit,
   feeRate: number,
-): { closed: ClosedLiveTrade; rest: LiveTrade | null } {
+): { closed: Closed<T>; rest: T | null } {
   const part = Math.min(1, Math.max(0, x.share))
-  const units = t.units * part
-  const entryFee = t.entryFee * part
-  const gross = units * dir(t.direction) * (x.exit - t.entry) * t.usdPerQuote
-  const exitFee = units * x.exit * t.usdPerQuote * feeRate
-  const closed: ClosedLiveTrade = {
+  const piece = {
     ...t,
-    units,
+    units: t.units * part,
     margin: t.margin * part,
-    entryFee,
-    exitTime: x.time,
-    exit: x.exit,
-    reason: x.reason,
-    pnl: gross - entryFee - exitFee,
-    fees: entryFee + exitFee,
+    entryFee: t.entryFee * part,
+  }
+  const closed: Closed<T> = {
+    ...bookClose(piece, x.exit, x.time, x.reason, feeRate),
     ...(part < 1 ? { part1Of: part } : {}),
   }
   if (part >= 1) return { closed, rest: null }
@@ -442,11 +530,50 @@ function closePart(
     closed,
     rest: {
       ...keep,
-      units: t.units - units,
-      margin: t.margin - closed.margin,
-      entryFee: t.entryFee - entryFee,
-    },
+      units: t.units - piece.units,
+      margin: t.margin - piece.margin,
+      entryFee: t.entryFee - piece.entryFee,
+    } as T,
   }
+}
+
+/**
+ * One open trade checked against its market at this tick, for every account
+ * (the funded test too): the parts that closed, both fees booked, and what is
+ * still open. Exits on later path candles (exitsOf), then, with no later
+ * candle yet, the deadline or red news (`closeNow`) at the price now.
+ */
+export function tradeExits<T extends LiveTrade>(
+  t0: T,
+  m: Pick<MarketTick, 'path' | 'price' | 'feeRate' | 'closeNow'>,
+  nowSec: number,
+  /** Confirmed-exit trades (John's London v1 on GBP/USD): lone wicks are added here. */
+  wicks: LoneWick[] = [],
+): { closed: Closed<T>[]; open: T | null } {
+  const closed: Closed<T>[] = []
+  let t: T | null = t0
+  for (const x of exitsOf(t0, m.path, wicks)) {
+    if (!t) break
+    const r: { closed: Closed<T>; rest: T | null } = closePart(t, x, m.feeRate)
+    closed.push(r.closed)
+    t = r.rest
+  }
+  // No later candle yet, but the deadline has passed or red news is due:
+  // close at the price now, while the market trades (its newest candle is
+  // under 2 hours old). Shut for the weekend, the reopen candle closes it.
+  const last = m.path[m.path.length - 1]
+  const live = !!last && nowSec - last.time < 2 * 3600
+  const late = t?.deadline != null && nowSec >= t.deadline
+  if (t && live && m.price > 0 && (late || m.closeNow)) {
+    const r = closePart(
+      t,
+      { exit: m.price, time: nowSec, reason: late ? 'time' : 'news', share: 1 },
+      m.feeRate,
+    )
+    closed.push(r.closed)
+    t = null
+  }
+  return { closed, open: t }
 }
 
 /**
@@ -457,13 +584,17 @@ function closePart(
  *    balance.
  * 2. Each market's signal newer than the last one used is consumed. With no
  *    trade open in that market it opens at the latest price, risking 2% of
- *    the balance, unless a limit says no (see sizeRaceTrade).
+ *    the balance, unless a rule for new trades (newTradeBlock: Bitcoin only
+ *    among crypto, one pound/dollar bet, no once-a-day markets) or a limit
+ *    (sizeRaceTrade) says no.
  */
 export function stepStrategy(
   s: RaceStrategy,
   markets: MarketTick[],
   nowSec: number,
   sizing: RaceSizing = RACE_SIZING,
+  /** Why no new trade may open now (entryWindowBlock in ./session.ts): signals are used up and passed. */
+  blockNew: string | null = null,
 ): StepResult {
   const byMarket = new Map(markets.map((m) => [m.market, m]))
   let balance = s.balance
@@ -476,31 +607,12 @@ export function stepStrategy(
       open.push(t0)
       continue
     }
-    let t: LiveTrade | null = t0
-    for (const x of exitsOf(t0, m.path, wicks)) {
-      if (!t) break
-      const r = closePart(t, x, m.feeRate)
-      balance += r.closed.pnl
-      closed.push(r.closed)
-      t = r.rest
+    const r = tradeExits(t0, m, nowSec, wicks)
+    for (const c of r.closed) {
+      balance += c.pnl
+      closed.push(c)
     }
-    // No later candle yet, but the deadline has passed or red news is due:
-    // close at the price now, while the market trades (its newest candle is
-    // under 2 hours old). Shut for the weekend, the reopen candle closes it.
-    const last = m.path[m.path.length - 1]
-    const live = !!last && nowSec - last.time < 2 * 3600
-    const late = t?.deadline != null && nowSec >= t.deadline
-    if (t && live && m.price > 0 && (late || m.closeNow)) {
-      const r = closePart(
-        t,
-        { exit: m.price, time: nowSec, reason: late ? 'time' : 'news', share: 1 },
-        m.feeRate,
-      )
-      balance += r.closed.pnl
-      closed.push(r.closed)
-      t = null
-    }
-    if (t) open.push(t)
+    if (r.open) open.push(r.open)
   }
 
   const lastSignal = { ...s.lastSignal }
@@ -511,13 +623,21 @@ export function stepStrategy(
     if (!sig && m.seen != null) lastSignal[m.market] = Math.max(lastSignal[m.market] ?? 0, m.seen)
     if (!sig || sig.time <= (lastSignal[m.market] ?? 0)) continue
     lastSignal[m.market] = sig.time
+    if (blockNew) {
+      passed.push({ market: m.market, reason: blockNew })
+      continue
+    }
     const p = m.price
-    const valid =
-      p > 0 &&
-      (sig.direction === 'long'
-        ? p > sig.stop && p < sig.takeProfit && (m.target1 == null || p < m.target1)
-        : p < sig.stop && p > sig.takeProfit && (m.target1 == null || p > m.target1))
-    if (!valid || open.some((t) => t.market === m.market)) continue
+    const levels = entryLevels(sig, p, m.reanchor)
+    // A first target (lab bots) must still be ahead of the price too.
+    const t1Ahead = m.target1 == null || (sig.direction === 'long' ? p < m.target1 : p > m.target1)
+    if (!levels || !t1Ahead || open.some((t) => t.market === m.market)) continue
+    // Bitcoin only among crypto; one pound/dollar bet per account (account.ts).
+    const block = newTradeBlock({ market: m.market, direction: sig.direction }, open)
+    if (block) {
+      passed.push({ market: m.market, reason: block })
+      continue
+    }
     if (m.usdPerQuote == null) {
       passed.push({ market: m.market, reason: 'no USD rate for its quote currency' })
       continue
@@ -526,7 +646,7 @@ export function stepStrategy(
       balance,
       open: open.map((t) => ({ margin: t.margin, riskUsd: tradeRisk(t) })),
       entry: p,
-      stop: m.sizeStop ?? sig.stop,
+      stop: m.sizeStop ?? levels.stop,
       usdPerQuote: m.usdPerQuote,
       leverage: m.leverage,
       sizing,
@@ -549,8 +669,8 @@ export function stepStrategy(
       entryTime: nowSec,
       entryBucket: m.path[m.path.length - 1]?.time ?? nowSec,
       entry: p,
-      stop: sig.stop,
-      takeProfit: sig.takeProfit,
+      stop: levels.stop,
+      takeProfit: levels.takeProfit,
       units: size.units,
       usdPerQuote: m.usdPerQuote,
       margin: size.margin,
@@ -570,6 +690,70 @@ export function stepStrategy(
     passed,
     wicks,
   }
+}
+
+/**
+ * Close every open trade at the given price per market, with both fees booked
+ * like a stop or target close: by hand (John, 2026-11-11, reason 'manual') or
+ * at the 12:45 AST daily close ('session'). Trades on a market with no price
+ * stay open and are listed in `missing`. Pure.
+ */
+export function closeAll(
+  state: RaceState,
+  exitPrices: Record<string, number>,
+  timeSec: number,
+  feeRate: (market: string) => number,
+  reason: 'manual' | 'session' = 'manual',
+): { state: RaceState; closed: (ClosedLiveTrade & { strategy: string })[]; missing: string[] } {
+  const closed: (ClosedLiveTrade & { strategy: string })[] = []
+  const missing = new Set<string>()
+  /** One account's open trades closed; the ones with no price stay open. */
+  const closeAccount = <T extends LiveTrade>(account: string, trades: T[], balance: number) => {
+    const open: T[] = []
+    const done: ReturnType<typeof bookClose<T>>[] = []
+    for (const t of trades) {
+      const exit = exitPrices[t.market]
+      if (!(exit > 0)) {
+        missing.add(t.market)
+        open.push(t)
+        continue
+      }
+      const c = bookClose(t, exit, timeSec, reason, feeRate(t.market))
+      balance += c.pnl
+      done.push(c)
+      closed.push({ ...c, strategy: account })
+    }
+    return { balance, open, done }
+  }
+  const strategies = Object.fromEntries(
+    Object.entries(state.strategies).map(([id, s]) => {
+      const r = closeAccount(s.name, s.open, s.balance)
+      return [id, { ...s, balance: r.balance, open: r.open, closed: [...s.closed, ...r.done] }]
+    }),
+  )
+  const f = state.funded
+  const fr = f && closeAccount('Funded test', f.open, f.balance)
+  const funded =
+    f && fr ? { ...f, balance: fr.balance, open: fr.open, closed: [...f.closed, ...fr.done] } : f
+  return { state: { ...state, strategies, funded }, closed, missing: [...missing] }
+}
+
+/**
+ * The daily close (John, 2026-11-11), run at the end of every check: at the
+ * first check at or after 12:45 AST on a weekday, every open trade closes at
+ * that check's price, reason 'session'. A race that has never done one starts
+ * counting from this check, so the rule begins at the next 12:45, not at once.
+ */
+export function applyDailyClose(
+  state: RaceState,
+  nowSec: number,
+  feeRate: (market: string) => number,
+): ReturnType<typeof closeAll> {
+  if (state.dailyCloseAt == null)
+    return { state: { ...state, dailyCloseAt: nowSec }, closed: [], missing: [] }
+  if (!dailyCloseDue(nowSec, state.dailyCloseAt)) return { state, closed: [], missing: [] }
+  const r = closeAll(state, state.prices, nowSec, feeRate, 'session')
+  return { ...r, state: { ...r.state, dailyCloseAt: nowSec } }
 }
 
 /** Unrealized dollars on an open trade (before fees). */

@@ -4,7 +4,14 @@ import type { Signal } from '../rules/engine'
 import { closedOnly } from './candles'
 import { backtest } from '../rules/engine'
 import { BUILT_IN_RULES } from '../rules/presets'
-import { minStopForFullRisk, RACE_SIZING, sizeRaceTrade } from './account'
+import {
+  ALLOWED_CRYPTO,
+  minStopForFullRisk,
+  newTradeBlock,
+  NOT_LIVE,
+  RACE_SIZING,
+  sizeRaceTrade,
+} from './account'
 import {
   portfolioBacktest,
   rankEntries,
@@ -15,6 +22,7 @@ import {
 } from './leaderboard'
 import {
   createRaceState,
+  entryLevels,
   parseRaceState,
   raceStateSchema,
   stepStrategy,
@@ -143,6 +151,41 @@ describe('live forward test step', () => {
     expect(r.strategy.lastSignal.bitcoin).toBe(1000)
   })
 
+  it('re-anchor: a rule trade that fills away from the signal keeps its planned 2R', () => {
+    // Signal at 100: stop 95 (5 away), target 110 (10 away, 2R). The fill comes at 102.
+    const old = stepStrategy(fresh(), [tick({ signal: sig(), price: 102 })], 5000).opened[0]
+    expect(old.stop).toBe(95)
+    expect(old.takeProfit).toBe(110)
+    expect((old.takeProfit - old.entry) / (old.entry - old.stop)).toBeCloseTo(8 / 7) // drifted
+    const t = stepStrategy(fresh(), [tick({ signal: sig(), price: 102, reanchor: true })], 5000)
+      .opened[0]
+    expect(t.stop).toBeCloseTo(97)
+    expect(t.takeProfit).toBeCloseTo(112)
+    expect((t.takeProfit - t.entry) / (t.entry - t.stop)).toBeCloseTo(2)
+    // the size comes from the fill-to-stop distance: $20 at the stop exactly
+    expect(t.units * (t.entry - t.stop)).toBeCloseTo(20)
+    // a short moves the same way, mirrored
+    const s = stepStrategy(
+      fresh(),
+      [
+        tick({
+          signal: sig({ direction: 'short', stop: 105, takeProfit: 90 }),
+          price: 99,
+          reanchor: true,
+        }),
+      ],
+      5000,
+    ).opened[0]
+    expect(s.stop).toBeCloseTo(104)
+    expect(s.takeProfit).toBeCloseTo(89)
+  })
+
+  it('re-anchor still skips a signal whose original stop or target the price already passed', () => {
+    expect(entryLevels(sig(), 111, true)).toBeNull()
+    expect(entryLevels(sig(), 94, true)).toBeNull()
+    expect(entryLevels(sig(), 100, true)).toEqual({ stop: 95, takeProfit: 110 })
+  })
+
   const opened = () => stepStrategy(fresh(), [tick({ signal: sig() })], 5000).strategy
 
   it('closes at the target on a later candle, both fees counted', () => {
@@ -181,7 +224,8 @@ describe('live forward test step', () => {
   })
 
   it('every market shares one balance; the 6th signal waits for a free spot', () => {
-    const ids = ['EUR-USD', 'GBP-USD', 'AUD-USD', 'NZD-USD', 'USD-CAD', 'USD-CHF']
+    // mixed so the dollar rule (at most 2 the same way) lets all 6 through
+    const ids = ['EUR-USD', 'AUD-USD', 'USD-CAD', 'EUR-GBP', 'bitcoin', 'USD-CHF']
     const r = stepStrategy(
       fresh(),
       ids.map((market) => tick({ market, signal: sig(), leverage: 30, feeRate: 0 })),
@@ -242,6 +286,167 @@ describe('live forward test step', () => {
     expect(state.strategies.a).toEqual(st.strategies.a)
     expect(state.strategies.n.balance).toBe(1000)
     expect(syncRaceState(state, [{ id: 'n', name: 'New' }]).changes).toEqual([])
+  })
+})
+
+describe('rules for new trades (John, 2026-11-11)', () => {
+  const fx = (market: string, direction: 'long' | 'short' = 'long') =>
+    tick({
+      market,
+      leverage: 30,
+      feeRate: 0,
+      signal: direction === 'long' ? sig() : sig({ direction: 'short', stop: 105, takeProfit: 90 }),
+    })
+  /** An account with these trades already open (opened before the rules, if need be). */
+  const holding = (...trades: [string, 'long' | 'short'][]): RaceStrategy => {
+    const [t] = stepStrategy(fresh(), [tick({ signal: sig() })], 5000).strategy.open
+    return {
+      ...fresh(),
+      open: trades.map(([market, direction]) => ({ ...t, market, direction })),
+    }
+  }
+  const step = (s: RaceStrategy, ticks: MarketTick[]) => stepStrategy(s, ticks, 5000)
+
+  it('no new crypto except Bitcoin; gold and forex as before', () => {
+    const r = step(fresh(), [
+      tick({ market: 'binancecoin', signal: sig() }),
+      tick({ market: 'polygon-ecosystem-token', signal: sig() }),
+      tick({ market: 'bitcoin', signal: sig() }),
+    ])
+    expect(r.opened.map((t) => t.market)).toEqual(['bitcoin'])
+    expect(r.passed).toEqual([
+      { market: 'binancecoin', reason: 'no new crypto trades except Bitcoin' },
+      { market: 'polygon-ecosystem-token', reason: 'no new crypto trades except Bitcoin' },
+    ])
+    // the refused signal is used up, like any other PASS
+    expect(r.strategy.lastSignal.binancecoin).toBe(1000)
+    expect(ALLOWED_CRYPTO).toEqual(['bitcoin'])
+    const other = step(fresh(), [fx('pax-gold'), fx('EUR-USD', 'short')])
+    expect(other.opened.map((t) => t.market)).toEqual(['pax-gold', 'EUR-USD'])
+  })
+
+  it('an open BNB trade keeps running and still closes at its stop', () => {
+    const s = holding(['binancecoin', 'long'])
+    const quiet = stepStrategy(
+      s,
+      [tick({ market: 'binancecoin', path: [bar(4000 + H, 100, 101, 99, 100)] })],
+      9000,
+    )
+    expect(quiet.strategy.open).toHaveLength(1)
+    const hit = stepStrategy(
+      s,
+      [tick({ market: 'binancecoin', path: [bar(4000 + H, 100, 100, 94, 96)] })],
+      9000,
+    )
+    expect(hit.closed[0]).toMatchObject({ market: 'binancecoin', reason: 'stop', exit: 95 })
+    expect(hit.closed[0].pnl).toBeCloseTo(-20 - 0.4 - 0.38)
+    expect(hit.strategy.open).toHaveLength(0)
+  })
+
+  it('never opposite sides of the pound/dollar bet in one account', () => {
+    const s = holding(['GBP-USD', 'long'])
+    const r = step(s, [fx('pax-gold', 'short'), fx('EUR-GBP', 'long')])
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed).toEqual([
+      {
+        market: 'pax-gold',
+        reason: 'against the open GBP-USD long (one pound/dollar bet per account)',
+      },
+      {
+        market: 'EUR-GBP',
+        reason: 'against the open GBP-USD long (one pound/dollar bet per account)',
+      },
+    ])
+    // the same way is fine: gold long and EUR/GBP short are both "dollar down / pound up"
+    expect(step(s, [fx('pax-gold', 'long')]).opened).toHaveLength(1)
+    expect(step(s, [fx('EUR-GBP', 'short')]).opened).toHaveLength(1)
+    // a market outside the group is not affected
+    expect(step(s, [fx('EUR-USD', 'short')]).opened).toHaveLength(1)
+  })
+
+  it('at most 2 the same way', () => {
+    const r = step(holding(['GBP-USD', 'long'], ['pax-gold', 'long']), [fx('EUR-GBP', 'short')])
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed[0].reason).toBe('2 pound/dollar trades already open the same way')
+    // also inside one tick: the third signal of the tick waits
+    const one = step(fresh(), [fx('GBP-USD'), fx('pax-gold'), fx('EUR-GBP', 'short')])
+    expect(one.opened.map((t) => t.market)).toEqual(['GBP-USD', 'pax-gold'])
+  })
+
+  it('GBP/JPY is a copy of GBP/USD: never both open in one account', () => {
+    // the 2026-11-11 case: both signalled on the same tick. New GBP/JPY trades are
+    // off since that evening (once-a-day price), so the copy rule now only guards
+    // a new GBP/USD in an account that still holds an older GBP/JPY trade.
+    const r = step(fresh(), [fx('GBP-USD'), fx('GBP-JPY')])
+    expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD'])
+    expect(r.passed).toEqual([
+      {
+        market: 'GBP-JPY',
+        reason: 'no new trades on GBP-JPY: priced from a once-a-day rate, not live',
+      },
+    ])
+    expect(step(holding(['GBP-JPY', 'short']), [fx('GBP-USD', 'short')]).passed[0].reason).toMatch(
+      /GBP-USD is a copy of the open GBP-JPY/,
+    )
+  })
+
+  it('no new trades on markets priced once a day, in every account; open ones still close', () => {
+    for (const market of ['USD-JPY', 'NZD-USD', 'GBP-JPY'])
+      expect(step(fresh(), [fx(market)]).passed).toEqual([
+        { market, reason: `no new trades on ${market}: priced from a once-a-day rate, not live` },
+      ])
+    expect(NOT_LIVE).toEqual(['USD-JPY', 'NZD-USD', 'GBP-JPY'])
+    // an open USD/JPY trade still closes at its target
+    const s = holding(['USD-JPY', 'long'])
+    const t = s.open[0]
+    const hit = step(s, [
+      tick({
+        market: 'USD-JPY',
+        path: [bar(t.entryBucket + 2 * H, t.entry, t.takeProfit + 1, t.entry, t.takeProfit)],
+      }),
+    ])
+    expect(hit.closed.map((c) => c.reason)).toEqual(['target'])
+  })
+
+  it('other accounts may disagree; trades already open are not touched', () => {
+    const a = step(holding(['GBP-USD', 'long']), [fx('pax-gold', 'short')])
+    const b = step(fresh(), [fx('pax-gold', 'short')])
+    expect(a.opened).toHaveLength(0)
+    expect(b.opened.map((t) => `${t.market} ${t.direction}`)).toEqual(['pax-gold short'])
+    // an account already holding both sides keeps both until they close
+    const mixed = holding(['GBP-USD', 'long'], ['pax-gold', 'short'], ['GBP-JPY', 'long'])
+    const kept = step(mixed, [tick({ market: 'GBP-USD' }), tick({ market: 'pax-gold' })])
+    expect(kept.strategy.open).toEqual(mixed.open)
+  })
+
+  it('at most 2 bets the same way on the dollar', () => {
+    // the 2026-11-11 12:00 case: EUR/USD long and USD/CHF short open, GBP/USD long next
+    const r = step(holding(['EUR-USD', 'long'], ['USD-CHF', 'short']), [fx('GBP-USD')])
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed).toEqual([
+      { market: 'GBP-USD', reason: '2 trades already bet the dollar falls' },
+    ])
+    // the other way: EMA 50's short EUR/USD + long USD/JPY, then gold short
+    expect(
+      step(holding(['EUR-USD', 'short'], ['USD-JPY', 'long']), [fx('pax-gold', 'short')]).passed[0]
+        .reason,
+    ).toBe('2 trades already bet the dollar rises')
+    // inside one tick: the third dollar-down signal waits
+    const one = step(fresh(), [fx('EUR-USD'), fx('AUD-USD'), fx('USD-CAD', 'short')])
+    expect(one.opened.map((t) => t.market)).toEqual(['EUR-USD', 'AUD-USD'])
+    // opposite dollar bets are fine, and so are markets without the dollar
+    expect(
+      step(holding(['EUR-USD', 'long'], ['AUD-USD', 'long']), [fx('USD-CHF')]).opened,
+    ).toHaveLength(1)
+    expect(
+      step(holding(['EUR-USD', 'long'], ['AUD-USD', 'long']), [fx('EUR-GBP')]).opened,
+    ).toHaveLength(1)
+  })
+
+  it('newTradeBlock on its own', () => {
+    expect(newTradeBlock({ market: 'bitcoin', direction: 'short' }, [])).toBeNull()
+    expect(newTradeBlock({ market: 'ethereum', direction: 'long' }, [])).toMatch(/except Bitcoin/)
+    expect(newTradeBlock({ market: 'GBP-USD', direction: 'long' }, [])).toBeNull()
   })
 })
 
@@ -456,5 +661,61 @@ describe('backtest windows', () => {
     })
     expect(e.days).toBe(30)
     expect(e.perMonth).toBeCloseTo(e.profit)
+  })
+})
+
+describe('closeAll (John closes every trade by hand)', () => {
+  it('books each trade at its market price with both fees, reason manual', async () => {
+    const { closeAll } = await import('./live')
+    const st = createRaceState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      10_000,
+      0,
+    )
+    const t = {
+      signalTime: 1,
+      entryTime: 2,
+      entryBucket: 2,
+      units: 10_000,
+      usdPerQuote: 1,
+      margin: 400,
+      entryFee: 0.8,
+    }
+    st.strategies.a.open = [
+      { ...t, market: 'GBP-USD', direction: 'long', entry: 1.3, stop: 1.29, takeProfit: 1.32 },
+      {
+        ...t,
+        market: 'USD-JPY',
+        direction: 'short',
+        entry: 150,
+        stop: 151,
+        takeProfit: 148,
+        usdPerQuote: 1 / 150,
+      },
+    ]
+    st.strategies.b.open = [
+      { ...t, market: 'EUR-USD', direction: 'short', entry: 1.1, stop: 1.11, takeProfit: 1.08 },
+    ]
+    const r = closeAll(st, { 'GBP-USD': 1.305, 'EUR-USD': 1.102 }, 500, () => 0.0001)
+    // GBP/USD long +50 pips on 10k = +$50, minus 0.8 entry and 1.305 exit fee
+    expect(r.closed.find((c) => c.market === 'GBP-USD')).toMatchObject({
+      reason: 'manual',
+      exitTime: 500,
+      exit: 1.305,
+      strategy: 'A',
+    })
+    expect(r.closed.find((c) => c.market === 'GBP-USD')!.pnl).toBeCloseTo(50 - 0.8 - 1.305)
+    expect(r.closed.find((c) => c.market === 'EUR-USD')!.pnl).toBeCloseTo(-20 - 0.8 - 1.102)
+    // no price: stays open, named in missing, balance untouched by it
+    expect(r.missing).toEqual(['USD-JPY'])
+    expect(r.state.strategies.a.open.map((x) => x.market)).toEqual(['USD-JPY'])
+    expect(r.state.strategies.a.balance).toBeCloseTo(10_000 + 50 - 0.8 - 1.305)
+    expect(r.state.strategies.b.closed).toHaveLength(1)
+    expect(raceStateSchema.safeParse(r.state).success).toBe(true)
+    // the input state is not changed
+    expect(st.strategies.a.open).toHaveLength(2)
   })
 })

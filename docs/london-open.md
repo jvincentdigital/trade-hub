@@ -27,7 +27,20 @@ done").
 | 07:00             | 11:00       | Last 15-minute tick; the hourly tick carries on as always                   |
 | every hour at :07 |             | The hourly race tick (`com.jvd.trade-hub-race`), 24/7                       |
 
-Weekdays only for the London jobs (Monday to Friday, launchd `Weekday` 1-5).
+Since 2026-11-11 the 15-minute ticks run 02:00-12:45 AST (London to New York) and
+Claude's picks at 03:47 and 09:47 AST, weekdays only.
+
+**The plists schedule minutes only; the wrappers check the day and the hour.** The
+London plist fires at :00, :15, :30 and :45 every hour and sets `RUN_HOURS="2 3 ... 12"`;
+the picks plist fires at :47 and sets `RUN_HOURS="3 9"`. Both set `WEEKDAYS_ONLY=1`. The
+wrapper exits at once outside those hours and on Saturday and Sunday. Why: on the Mac
+Mini launchd ran every `Hour` entry 4 hours late (2026-11-11: the 02:00 tick first fired
+at 06:00 AST, the 03:47 picks at 07:47 AST), while the minute-only hourly job ran on
+time. The likely cause is that the Mac's time zone was set to Puerto Rico 15 minutes
+after it booted (Nov 9), and launchd kept the zone it started with (02:00 in UTC-8 is
+06:00 AST). A restart would probably fix it too, but the Mac has FileVault on and no
+auto-login, so every agent would wait until someone signs in. Minute-only schedules
+are safe either way. Check after install: `race-london.log` should start at 02:00 AST.
 All three jobs use the Mac Mini's clock, which is on AST.
 
 - **Breakouts start at 02:00, an hour before Frankfurt.** That is the spec
@@ -100,8 +113,22 @@ may not happen at the same moment). The app labels it "computed from GBP/USD
 and USD/JPY". Because it follows GBP/USD inside the day (on 10 Nov both
 broke above the Asian range on the same 06:00 candle), London breakout and
 Claude's picks do not trade it: it would be a second 2% bet on the same pound
-move. The built-in rules still trade it, and it stays on Today's "Pound &
-gold" tab. On `/forex/GBP-JPY` the chart is the ECB's daily close; a line
+move. The built-in rules still trade it, but since 2026-11-11 never while the
+same account has GBP/USD open (and no GBP/USD while it has GBP/JPY open), and
+it stays on Today's "Pound & gold" tab.
+
+**One pound/dollar bet per account (John, 2026-11-11).** Inside each account,
+GBP/USD, GBP/JPY, EUR/GBP and gold count as one bet: never opposite sides
+(a GBP/USD long rules out a gold short and a EUR/GBP long), at most 2 trades
+the same way. Different accounts may still disagree. John: "most of the time
+when you start doing a pair with Great British Pound, most of the time they go
+the same way... when it comes to pound and dollar, what goes is as much as the
+same as the gold with the dollar." Details and log lines:
+`docs/strategy-race.md`, "Four rules for new trades". Since 15:05 AST that day
+no account opens new GBP/JPY trades (nor USD/JPY or NZD/USD): their price is
+the ECB's once-a-day rate, not live. The same day John also
+stopped new crypto trades except Bitcoin; London breakout and Claude's picks
+never traded crypto. On `/forex/GBP-JPY` the chart is the ECB's daily close; a line
 under the header says the race and Today use the computed price, so the two
 can differ.
 
@@ -189,7 +216,10 @@ on daily).
    at least 1.5x the stop distance; not against (or on top of) an open
    Claude's picks trade on that market; at most 2, one per market. The 1h ATR
    replaced the 15m one: with the margin floor, GBP/USD's 15m band shrank to
-   8.9 to 10.8 pips.
+   8.9 to 10.8 pips. Since 2026-11-11 also one pound/dollar bet: no gold
+   pick against an open GBP/USD pick (or the other way), counting earlier
+   picks in the same answer first. The prompt gives the account's balance
+   from `race.json` (it said $1,000 before).
 4. Opens the ones that pass at the current price with the race's 2% sizing
    and limits, stores the reason on the trade (Today shows it on the row),
    saves under the race lock (waits up to 5 minutes for a running tick) and
@@ -275,7 +305,7 @@ cp scripts/launchd/com.jvd.trade-hub-claude-picks.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jvd.trade-hub-race-london.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jvd.trade-hub-claude-picks.plist
 launchctl list | grep trade-hub       # race, race-london, claude-picks
-launchctl print gui/$(id -u)/com.jvd.trade-hub-race-london | head -60   # shows its calendar entries (105 in the plist)
+launchctl print gui/$(id -u)/com.jvd.trade-hub-race-london | head -60   # shows its calendar entries (4 minutes; the wrapper checks the hour)
 make race-tick                        # one tick now, so both new accounts exist (picks stops without race.json)
 zsh -c 'source ~/.zprofile; make claude-picks DRY=1'   # optional: see a brief
 ```

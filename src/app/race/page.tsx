@@ -21,10 +21,18 @@ import {
   WINDOW_DAYS,
   windowStart,
 } from '@/lib/race/leaderboard'
-import { summarize, type RaceState } from '@/lib/race/live'
+import {
+  openPnl,
+  REASON_TEXT,
+  summarize,
+  type ClosedLiveTrade,
+  type RaceState,
+} from '@/lib/race/live'
+import { FUNDED, fundedView } from '@/lib/race/funded'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
+import { MoneyInput } from '@/components/ui/MoneyInput'
 
 const RULES = BUILT_IN_RULES.map((rule) => ({
   rule,
@@ -119,14 +127,10 @@ export default function RacePage() {
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 4px' }}>
         <span style={{ fontSize: 13 }}>Starting money per strategy</span>
         <span style={{ color: 'var(--text-secondary)' }}>$</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={1}
-          step={100}
+        <MoneyInput
           value={start}
-          onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))}
-          aria-label="Starting money per strategy in dollars"
+          onChange={setStart}
+          label="Starting money per strategy in dollars"
           style={input}
         />
       </label>
@@ -135,6 +139,7 @@ export default function RacePage() {
       </p>
 
       <Backtests start={safeStart} />
+      <FundedLive />
       <Live start={safeStart} />
     </div>
   )
@@ -499,16 +504,8 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
 }
 
 /** Why a live race trade closed, in plain words. */
-const liveHow = (t: { reason: string; part1Of?: number }) =>
-  t.part1Of
-    ? `first target, ${Math.round(t.part1Of * 100)}% closed`
-    : t.reason === 'target'
-      ? 'hit target'
-      : t.reason === 'time'
-        ? 'closed at its time limit'
-        : t.reason === 'news'
-          ? 'closed before red news'
-          : 'hit stop'
+const liveHow = (t: Pick<ClosedLiveTrade, 'reason' | 'part1Of'>) =>
+  t.part1Of ? `first target, ${Math.round(t.part1Of * 100)}% closed` : REASON_TEXT[t.reason]
 
 const reasonText = (t: TradeMoney) =>
   t.reason === 'target' ? 'hit target' : t.reason === 'stop' ? 'hit stop' : 'still open at the end'
@@ -604,6 +601,77 @@ const fetcher = async (url: string) => {
   return res.json() as Promise<{ state: RaceState | null; installed: boolean }>
 }
 
+/** The funded test (src/lib/race/funded.ts): the account Today follows. */
+function FundedLive() {
+  const { data } = useSWR('/api/race', fetcher, { refreshInterval: 60_000 })
+  const [now] = useState(() => Date.now())
+  const state = data?.state ?? null
+  if (!state) return null
+  const f = state.funded
+  const v = f ? fundedView(f, state.prices, Math.floor(now / 1000)) : null
+  const nameOf = (id: string) => state.strategies[id]?.name ?? id
+  const floor = FUNDED.startMoney * (1 - FUNDED.maxLossPct / 100)
+  return (
+    <section style={{ ...card, marginTop: 16 }} aria-labelledby="funded-title">
+      <div style={sectionHead}>
+        <h2 id="funded-title" style={h2}>
+          {f ? `${FUNDED.name} since ${when(f.startedAt / 1000)}` : FUNDED.name}
+        </h2>
+      </div>
+      {/* One string: JSX text with entities can lose a space here (docs/dashboard.md, Gotcha). */}
+      <p style={small}>
+        {`One ${money(FUNDED.startMoney)} play account that takes every strategy's signals in a fixed order (the built-in rules as listed on Strategies, then London breakout, then Claude's picks): the first to signal a market gets it. ${FUNDED.sizing.riskPct}% risk per trade, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${money((FUNDED.startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start, counted from the day's opening balance) or money under ${money(floor)} fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${money((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}. Today follows this account.`}
+      </p>
+      {!f || !v ? (
+        <p style={{ fontSize: 13, marginTop: 12 }}>
+          Starts with {money(FUNDED.startMoney)} at the next race check.
+        </p>
+      ) : (
+        <>
+          <p style={{ fontSize: 13, marginTop: 12, fontVariantNumeric: 'tabular-nums' }}>
+            <b>{money(v.money, { cents: true })}</b>{' '}
+            <span style={{ color: color(v.result) }}>
+              {money(v.result, { sign: true, cents: true })}
+            </span>
+            {` · ${v.status} · ${v.days} of ${FUNDED.minDays} trading days · day loss ${money(v.dayLoss)} of ${money(v.dayLimit)}`}
+          </p>
+          {v.statusNote && (
+            <p style={{ ...small, color: v.status === 'failed' ? 'var(--red)' : 'var(--green)' }}>
+              {v.status === 'failed' ? 'Failed' : 'Passed'}: {v.statusNote}.
+            </p>
+          )}
+          <TradeList
+            title={`Open trades (${f.open.length}), P&L at the last check`}
+            trades={f.open.map((t) => ({
+              key: `${t.market}-${t.entryTime}`,
+              market: t.market,
+              direction: t.direction,
+              time: t.entryTime,
+              how: `opened from ${nameOf(t.strategy)}`,
+              pnl: openPnl(t, state.prices[t.market]),
+              size: sizeOf(t),
+            }))}
+            empty="No open trades."
+          />
+          <TradeList
+            title={`Closed trades (${f.closed.length}), fees included`}
+            trades={[...f.closed].reverse().map((t) => ({
+              key: `${t.market}-${t.entryTime}`,
+              market: t.market,
+              direction: t.direction,
+              time: t.exitTime,
+              how: `${REASON_TEXT[t.reason]}, from ${nameOf(t.strategy)}`,
+              pnl: t.pnl,
+              size: sizeOf(t),
+            }))}
+            empty="No closed trades yet."
+          />
+        </>
+      )}
+    </section>
+  )
+}
+
 function Live({ start }: { start: number }) {
   const { data, error, isLoading } = useSWR('/api/race', fetcher, { refreshInterval: 60_000 })
   const [open, setOpen] = useState<string | null>(null)
@@ -616,9 +684,14 @@ function Live({ start }: { start: number }) {
     <section style={{ ...card, marginTop: 16 }} aria-labelledby="live-title">
       <div style={sectionHead}>
         <h2 id="live-title" style={h2}>
-          {state ? `Live since ${when(state.startedAt / 1000)}` : 'Live from today'}
+          {state ? `Lab: live since ${when(state.startedAt / 1000)}` : 'Lab: live from today'}
         </h2>
       </div>
+      <p style={small}>
+        The quiet Lab: each strategy still trades its own play account on its own signals, so we can
+        see which ones earn their place. Today shows only the funded test above. Every account opens
+        new trades only from 02:00 to 12:30 AST on weekdays and closes everything at 12:45 AST.
+      </p>
       <p style={small}>
         A forward test: each tick checks every strategy&apos;s signal on fresh closed candles and
         opens or closes trades in its own play account (one account per strategy, each trade risking{' '}
@@ -660,7 +733,7 @@ function Live({ start }: { start: number }) {
               {money(start)}.
             </p>
           )}
-          <ol style={list} aria-label="Live race">
+          <ol style={list} aria-label="Lab accounts">
             {rows.map((r, i) => (
               <li key={r.ruleId} style={{ borderTop: '0.5px solid var(--border)' }}>
                 <button

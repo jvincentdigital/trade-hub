@@ -2,9 +2,10 @@ import type { OHLCCandle } from '../types/market'
 import { ema, rsiSeries } from '../scanner/mmConfluence'
 import { formatQuote, getInstrument } from '../paper/instruments'
 import { atrSeries, type LondonCheck } from './londonBreakout'
+import { newTradeBlock } from './account'
 import type { LiveTrade } from './live'
 
-// "Claude's picks": one more $1,000 race account. Once a weekday before the
+// "Claude's picks": one more race account. Once a weekday before the
 // London open (scripts/claude-picks.ts, 03:47 AST) Claude reads a short brief per market
 // and may suggest up to 2 trades; this file builds the brief and checks every
 // suggestion hard before anything opens. Pure, tested. Play money only.
@@ -134,9 +135,14 @@ export function marketBrief(d: MarketData, nowSec: number): string {
   ].join('\n')
 }
 
-export function picksPrompt(briefs: string[], nowSec: number): string {
+/** `balance`: the account's money now (from race.json), left out when unknown. */
+export function picksPrompt(briefs: string[], nowSec: number, balance?: number): string {
   const ast = new Date((nowSec - 4 * H) * 1000).toISOString().slice(11, 16)
-  return `You pick trades for a play-money forex race (no real money, no broker). It is ${fmtUtc(nowSec)} UTC (${ast} in Puerto Rico), just before the London open at 08:00 UTC. Your account is "Claude's picks": $1,000, each trade risks 2% of the balance, sized by code.
+  const money =
+    balance != null && balance > 0
+      ? ` $${balance.toLocaleString('en-US', { maximumFractionDigits: 0 })},`
+      : ''
+  return `You pick trades for a play-money forex race (no real money, no broker). It is ${fmtUtc(nowSec)} UTC (${ast} in Puerto Rico), just before the London open at 08:00 UTC. Your account is "Claude's picks":${money} each trade risks 2% of the balance, sized by code.
 
 Markets you may trade: ${CLAUDE_PICKS.markets.join(', ')} (pax-gold is gold, priced in dollars).
 
@@ -147,6 +153,7 @@ Rules, checked by code (a trade that breaks one is thrown away):
 - Stop distance from the current price: inside the "Stop distance allowed" range shown for that market (${CLAUDE_PICKS.minStopAtr}x to ${CLAUDE_PICKS.maxStopAtr}x the 1h ATR, and never so close that the margin cap would shrink the trade below 2% risk).
 - Target distance at least ${CLAUDE_PICKS.minRR}x the stop distance.
 - Never against a "Claude's picks" trade already open on that market.
+- GBP-USD and gold are one pound/dollar bet in your account (they move together): a GBP-USD long and a gold long are the same way (dollar down), a GBP-USD long and a gold short are opposite. Never opposite sides, counting your open "Claude's picks" trades.
 
 Answer with ONLY this JSON, nothing before or after it:
 {"trades":[{"market":"GBP-USD","direction":"long","stop":1.33000,"target":1.34000,"reason":"One or two plain sentences on why."}]}
@@ -268,7 +275,7 @@ export function checkPick(
   }
 }
 
-/** Every suggestion checked; at most 2 kept, one per market, in Claude's order. */
+/** Every suggestion checked; at most 2 kept, one per market, one pound/dollar bet, in Claude's order. */
 export function checkPicks(raw: unknown[], ctx: PickContext) {
   const accepted: Pick[] = []
   const rejected: { raw: unknown; reason: string }[] = []
@@ -281,7 +288,12 @@ export function checkPicks(raw: unknown[], ctx: PickContext) {
     if (!r.ok) rejected.push({ raw: item, reason: r.reason })
     else if (accepted.some((p) => p.market === r.pick.market))
       rejected.push({ raw: item, reason: `one pick per market (${r.pick.market})` })
-    else accepted.push(r.pick)
+    else {
+      // The race's rule for new trades, in Claude's order (stepStrategy checks it again).
+      const block = newTradeBlock(r.pick, [...ctx.open, ...accepted])
+      if (block) rejected.push({ raw: item, reason: block })
+      else accepted.push(r.pick)
+    }
   }
   return { accepted, rejected }
 }
