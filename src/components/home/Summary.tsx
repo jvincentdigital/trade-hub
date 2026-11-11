@@ -274,7 +274,7 @@ export function Summary(p: Props) {
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {usdShort(p.startMoney)} play account
         </b>{' '}
-        takes every strategy&apos;s signals and risks{' '}
+        takes only John&apos;s London v1 signals and risks{' '}
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {p.riskPct}% ({usdShort((p.startMoney * p.riskPct) / 100)})
         </b>{' '}

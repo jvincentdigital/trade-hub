@@ -41,6 +41,8 @@ export const liveTradeSchema = z.object({
   part1: z.number().optional(),
   /** Latest time it may stay open (lab bots: day trade 17:00 New York, swing 5 days, race 10 days). */
   deadline: z.number().optional(),
+  /** John's London v1 on GBP/USD: a stop or target counts only when confirmed (the lone-wick rule in exitsOf). */
+  confirm: z.boolean().optional(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
 
@@ -298,6 +300,14 @@ export interface MarketTick {
   deadline?: number
   /** Lab bots with the news filter on "close": close this market's open trades now, at the price. */
   closeNow?: boolean
+  /** John's London v1: the sizer sizes on this stop (the real stop plus both fees), the trade keeps `signal.stop`. */
+  sizeStop?: number
+  /** John's London v1: skip a trade the margin cap cut below this % of the balance at risk. */
+  minRiskPct?: number
+  /** John's London v1 on GBP/USD: the trade this signal opens uses confirmed exits (lone-wick rule). */
+  confirm?: boolean
+  /** John's London v1: with no signal handed over, a signal candle it looked at and passed (moves lastSignal). */
+  seen?: number
 }
 
 export interface StepResult {
@@ -306,6 +316,18 @@ export interface StepResult {
   closed: ClosedLiveTrade[]
   /** Signals a rule or limit kept out (crypto, pound/dollar, 5 open, 10% open risk, no free margin), with the reason. */
   passed: { market: string; reason: string }[]
+  /** Confirmed-exit trades: reaches that nothing confirmed, ignored (logged as LONE WICK). */
+  wicks: LoneWick[]
+}
+
+export interface LoneWick {
+  market: string
+  level: 'stop' | 'TP1' | 'TP2'
+  price: number
+  /** Start of the candle that reached the level. */
+  time: number
+  /** Start of the next candle, which did not reach it. */
+  next: number
 }
 
 const dir = (d: 'long' | 'short') => (d === 'long' ? 1 : -1)
@@ -375,7 +397,8 @@ interface Exit {
  * candles, like forex from daily to 15m on 2026-11-10, must not look before
  * its entry).
  */
-function exitsOf(t: LiveTrade, path: OHLCCandle[]): Exit[] {
+function exitsOf(t: LiveTrade, path: OHLCCandle[], wicks: LoneWick[] = []): Exit[] {
+  if (t.confirm) return confirmedExitsOf(t, path, wicks)
   const long = t.direction === 'long'
   const out: Exit[] = []
   let first = t.target1
@@ -397,6 +420,82 @@ function exitsOf(t: LiveTrade, path: OHLCCandle[]): Exit[] {
     if (long ? c.high >= t.takeProfit : c.low <= t.takeProfit) {
       out.push({ exit: t.takeProfit, time: c.time, reason: 'target', share: 1 })
       return out
+    }
+  }
+  return out
+}
+
+/**
+ * Exits with the lone-wick rule (John's London v1 on GBP/USD, SPEC.md 6,
+ * "Exits"): Kraken's thin forex book prints fake wicks, so a candle that
+ * reaches the stop, TP1 or TP2 counts only when it also closes at or past it
+ * (a stop then fills at that close), or when the very next candle reaches it
+ * too (a stop then fills at that candle's open or the stop, whichever is
+ * worse). A target always fills at its price. A reach with neither is a lone
+ * wick: ignored and reported. A reach on the newest candle waits for the next
+ * one, and nothing after it is decided yet. Same order as exitsOf: deadline,
+ * stop, TP1, TP2; a confirmed stop beats a target on the same candle.
+ */
+function confirmedExitsOf(t: LiveTrade, path: OHLCCandle[], wicks: LoneWick[]): Exit[] {
+  const long = t.direction === 'long'
+  const live = path.filter((c) => c.time > t.entryBucket && c.time >= t.entryTime)
+  const out: Exit[] = []
+  let first = t.target1
+  const reaches = (c: OHLCCandle, level: number, stop: boolean) =>
+    long === stop ? c.low <= level : c.high >= level
+  const closesPast = (c: OHLCCandle, level: number, stop: boolean) =>
+    long === stop ? c.close <= level : c.close >= level
+  /** 'close' | 'next' | 'lone' | 'wait' for a reach of `level` on candle i. */
+  const confirm = (i: number, level: number, stop: boolean) => {
+    if (closesPast(live[i], level, stop)) return 'close'
+    const next = live[i + 1]
+    if (!next) return 'wait'
+    if (t.deadline != null && next.time >= t.deadline) return 'lone'
+    return reaches(next, level, stop) ? 'next' : 'lone'
+  }
+  const lone = (i: number, level: 'stop' | 'TP1' | 'TP2', price: number) =>
+    wicks.push({ market: t.market, level, price, time: live[i].time, next: live[i + 1].time })
+  for (let i = 0; i < live.length; i++) {
+    const c = live[i]
+    if (t.deadline != null && c.time >= t.deadline) {
+      out.push({ exit: c.open, time: c.time, reason: 'time', share: 1 })
+      return out
+    }
+    if (reaches(c, t.stop, true)) {
+      const how = confirm(i, t.stop, true)
+      if (how === 'wait') return out
+      if (how === 'close') {
+        out.push({ exit: c.close, time: c.time, reason: 'stop', share: 1 })
+        return out
+      }
+      if (how === 'next') {
+        const n = live[i + 1]
+        const exit = long ? Math.min(n.open, t.stop) : Math.max(n.open, t.stop)
+        out.push({ exit, time: n.time, reason: 'stop', share: 1 })
+        return out
+      }
+      lone(i, 'stop', t.stop)
+    }
+    for (const [level, price] of [
+      ['TP1', first],
+      ['TP2', t.takeProfit],
+    ] as const) {
+      if (price == null || !reaches(c, price, false)) continue
+      const how = confirm(i, price, false)
+      if (how === 'wait') return out
+      if (how === 'lone') {
+        lone(i, level, price)
+        continue
+      }
+      // A TP1 confirmed by the next candle keeps TP2's close from looking earlier.
+      const time = Math.max(how === 'close' ? c.time : live[i + 1].time, out.at(-1)?.time ?? 0)
+      if (level === 'TP1') {
+        out.push({ exit: price, time, reason: 'target', share: t.part1 ?? 0.5 })
+        first = undefined
+      } else {
+        out.push({ exit: price, time, reason: 'target', share: 1 })
+        return out
+      }
     }
   }
   return out
@@ -448,10 +547,12 @@ export function tradeExits<T extends LiveTrade>(
   t0: T,
   m: Pick<MarketTick, 'path' | 'price' | 'feeRate' | 'closeNow'>,
   nowSec: number,
+  /** Confirmed-exit trades (John's London v1 on GBP/USD): lone wicks are added here. */
+  wicks: LoneWick[] = [],
 ): { closed: Closed<T>[]; open: T | null } {
   const closed: Closed<T>[] = []
   let t: T | null = t0
-  for (const x of exitsOf(t0, m.path)) {
+  for (const x of exitsOf(t0, m.path, wicks)) {
     if (!t) break
     const r: { closed: Closed<T>; rest: T | null } = closePart(t, x, m.feeRate)
     closed.push(r.closed)
@@ -499,13 +600,14 @@ export function stepStrategy(
   let balance = s.balance
   const open: LiveTrade[] = []
   const closed: ClosedLiveTrade[] = []
+  const wicks: LoneWick[] = []
   for (const t0 of s.open) {
     const m = byMarket.get(t0.market)
     if (!m) {
       open.push(t0)
       continue
     }
-    const r = tradeExits(t0, m, nowSec)
+    const r = tradeExits(t0, m, nowSec, wicks)
     for (const c of r.closed) {
       balance += c.pnl
       closed.push(c)
@@ -518,6 +620,7 @@ export function stepStrategy(
   const passed: StepResult['passed'] = []
   for (const m of markets) {
     const sig = m.signal
+    if (!sig && m.seen != null) lastSignal[m.market] = Math.max(lastSignal[m.market] ?? 0, m.seen)
     if (!sig || sig.time <= (lastSignal[m.market] ?? 0)) continue
     lastSignal[m.market] = sig.time
     if (blockNew) {
@@ -543,13 +646,20 @@ export function stepStrategy(
       balance,
       open: open.map((t) => ({ margin: t.margin, riskUsd: tradeRisk(t) })),
       entry: p,
-      stop: levels.stop,
+      stop: m.sizeStop ?? levels.stop,
       usdPerQuote: m.usdPerQuote,
       leverage: m.leverage,
       sizing,
     })
     if (!size.ok) {
       passed.push({ market: m.market, reason: size.reason })
+      continue
+    }
+    if (m.minRiskPct != null && size.capped && size.riskUsd < (balance * m.minRiskPct) / 100) {
+      passed.push({
+        market: m.market,
+        reason: `the margin cap cut it under ${m.minRiskPct}% at risk`,
+      })
       continue
     }
     const t: LiveTrade = {
@@ -568,6 +678,7 @@ export function stepStrategy(
       ...(m.note ? { note: m.note } : {}),
       ...(m.target1 != null ? { target1: m.target1, part1: 0.5 } : {}),
       ...(m.deadline != null ? { deadline: m.deadline } : {}),
+      ...(m.confirm ? { confirm: true } : {}),
     }
     open.push(t)
     opened.push(t)
@@ -577,6 +688,7 @@ export function stepStrategy(
     opened,
     closed,
     passed,
+    wicks,
   }
 }
 

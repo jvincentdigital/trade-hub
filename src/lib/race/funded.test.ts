@@ -10,6 +10,7 @@ import {
   dayWorstCase,
   lossAtStop,
   FUNDED,
+  FUNDED_SIGNALS_FROM,
   fundedView,
   stepFunded,
   type FundedCandidate,
@@ -18,6 +19,7 @@ import {
   applyDailyClose,
   createRaceState,
   raceStateSchema,
+  stepStrategy,
   tradeRisk,
   type ClosedFundedTrade,
   type FundedState,
@@ -121,29 +123,29 @@ const withClosed = (closed: ClosedFundedTrade[], open: FundedTrade[] = []): Fund
   open,
 })
 const markets = Object.keys(PRICE).map((m) => mt(m))
+/** The only strategy the funded test takes signals from: John's London v1. */
+const V = FUNDED_SIGNALS_FROM
 
 describe('funded test: size and caps', () => {
   it('risks 2% ($200) per trade, at most 2 open', () => {
     const r = stepFunded(
       createFunded(0),
       markets,
-      [cand('a', 'GBP-USD'), cand('a', 'EUR-USD'), cand('b', 'bitcoin')],
+      [cand(V, 'GBP-USD'), cand(V, 'EUR-USD'), cand(V, 'bitcoin')],
       NOW,
     )
     expect(r.opened.map((t) => [t.strategy, t.market])).toEqual([
-      ['a', 'GBP-USD'],
-      ['a', 'EUR-USD'],
+      [V, 'GBP-USD'],
+      [V, 'EUR-USD'],
     ])
     for (const t of r.opened) expect(tradeRisk(t)).toBeCloseTo(200)
-    expect(r.passed).toEqual([
-      { strategy: 'b', market: 'bitcoin', reason: '2 trades already open' },
-    ])
+    expect(r.passed).toEqual([{ strategy: V, market: 'bitcoin', reason: '2 trades already open' }])
     expect(FUNDED.sizing).toEqual({ riskPct: 2, maxOpen: 2, maxOpenRiskPct: 4 })
   })
 
   it('sizes from the current balance, like the Lab accounts', () => {
     const f = withClosed([closedT(500, NOW - 90_000)])
-    const [t] = stepFunded(f, markets, [cand('a', 'GBP-USD')], NOW).opened
+    const [t] = stepFunded(f, markets, [cand(V, 'GBP-USD')], NOW).opened
     expect(tradeRisk(t)).toBeCloseTo(210) // 2% of $10,500
   })
 
@@ -154,19 +156,14 @@ describe('funded test: size and caps', () => {
       [trade('EUR-USD')],
     )
     expect(fundedView(f, PRICE, NOW).newToday).toBe(3)
-    const r = stepFunded(f, markets, [cand('a', 'GBP-USD')], NOW)
+    const r = stepFunded(f, markets, [cand(V, 'GBP-USD')], NOW)
     expect(r.opened).toHaveLength(0)
     expect(r.passed[0].reason).toBe('3 new trades today already')
     // the same three were yesterday: free again
     const tomorrow = ast(2026, 11, 12, 9)
     const f2 = { ...f, open: [] }
     expect(fundedView(f2, PRICE, tomorrow).newToday).toBe(0)
-    const later = stepFunded(
-      f2,
-      markets,
-      [cand('a', 'GBP-USD', { time: tomorrow - 600 })],
-      tomorrow,
-    )
+    const later = stepFunded(f2, markets, [cand(V, 'GBP-USD', { time: tomorrow - 600 })], tomorrow)
     expect(later.opened).toHaveLength(1)
   })
 
@@ -175,7 +172,7 @@ describe('funded test: size and caps', () => {
     const r = stepFunded(
       f,
       markets,
-      [cand('a', 'pax-gold', { direction: 'short' }), cand('b', 'ethereum')],
+      [cand(V, 'pax-gold', { direction: 'short' }), cand(V, 'ethereum')],
       NOW,
     )
     expect(r.opened).toHaveLength(0)
@@ -189,7 +186,7 @@ describe('funded test: size and caps', () => {
     const r = stepFunded(
       createFunded(0),
       markets,
-      [cand('a', 'GBP-USD')],
+      [cand(V, 'GBP-USD')],
       NOW,
       'new trades only from 02:00 to 12:30 AST',
     )
@@ -199,31 +196,90 @@ describe('funded test: size and caps', () => {
 })
 
 describe('funded test: signal order and markets', () => {
-  it('the first strategy in the order wins a market; one signal makes one trade', () => {
-    const a = cand('a', 'GBP-USD')
-    const b = cand('b', 'GBP-USD', { direction: 'short' })
-    const r = stepFunded(createFunded(0), markets, [a, b], NOW)
-    expect(r.opened.map((t) => [t.strategy, t.direction])).toEqual([['a', 'long']])
-    expect(r.passed).toEqual([
-      {
-        strategy: 'b',
-        market: 'GBP-USD',
-        reason: 'a GBP-USD trade is already open (from a)',
-      },
-    ])
-    const flip = stepFunded(createFunded(0), markets, [b, a], NOW)
-    expect(flip.opened.map((t) => [t.strategy, t.direction])).toEqual([['b', 'short']])
-    // the next check sees the same signals: nothing new
-    const again = stepFunded({ ...r.funded, open: [] }, markets, [a, b], NOW + 900)
+  it("takes only John's London v1 signals; one signal makes one trade", () => {
+    expect(V).toBe('johns-london-v1')
+    const v1 = cand(V, 'GBP-USD')
+    const other = cand('ema50-pullback', 'EUR-USD')
+    const r = stepFunded(createFunded(0), markets, [other, v1], NOW)
+    expect(r.opened.map((t) => [t.strategy, t.market])).toEqual([[V, 'GBP-USD']])
+    // the other strategy's signal is ignored: no trade, no PASS line, not marked as used
+    expect(r.passed).toEqual([])
+    expect(r.funded.lastSignal).toEqual({ [`${V}:GBP-USD`]: v1.signal.time })
+    // the next check sees the same signal: nothing new
+    const again = stepFunded({ ...r.funded, open: [] }, markets, [v1], NOW + 900)
     expect(again.opened).toHaveLength(0)
     expect(again.passed).toHaveLength(0)
+  })
+
+  it('a signal from another strategy is ignored by the funded test but still trades in its Lab account', () => {
+    const other = cand('ema50-pullback', 'EUR-USD')
+    const f = stepFunded(createFunded(0), markets, [other], NOW)
+    expect(f.opened).toHaveLength(0)
+    expect(f.funded.open).toHaveLength(0)
+    const lab = createRaceState([{ id: 'ema50-pullback', name: 'EMA 50 pullback' }], 10_000, 0)
+    const r = stepStrategy(
+      lab.strategies['ema50-pullback'],
+      [mt('EUR-USD', { signal: other.signal })],
+      NOW,
+    )
+    expect(r.opened.map((t) => t.market)).toEqual(['EUR-USD'])
+  })
+
+  it("a v1 trade keeps v1's own exits from its market tick: half at TP1, the forced close, the lone-wick rule", () => {
+    const p = PRICE['GBP-USD']
+    const deadline = NOW + 3600
+    const tick = mt('GBP-USD', { target1: p * 1.01, deadline, confirm: true })
+    const [t] = stepFunded(createFunded(0), [tick], [cand(V, 'GBP-USD')], NOW).opened
+    expect(t).toMatchObject({ target1: p * 1.01, part1: 0.5, deadline, confirm: true })
+    const f = { ...createFunded(0), open: [t], lastSignal: {} }
+    const c = (time: number, o: number, h: number, l: number, cl: number): OHLCCandle => ({
+      time,
+      open: o,
+      high: h,
+      low: l,
+      close: cl,
+    })
+    // A lone wick to the stop (closes back above, the next candle does not reach it): ignored.
+    const wick = [c(NOW, p, p, p * 0.985, p), c(NOW + 900, p, p * 1.001, p * 0.999, p)]
+    const kept = stepFunded(f, [{ ...tick, path: wick }], [], NOW + 1900)
+    expect(kept.closed).toHaveLength(0)
+    expect(kept.funded.open).toHaveLength(1)
+    // TP1 reached and closed past: half closes there; the rest stays open.
+    const tp1 = [
+      c(NOW, p, p * 1.012, p, p * 1.011),
+      c(NOW + 900, p * 1.011, p * 1.011, p * 1.01, p * 1.01),
+    ]
+    const half = stepFunded(f, [{ ...tick, path: tp1 }], [], NOW + 1900)
+    expect(half.closed).toHaveLength(1)
+    expect(half.closed[0]).toMatchObject({ reason: 'target', part1Of: 0.5, strategy: V })
+    expect(half.funded.open[0].units).toBeCloseTo(t.units / 2)
+    // two rows, one entry: it counts once in the 3 new trades a day
+    expect(fundedView(half.funded, PRICE, NOW + 1900).newToday).toBe(1)
+    // past the forced close with no later candle: the rest closes at the price
+    const late = stepFunded(half.funded, [{ ...tick, path: tp1 }], [], deadline + 60)
+    expect(late.closed[0]).toMatchObject({ reason: 'time' })
+    expect(late.funded.open).toHaveLength(0)
+  })
+
+  it("v1's news close closes v1's funded trades, not a trade from before the switch", () => {
+    const old = trade('GBP-USD', { strategy: 'london-breakout' })
+    const own = trade('pax-gold', { strategy: V })
+    const f = withClosed([], [old, own])
+    const r = stepFunded(
+      f,
+      [mt('GBP-USD', { closeNow: true }), mt('pax-gold', { closeNow: true })],
+      [],
+      NOW,
+    )
+    expect(r.closed.map((x) => [x.market, x.reason])).toEqual([['pax-gold', 'news']])
+    expect(r.funded.open.map((x) => x.strategy)).toEqual(['london-breakout'])
   })
 
   it('skips markets priced only from a once-a-day rate (every account, John 2026-11-11)', () => {
     const r = stepFunded(
       createFunded(0),
       markets,
-      [cand('a', 'USD-JPY'), cand('a', 'NZD-USD'), cand('a', 'GBP-JPY')],
+      [cand(V, 'USD-JPY'), cand(V, 'NZD-USD'), cand(V, 'GBP-JPY')],
       NOW,
     )
     expect(r.opened).toHaveLength(0)
@@ -238,17 +294,17 @@ describe('funded test: signal order and markets', () => {
   })
 
   it('a new account only trades signals that come after it starts', () => {
-    const seen = [cand('a', 'GBP-USD')]
+    const seen = [cand(V, 'GBP-USD')]
     const f = createFunded(NOW * 1000, seen)
     expect(f.balance).toBe(10_000)
     expect(stepFunded(f, markets, seen, NOW).opened).toHaveLength(0)
-    const fresh = cand('a', 'GBP-USD', { time: NOW - 60 })
+    const fresh = cand(V, 'GBP-USD', { time: NOW - 60 })
     expect(stepFunded(f, markets, [fresh], NOW).opened).toHaveLength(1)
   })
 
   it('built-in rule signals keep their planned R at the fill', () => {
     const c = cand(
-      'a',
+      V,
       'GBP-USD',
       { entry: 1.298, stop: 1.288, takeProfit: 1.318 },
       { reanchor: true },
@@ -267,7 +323,7 @@ describe('funded test: FTMO limits', () => {
     expect(v.dayStart).toBe(10_000)
     expect(v.dayLoss).toBeCloseTo(400)
     expect(v.dayStopped).toBe(true)
-    const r = stepFunded(at4, markets, [cand('a', 'GBP-USD')], NOW)
+    const r = stepFunded(at4, markets, [cand(V, 'GBP-USD')], NOW)
     expect(r.opened).toHaveLength(0)
     expect(r.passed[0].reason).toBe(
       'the day is down $400.00, 4% of the start or more: no new trades until the next FTMO day',
@@ -276,12 +332,12 @@ describe('funded test: FTMO limits', () => {
     // $399 down is under the $400 stop, but a 2% trade on top ($192) is over the $475 worst case
     const under = withClosed([closedT(-399, NOW - 1800)])
     expect(fundedView(under, PRICE, NOW).dayStopped).toBe(false)
-    expect(stepFunded(under, markets, [cand('a', 'GBP-USD')], NOW).passed[0].reason).toMatch(
+    expect(stepFunded(under, markets, [cand(V, 'GBP-USD')], NOW).passed[0].reason).toMatch(
       /^worst case today would be -\$591\.02 .* over the \$475\.00 cap/,
     )
     // $270 down: $270 + $194.60 (2% of $9,730) = $464.60 still fits
     const room = withClosed([closedT(-270, NOW - 1800)])
-    expect(stepFunded(room, markets, [cand('a', 'GBP-USD')], NOW).opened).toHaveLength(1)
+    expect(stepFunded(room, markets, [cand(V, 'GBP-USD')], NOW).opened).toHaveLength(1)
     // the next FTMO day (19:00 AST) starts from the lower balance: free again
     expect(fundedView(at4, PRICE, ast(2026, 11, 11, 19)).dayStopped).toBe(false)
   })
@@ -295,7 +351,7 @@ describe('funded test: FTMO limits', () => {
         { time: NOW - 600, open: 1.29, high: 1.29, low: 1.285, close: 1.286 },
       ],
     })
-    const r = stepFunded(f, [hit], [cand('b', 'EUR-USD')], NOW)
+    const r = stepFunded(f, [hit], [cand(V, 'EUR-USD')], NOW)
     expect(r.closed[0].reason).toBe('stop')
     expect(r.funded.status).toBe('failed')
     expect(r.funded.statusNote).toBe(
@@ -318,7 +374,7 @@ describe('funded test: FTMO limits', () => {
     )
 
     it('two fresh 2% trades still fit, fees included', () => {
-      const r = stepFunded(createFunded(0), fx, [cand('a', 'GBP-USD'), cand('b', 'pax-gold')], NOW)
+      const r = stepFunded(createFunded(0), fx, [cand(V, 'GBP-USD'), cand(V, 'pax-gold')], NOW)
       expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD', 'pax-gold'])
       const worst = dayWorstCase(r.funded, NOW)
       expect(worst).toBeGreaterThan(400) // $200 + $200 + four fees
@@ -328,7 +384,7 @@ describe('funded test: FTMO limits', () => {
 
     it("the reviewer's repro: after a $209 stop, two trades at once would risk $612: the second waits", () => {
       const f = withClosed([closedT(-209, NOW - 1800)])
-      const r = stepFunded(f, fx, [cand('a', 'GBP-USD'), cand('b', 'EUR-USD')], NOW)
+      const r = stepFunded(f, fx, [cand(V, 'GBP-USD'), cand(V, 'EUR-USD')], NOW)
       expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD'])
       expect(r.passed).toHaveLength(1)
       expect(r.passed[0].reason).toMatch(
@@ -409,7 +465,7 @@ describe('funded test: FTMO limits', () => {
     const short = withClosed([...three.closed.slice(0, 2), closedT(150, d(11)), closedT(10, d(12))])
     expect(checkFunded(short, PRICE, ast(2026, 11, 12, 12)).status).toBe('active')
     // passed: no new trades
-    const r = stepFunded(passed, markets, [cand('a', 'GBP-USD', { time: d(12) })], d(12) + 60)
+    const r = stepFunded(passed, markets, [cand(V, 'GBP-USD', { time: d(12) })], d(12) + 60)
     expect(r.passed[0].reason).toBe('the funded test is passed')
   })
 })

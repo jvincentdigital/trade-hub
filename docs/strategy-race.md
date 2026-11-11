@@ -56,8 +56,8 @@ until 2026-11-10 night, see "Real candles" below.
 ### 2. Live from today (forward test): the funded test and the Lab
 
 Since 2026-11-11 the live part is two things: the **funded test** (one
-account fed by every strategy's signals, the account Today follows) and the
-**Lab** (every strategy's own account, below). The Race tab shows the funded
+account, the account Today follows; since that evening it takes only John's
+London v1's signals) and the **Lab** (every strategy's own account, below). The Race tab shows the funded
 test first, then the Lab list.
 
 `make race-tick` (= `npx tsx scripts/race-tick.ts`) runs one tick:
@@ -242,7 +242,11 @@ pick as `REJECT`. Its prompt now gives the account's real balance instead of
 John: "instead of every account having $10,000, it would be a total account of
 $10,000... we're gonna limit our trades". He chose one funded-style account fed
 by every strategy's signals, with the 11 strategy accounts kept running as a
-quiet **Lab**, and 2% risk per trade. Code: `src/lib/race/funded.ts` (pure,
+quiet **Lab**, and 2% risk per trade. **The same evening (17:30 AST) he chose to
+feed it from ONE strategy only: John's London v1**, after v1 passed its one-time
+clean-year test (`~/jvd-outputs/2026-11-11/london-strategy/FINAL.md`). The
+constant is `FUNDED_SIGNALS_FROM` in `funded.ts`. Every other strategy keeps
+trading only in its Lab account. Code: `src/lib/race/funded.ts` (pure,
 tested in `funded.test.ts`), stored as `funded` in `race.json`. Today shows it
 as the main card (`docs/dashboard.md`); the Race tab shows it above the Lab.
 
@@ -263,16 +267,23 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
 | Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                                                                                                                                                     |
 | Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)                                                                                                                                 |
 
-- **Signal order.** Each check collects every strategy's signal in a fixed
-  order: the built-in rules in the order of `BUILT_IN_RULES`
-  (`src/lib/rules/presets.ts`: MM Confluence v2, EMA 50 pullback, RSI range
-  reversal, MM stop hunt reversal, MM three-day exhaustion, MFX level 3 peak
-  reversal, MFX EMA 12/36 pullback, MFX second leg at the day high/low, MFX
-  EMA 800 pin), then London breakout, then Claude's picks; inside one
-  strategy, its markets in its own order. The first signal that passes every
-  rule opens. A later one on a market that is already open is logged as
-  `PASS ... already open (from <strategy>)`. Claude's picks reach it from
-  `scripts/claude-picks.ts`.
+- **Signals: John's London v1 only** (since 2026-11-11 evening). Each check
+  hands it v1's signals (GBP/USD, then gold) and nothing else; `stepFunded`
+  ignores a signal from any other strategy, which still trades in its own
+  Lab account. Claude's picks no longer reach it. Until then it took every
+  strategy's signals in a fixed order (the built-in rules, London breakout,
+  Claude's picks).
+- **v1's own exits.** A funded trade from v1 keeps the rules v1 was tested
+  with (SPEC.md section 6), taken from v1's market tick: half off at TP1 (0),
+  the rest at TP2 (-0.272), the forced close (16:30 London, or 30 minutes
+  before red news), the news close, closed 15-minute candles only, and the
+  lone-wick rule on GBP/USD. It is checked with the same `tradeExits` as the
+  Lab. The funded rules come on top. Its size stays the funded test's: 2% of
+  the balance over the fill-to-stop distance (v1's Lab account also counts
+  both fees inside its 2%). A trade closed in two halves counts once in the
+  3 new trades a day.
+- A trade the funded test opened from another strategy before the switch
+  keeps its plain stop and target and is never closed by v1's news rule.
 - **Money** = balance plus open P&L at the race's prices, minus the entry fees
   open trades still owe (the same as the Lab). The day-start balance is the
   start money plus every trade closed before that day's Prague midnight.
@@ -292,16 +303,18 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
   that both stop would lose $612 and fail the test on day one. With the check,
   the second trade waits: two fresh trades ($200 each plus fees, about $420)
   still fit, a third after a stop does not.
-- Not built: no consistency rule (FTMO 2-Step has none), no
+- Not built: no consistency rule (FTMO 2-Step has none), no race-wide
   news pause (FTMO's challenge has none, and John chose to trade through red
-  news, 2026-11-11).
+  news, 2026-11-11). v1's news rule (no entry 30 minutes either side of red
+  news, flat 30 minutes before) is part of v1's tested strategy, so it stays
+  with v1's trades, in its Lab account and in the funded test.
 
 The tick log shows its lines with the name `Funded test`, for example:
 
 ```
-  OPEN  Funded test GBP-USD long at 1.3123 (signal from london-breakout): 0.15 lots ...
-  PASS  Funded test EUR-USD (ema50-pullback): 2 trades already open
-  PASS  Funded test USD-JPY (rsi-range-reversal): no new trades on USD-JPY: priced from a once-a-day rate, not live
+  OPEN  Funded test GBP-USD short at 1.3123 (signal from johns-london-v1): 0.42 lots ...
+  CLOSE Funded test GBP-USD target +$104.18
+  PASS  Funded test pax-gold (johns-london-v1): against the open GBP-USD short (one pound/dollar bet per account)
   Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss $0.00 of $500.00, 2 of 4 days
 ```
 
@@ -450,9 +463,10 @@ at or after 12:45 AST, no new trades on USD/JPY, GBP/JPY or NZD/USD, Bitcoin
 only among crypto, the pound/dollar and dollar-bet limits (`newTradeBlock`),
 and the rule bots re-anchor to the fill like the built-in rules (the Fib
 bots keep their Fib levels). So the 5-day and 10-day deadlines are a cap the
-12:45 close always comes before. Lab bots do not feed the funded test: it
-opens plain stop-and-target trades only. Every account, the funded test too,
-checks its open trades with one function, `tradeExits` in `live.ts`.
+12:45 close always comes before. Lab bots do not feed the funded test (since
+the evening of 2026-11-11 it takes only John's London v1). Every account, the
+funded test too, checks its open trades with one function, `tradeExits` in
+`live.ts`.
 
 ## Hourly job (installed by John, 2026-11-10)
 

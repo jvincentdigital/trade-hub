@@ -23,7 +23,9 @@
  * Claude's picks (opened by scripts/claude-picks.ts; a tick only checks
  * their stops and targets) and the strategy lab's top 5 (src/lib/race/labBots.ts:
  * US30 from Yahoo's public chart feed, a red-news filter from Forex Factory's
- * free weekly feed, cached next to the race file). A lock (race.json.lock) keeps two runs from
+ * free weekly feed, cached next to the race file) and John's London v1
+ * (src/lib/race/johnsLondonLive.ts: closed 15m candles only, for signals and
+ * exits, GBP/USD exits confirmed against lone wicks). A lock (race.json.lock) keeps two runs from
  * writing at once: a tick that finds it taken waits up to 3 minutes, then
  * prints one line and stops.
  *
@@ -57,11 +59,19 @@ import {
   type LabBot,
 } from '../src/lib/race/labBots'
 import { newsWindows, type Window } from '../src/lib/lab/news'
+import {
+  entriesToday,
+  JOHNS_LONDON,
+  johnsLondonCheck,
+  sessionClock,
+  type JohnsLondonMarket,
+} from '../src/lib/race/johnsLondonLive'
 import { nyCloseBars } from '../src/lib/lab/load'
 import {
   checkFunded,
   createFunded,
   FUNDED,
+  FUNDED_SIGNALS_FROM,
   fundedView,
   stepFunded,
   type FundedCandidate,
@@ -111,6 +121,8 @@ type Plan = { id: string; name: string; markets: string[] } & (
   | { kind: 'picks' }
   /** The strategy lab's top 5 (src/lib/race/labBots.ts, docs/strategy-lab.md). */
   | { kind: 'lab'; bot: LabBot }
+  /** John's London v1 (src/lib/race/johnsLondonLive.ts, SPEC.md section 6). */
+  | { kind: 'johns' }
 )
 
 const PLANS: Plan[] = [
@@ -140,6 +152,12 @@ const PLANS: Plan[] = [
     markets: [bot.market],
     bot,
   })),
+  {
+    kind: 'johns',
+    id: JOHNS_LONDON.id,
+    name: JOHNS_LONDON.name,
+    markets: [...JOHNS_LONDON.markets],
+  },
 ]
 
 const ecb = (id: string) => !RACE_ONLY_MARKETS[id] && feedOf(id) === 'ecb'
@@ -209,6 +227,7 @@ async function tick() {
         want(id, '1h')
       }
       if (p.kind === 'lab') want(id, p.bot.candles === 'kraken-ny4h' ? '1h' : p.bot.tf)
+      if (p.kind === 'johns') want(id, '15m')
     }
   const data = new Map<string, OHLCCandle[]>()
   const skipped = new Set<string>()
@@ -231,10 +250,20 @@ async function tick() {
   state.prices = { ...state.prices, ...prices }
 
   // Red news for the lab bots' filter (Forex Factory's free weekly feed, cached).
-  const red = PLANS.some((p) => p.kind === 'lab' && p.bot.news !== 'off')
+  const red = PLANS.some((p) => p.kind === 'johns' || (p.kind === 'lab' && p.bot.news !== 'off'))
     ? await loadRedNews()
     : { events: [], note: '' }
   if (red.note) console.log(`  ${red.note}`)
+  // John's London v1 trades nothing new without a news list (a failed feed with no cached copy).
+  const johnsNews = red.note.includes('news filter off') ? null : red.events
+  const prevTick = state.ticks.at(-1)
+  const clock = sessionClock(prevTick ? Math.floor(prevTick.at / 1000) : null, nowSec)
+  if (clock) console.log(`  JOHN'S LONDON v1: ${clock}`)
+  /** John's London v1 extras for the market tick. */
+  const johnsExtra = new Map<
+    string,
+    Pick<MarketTick, 'target1' | 'deadline' | 'closeNow' | 'sizeStop' | 'seen'>
+  >()
   const windowsOf = (bot: LabBot): Window[] => newsWindows(red.events, bot.currencies, bot.news)
   /** Lab bot extras for the market tick: first target, deadline, close before news. */
   const labExtra = new Map<string, Pick<MarketTick, 'target1' | 'deadline' | 'closeNow'>>()
@@ -266,6 +295,31 @@ async function tick() {
         closeNow: newsCloseDue(bot, w, nowSec),
       })
       console.log(`  LAB ${bot.name}: ${r.note}`)
+      return r.signal
+    }
+    if (p.kind === 'johns') {
+      const raw = data.get(key(id, '15m'))
+      // Read at call time: Close now taps may have changed the account this check.
+      const account = state?.strategies[p.id]
+      if (!raw?.length || !inst || !account) return null
+      const r = johnsLondonCheck({
+        market: id as JohnsLondonMarket,
+        closed: closedOnly(raw, 0.25, nowSec),
+        nowSec,
+        price: prices[id] ?? 0,
+        news: johnsNews,
+        seen: account.lastSignal[id] ?? 0,
+        todayEntries: entriesToday(account, id, nowSec),
+        feeRate: FEE_RATE[inst.market],
+      })
+      johnsExtra.set(id, {
+        ...(r.signal?.target1 != null ? { target1: r.signal.target1 } : {}),
+        ...(r.deadline != null ? { deadline: r.deadline } : {}),
+        ...(r.sizeStop != null ? { sizeStop: r.sizeStop } : {}),
+        ...(r.seen != null ? { seen: r.seen } : {}),
+        closeNow: r.closeNow,
+      })
+      console.log(`  JOHN'S LONDON v1 ${id}: ${r.note}`)
       return r.signal
     }
     if (p.kind === 'london') {
@@ -311,8 +365,10 @@ async function tick() {
     for (const id of r.waiting) console.log(`  Close request waits for its minute: ${id}`)
     clearIds = [...r.booked.map((b) => b.id), ...r.dropped]
   }
-  // Every signal of this check, in PLANS order (built-in rules, London breakout,
-  // Claude's picks; not the lab bots) and each strategy's market order: the funded test's order.
+  // The funded test takes only John's London v1's signals (FUNDED_SIGNALS_FROM in
+  // src/lib/race/funded.ts), on v1's own market ticks (closed candles, its news
+  // close, the lone-wick flag). Other markets get a plain tick, for a trade it
+  // opened before the switch.
   const candidates: FundedCandidate[] = []
   const marketTicks = new Map<string, MarketTick>()
   for (const p of PLANS) {
@@ -327,7 +383,8 @@ async function tick() {
       ticks.push({
         market: id,
         signal,
-        path,
+        // John's London v1 checks exits on closed candles only (SPEC.md 6, step 1).
+        path: p.kind === 'johns' ? closedOnly(path, 0.25, nowSec) : path,
         price,
         usdPerQuote: inst ? usdPerQuoteFor(inst, price, prices) : 1,
         feeRate: inst ? FEE_RATE[inst.market] : only.feeRate,
@@ -335,14 +392,16 @@ async function tick() {
         // Built-in rules (the lab's rule bots too) keep their planned R at the fill (entryLevels in live.ts).
         reanchor: p.kind === 'rule' || (p.kind === 'lab' && p.bot.kind === 'rule'),
         ...(p.kind === 'lab' ? labExtra.get(`${p.id}|${id}`) : {}),
+        ...(p.kind === 'johns'
+          ? { ...johnsExtra.get(id), minRiskPct: 1, confirm: id === 'GBP-USD' }
+          : {}),
       })
-      // Lab bots trade only their own Lab accounts: the funded test opens plain
-      // stop-and-target trades, without their half-off, time limit or news close.
-      if (p.kind === 'lab') continue
       const t = ticks[ticks.length - 1]
-      marketTicks.set(id, t)
-      if (t.signal)
-        candidates.push({ strategy: p.id, market: id, signal: t.signal, reanchor: t.reanchor })
+      if (p.id === FUNDED_SIGNALS_FROM) {
+        marketTicks.set(id, t)
+        if (t.signal)
+          candidates.push({ strategy: p.id, market: id, signal: t.signal, reanchor: t.reanchor })
+      } else if (p.kind !== 'lab' && !marketTicks.has(id)) marketTicks.set(id, t)
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
     state.strategies[p.id] = r.strategy
@@ -360,9 +419,16 @@ async function tick() {
       console.log(`  OPEN  ${p.name} ${t.market} ${t.direction} at ${t.entry}: ${sizeWords}`)
     }
     for (const x of r.passed) console.log(`  PASS  ${p.name} ${x.market}: ${x.reason}`)
+    // A lone wick is decided when the next candle closes: log it once, on the first tick after that.
+    const since = prevTick ? prevTick.at / 1000 : 0
+    for (const w of r.wicks)
+      if (w.next + 15 * 60 > since)
+        console.log(
+          `  LONE WICK ${p.name} ${w.market} ${w.level} ${w.price} on the ${new Date(w.time * 1000).toISOString().slice(0, 16)}Z candle: ignored`,
+        )
   }
 
-  // The funded test: one $10,000 account fed by every strategy's signals (src/lib/race/funded.ts).
+  // The funded test: one $10,000 account fed only by John's London v1 (src/lib/race/funded.ts).
   if (args.includes('--funded-reset') && state.funded) {
     const bak = `${FILE}.bak-${stamp()}-funded`
     copyFileSync(FILE, bak)

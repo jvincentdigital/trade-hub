@@ -5,24 +5,13 @@ import { formatQuote, getInstrument } from '@/lib/paper/instruments'
 import type { OpenPosition } from '@/lib/positions/positions'
 import { shortName, sideWord, signedShort, usdShort } from '@/lib/positions/today'
 import { FUNDED } from '@/lib/race/funded'
-import { BUILT_IN_RULES } from '@/lib/rules/presets'
+import { JOHNS_LONDON } from '@/lib/race/johnsLondonLive'
+import { V1 } from '@/lib/lab/johnsLondon'
 import { perMoveText, sizeText, sizingOf } from '@/lib/sizing/sizing'
 import { FS, button, secondary } from './ui'
 
-const range = (ns: number[], unit = '') => {
-  const lo = Math.min(...ns)
-  const hi = Math.max(...ns)
-  return lo === hi ? `${lo}${unit}` : `${lo}${unit} to ${hi}${unit}`
-}
-
-// Facts from the built-in rules, so the text stays true when a rule changes.
-const swings = BUILT_IN_RULES.flatMap((r) => (r.stop.kind === 'swing' ? [r.stop] : []))
-const byRr = new Map<number, string[]>()
-for (const r of BUILT_IN_RULES) byRr.set(r.rr, [...(byRr.get(r.rr) ?? []), r.name])
-const [mainRr] = [...byRr.entries()].sort((a, b) => b[1].length - a[1].length)[0]
-const otherRr = [...byRr.entries()]
-  .filter(([rr]) => rr !== mainRr)
-  .map(([rr, names]) => `${names.join(' and ')} ${names.length === 1 ? 'aims' : 'aim'} for ${rr}`)
+// Today follows the funded test, which takes only John's London v1 signals
+// (src/lib/race/funded.ts). Facts from v1's frozen settings, so the text stays true.
 
 /** One real open trade worked through: stop distance, size, $ per pip, goal. */
 function example(pos: OpenPosition | undefined): string | null {
@@ -112,30 +101,27 @@ export function HowSheet(props: {
           {[
             [
               'Signal.',
-              'Each strategy looks only at finished candles (1 hour, 4 hours or 1 day, depending on the strategy). When all its rules line up, that is a signal.',
+              `Only John's London v1, on GBP/USD and gold. It looks at finished 15-minute candles from 3:00 AM to 11:00 AM (7:00 AM to 3:00 PM London; an hour earlier in UK summer). After a move of ${JOHNS_LONDON.k} ATRs within ${V1.impulseBars} candles, a pullback to the ${V1.zone} level that does not break 1 is a signal, in the direction of the move.`,
             ],
             [
               'Entry.',
-              'At the open of the next candle: the next race check buys or sells at the live price, which is about that open. New trades only from 2:00 AM to 12:30 PM, Monday to Friday; at 12:45 PM every open trade closes.',
+              `At the live price at the next race check, at most 4 candles after the signal. No entry if the price already went past 1 or reached 0, ran away from the signal close, or the plan is under ${V1.rrMin} times the risk. No entry 30 minutes either side of red news, and at most ${V1.maxPerDay} trades per market a day. New trades only from 2:00 AM to 12:30 PM, Monday to Friday; at 12:45 PM every open trade closes.`,
             ],
             [
               'Stop.',
-              `Just past the recent swing (the lowest low before a buy, the highest high before a sell, over the last ${range(swings.map((s) => s.lookback))} candles) plus a small buffer of ${range(
-                swings.map((s) => s.bufferPct),
-                '%',
-              )}, so normal wiggles don't knock the trade out.`,
+              `${JOHNS_LONDON.b === 0.5 ? 'Half an ATR' : `${JOHNS_LONDON.b} ATR`} past the 1 level, and at least ${V1.costFloorX} times the trading costs away.`,
             ],
             [
               'Target.',
-              `About ${mainRr} times the stop distance${otherRr.length ? `; ${otherRr.join('; ')}` : ''}. The fill comes a little after the signal, so the stop and target move with it and keep that ratio.`,
+              `Half closes at the 0 level, the rest at ${V1.tp2Level}: a plan of ${V1.rrMin} to ${V1.rrMax} times the risk. Everything closes by 12:30 PM (4:30 PM London) and 30 minutes before red news. On GBP/USD a stop or target counts only when the candle closes past it or the next candle reaches it too (Kraken prints fake wicks).`,
             ],
             [
               'Size.',
-              `The funded test is one ${usdShort(startMoney)} play account that takes every strategy's signals, and every trade risks ${FUNDED.sizing.riskPct}% of its balance at that moment: about ${usdShort(risk)} if the stop hits. A far stop means a smaller position. Forex is shown in lots (1 lot = 100,000 units), gold in lots of 100 oz, crypto in coins.`,
+              `The funded test is one ${usdShort(startMoney)} play account that takes only John's London v1 signals, and every trade risks ${FUNDED.sizing.riskPct}% of its balance at that moment: about ${usdShort(risk)} if the stop hits. A far stop means a smaller position. Forex is shown in lots (1 lot = 100,000 units), gold in lots of 100 oz, crypto in coins.`,
             ],
             [
               'Limits.',
-              `At most ${FUNDED.sizing.maxOpen} trades open and ${FUNDED.maxNewPerDay} new a day, one per market; the first strategy in the race's order wins a market. Like FTMO's challenge: a day that loses ${usdShort((startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start) or money under ${usdShort(startMoney * (1 - FUNDED.maxLossPct / 100))} fails it, +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it, and no new trades once the day is down ${usdShort((startMoney * FUNDED.dayStopPct) / 100)}. A new trade also waits if the day's worst case, every open trade and it hitting their stops, would pass ${usdShort((startMoney * FUNDED.worstCasePct) / 100)}. A trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1). A signal that does not fit is left out.`,
+              `At most ${FUNDED.sizing.maxOpen} trades open and ${FUNDED.maxNewPerDay} new a day, one per market. Like FTMO's challenge: a day that loses ${usdShort((startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start) or money under ${usdShort(startMoney * (1 - FUNDED.maxLossPct / 100))} fails it, +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it, and no new trades once the day is down ${usdShort((startMoney * FUNDED.dayStopPct) / 100)}. A new trade also waits if the day's worst case, every open trade and it hitting their stops, would pass ${usdShort((startMoney * FUNDED.worstCasePct) / 100)}. A trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1). A signal that does not fit is left out.`,
             ],
             [
               'Fees.',

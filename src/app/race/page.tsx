@@ -111,8 +111,8 @@ export default function RacePage() {
         <Link href="/strategies" style={{ color: 'var(--indigo)', padding: '14px 0' }}>
           Strategies
         </Link>
-        . London breakout and Claude&apos;s picks are live-race only: open one of their trades on
-        Today to read &quot;Why these levels&quot;.
+        . London breakout, Claude&apos;s picks and John&apos;s London v1 are live-race only: open
+        one of their trades on Today to read &quot;Why these levels&quot;.
       </p>
 
       <div role="note" style={warn}>
@@ -620,7 +620,7 @@ function FundedLive() {
       </div>
       {/* One string: JSX text with entities can lose a space here (docs/dashboard.md, Gotcha). */}
       <p style={small}>
-        {`One ${money(FUNDED.startMoney)} play account that takes every strategy's signals in a fixed order (the built-in rules as listed on Strategies, then London breakout, then Claude's picks): the first to signal a market gets it. ${FUNDED.sizing.riskPct}% risk per trade, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${money((FUNDED.startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start, counted from the day's opening balance) or money under ${money(floor)} fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${money((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}. Today follows this account.`}
+        {`One ${money(FUNDED.startMoney)} play account that takes only John's London v1 signals (GBP/USD and gold), with v1's own exits. Every other strategy trades only in its Lab account below. ${FUNDED.sizing.riskPct}% risk per trade, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${money((FUNDED.startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start, counted from the day's opening balance) or money under ${money(floor)} fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${money((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}. Today follows this account.`}
       </p>
       {!f || !v ? (
         <p style={{ fontSize: 13, marginTop: 12 }}>
@@ -656,11 +656,11 @@ function FundedLive() {
           <TradeList
             title={`Closed trades (${f.closed.length}), fees included`}
             trades={[...f.closed].reverse().map((t) => ({
-              key: `${t.market}-${t.entryTime}`,
+              key: `${t.market}-${t.entryTime}${t.part1Of ? '-part' : ''}`,
               market: t.market,
               direction: t.direction,
               time: t.exitTime,
-              how: `${REASON_TEXT[t.reason]}, from ${nameOf(t.strategy)}`,
+              how: `${liveHow(t)}, from ${nameOf(t.strategy)}`,
               pnl: t.pnl,
               size: sizeOf(t),
             }))}
