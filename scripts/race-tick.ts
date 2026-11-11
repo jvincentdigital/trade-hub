@@ -315,7 +315,7 @@ async function tick() {
   if (!state.funded) {
     state.funded = createFunded(Date.now(), candidates)
     console.log(
-      `  Funded test started with $${FUNDED.startMoney}; it trades signals that come after now`,
+      `  Funded test started with $${FUNDED.startMoney.toLocaleString('en-US')}; it trades signals that come after now`,
     )
   } else {
     const f = stepFunded(
@@ -377,7 +377,7 @@ async function tick() {
   if (state.funded) {
     const v = fundedView(state.funded, state.prices, nowSec)
     console.log(
-      `  ${FUNDED.name.padEnd(34)} $${v.money.toFixed(2).padStart(9)}  ${money(v.result)}  open ${v.openCount}  closed ${state.funded.closed.length}  ${v.status}, day loss ${money(-v.dayLoss)} of ${money(-v.dayLimit)}, ${v.days} of ${FUNDED.minDays} days`,
+      `  ${FUNDED.name.padEnd(34)} $${v.money.toFixed(2).padStart(9)}  ${money(v.result)}  open ${v.openCount}  closed ${state.funded.closed.length}  ${v.status}, day loss $${v.dayLoss.toFixed(2)} of $${v.dayLimit.toFixed(2)}, ${v.days} of ${FUNDED.minDays} days`,
     )
   }
   console.log(`Saved ${FILE} (play money only)`)

@@ -283,7 +283,7 @@ The tick log shows its lines with the name `Funded test`, for example:
   OPEN  Funded test GBP-USD long at 1.3123 (signal from london-breakout): 0.15 lots ...
   PASS  Funded test EUR-USD (ema50-pullback): 2 trades already open
   PASS  Funded test USD-JPY (rsi-range-reversal): priced from a once-a-day rate, not live
-  Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss -$0.00 of -$509.21, 2 of 4 days
+  Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss $0.00 of $509.21, 2 of 4 days
 ```
 
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)
