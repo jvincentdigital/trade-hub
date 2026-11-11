@@ -67,6 +67,11 @@ function askClaude(prompt: string): string {
       'claude',
       [
         '-p',
+        // Model and effort per job (docs: ~/.claude/skills/model-routing).
+        '--model',
+        process.env.CLAUDE_PICKS_MODEL ?? 'opus',
+        '--effort',
+        process.env.CLAUDE_PICKS_EFFORT ?? 'medium',
         '--output-format',
         'json',
         '--setting-sources',

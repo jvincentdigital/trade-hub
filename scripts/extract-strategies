@@ -23,5 +23,5 @@ echo "Extracting rules from $count transcripts in $DIR ..."
 {
   cat scripts/extract-strategies.prompt.md
   printf '\nTranscripts folder: %s\n' "$DIR"
-} | claude -p --permission-mode acceptEdits --add-dir "$DIR"
+} | claude -p --model "${EXTRACT_MODEL:-opus}" --effort "${EXTRACT_EFFORT:-high}" --permission-mode acceptEdits --add-dir "$DIR"
 echo "Done. Review: git diff docs/strategies/marvel-fx-method.md src/lib/rules/marvel.ts"
