@@ -82,16 +82,28 @@ Gate: **pass**.
 
 Clean files (size, SHA-256): GBP/USD 1m 9,823,169 bytes `82a58a7b...9b92c13`; gold 1m 12,492,910 bytes `c61130bc...aa836ee5`. The news list `news-high-impact.csv` was copied unchanged from `~/jvd-outputs/trading/history` (30,889 bytes, `ed7bdb0a...e27986289`); it covers 2024-11-01 to 2026-11-10 with the real release dates.
 
+## 7. Second scoring after bug fixes (2026-11-11, evening)
+
+The clean year was scored once already, from `71babf6` (code `8ea8b1a`, SPEC.md `4995791d...a9cb801`), results in `holdout-run/`. A skeptic review then found one bug, in how the results were written up, not in the trades:
+
+- The write-up showed the design year as evidence ("made money on both years", 218 trades and +51.7R for both years together). The design year chose the settings, so only the clean year counts. Fix: code `bba1e49` prints which year counts on every report and labels a second clean scoring "seen twice". SPEC.md section 4 got a note (no rule, setting, cost or pass line changed), so its hash is new. The frozen copy is `SPEC-frozen-4995791d.md`.
+
+What this record changes, by section 5's bug rule:
+
+- Code commit `bba1e49`. The 13 design runs were run again there into `design-run-fixed/`: all 13 trade lists have the same SHA-256 as in section 3, and the pick rule gives the same settings (k = 2, b = 0.5; ext = 0.272, g = 2.5; c = 15, w = on, the design year did not qualify). No clean-year result was used to choose anything.
+- The settings are unchanged. The json block now lists the first clean scoring under `cleanYearScoredBefore`, so the next clean run is labelled "seen twice". It can take a pass away. It can never turn a fail or a no verdict into a pass.
+- The second clean run goes to `holdout-run-fixed/`, with this file copied there as `FROZEN.txt`.
+
 ## Machine-readable record
 
 ```json
 {
-  "codeCommit": "8ea8b1af88f6242a1feb90947bb7c17b1a9981f4",
+  "codeCommit": "bba1e49971ec7aac3cbc01c626a760408203788f",
   "designRunsMadeAt": "fbcba329737de58866fefa1cb4706e4d746c9f75",
-  "designRunsReproducedAt": "8ea8b1af88f6242a1feb90947bb7c17b1a9981f4",
+  "designRunsReproducedAt": "bba1e49971ec7aac3cbc01c626a760408203788f",
   "spec": {
     "path": "/Users/jvdos/jvd-outputs/2026-11-11/london-strategy/SPEC.md",
-    "sha256": "4995791d4c1d2dc9cc3953a4b94dab10ff5e4d56855f5b5ac6062c8a9a9cb801"
+    "sha256": "83de6ea21d8b4123e12e616a3f1bceec923404007065a733f74d8f4368616746"
   },
   "files": {
     "/Users/jvdos/jvd-outputs/trading/history-1m-24mo/GBPUSD/GBPUSD_1m.csv.gz": {
@@ -124,8 +136,8 @@ Clean files (size, SHA-256): GBP/USD 1m 9,823,169 bytes `82a58a7b...9b92c13`; go
     "to": "2025-11-10"
   },
   "designFiles": {
-    "/Users/jvdos/jvd-outputs/2026-11-11/london-strategy/design-run/results.json": "ff0a61ee342ffe82607ce388bdbbcaf84e6fdeda20cbb00f55b47f9a7b32172b",
-    "/Users/jvdos/jvd-outputs/2026-11-11/london-strategy/design-run/results.md": "9c9ac3111217208796c492440715c3175392938ecc03c39f6e4d225e66da831a"
+    "/Users/jvdos/jvd-outputs/2026-11-11/london-strategy/design-run-fixed/results.json": "f5eec3361a5365d7e17fc26f40e0e2e60c7994a8ae48d8fcd4f423857b984c25",
+    "/Users/jvdos/jvd-outputs/2026-11-11/london-strategy/design-run-fixed/results.md": "921cdf89cc3b4f4b7752b9b06cc88e1bc6b3dbe404d07b5858dbee2626469235"
   },
   "designRuns": [
     {
@@ -240,7 +252,11 @@ Clean files (size, SHA-256): GBP/USD 1m 9,823,169 bytes `82a58a7b...9b92c13`; go
     "doneMarker": "DONE-GBPUSD-XAUUSD",
     "GBPUSD": {
       "problems": [],
-      "coverage1m": ["2024-11-11 00:00", "2026-11-10 23:59", 742614],
+      "coverage1m": [
+        "2024-11-11 00:00",
+        "2026-11-10 23:59",
+        742614
+      ],
       "daysWith1m": 626,
       "nonSaturdayDays": 626,
       "missingDays": 0,
@@ -250,11 +266,20 @@ Clean files (size, SHA-256): GBP/USD 1m 9,823,169 bytes `82a58a7b...9b92c13`; go
         "884 from 2024-12-25 07:18 (Dec 25, does not count)",
         "854 from 2025-12-25 07:49 (Dec 25, does not count)"
       ],
-      "checks": [true, true, true, true]
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ]
     },
     "XAUUSD": {
       "problems": [],
-      "coverage1m": ["2024-11-11 00:00", "2026-11-10 23:59", 708854],
+      "coverage1m": [
+        "2024-11-11 00:00",
+        "2026-11-10 23:59",
+        708854
+      ],
       "daysWith1m": 624,
       "nonSaturdayDays": 626,
       "missingDays": 2,
@@ -264,9 +289,17 @@ Clean files (size, SHA-256): GBP/USD 1m 9,823,169 bytes `82a58a7b...9b92c13`; go
         "1501 from 2025-12-31 21:58 (Dec 31, does not count)",
         "1501 from 2024-12-31 21:58 (Dec 31, does not count)"
       ],
-      "checks": [true, true, true, true]
+      "checks": [
+        true,
+        true,
+        true,
+        true
+      ]
     },
     "result": "pass"
-  }
+  },
+  "cleanYearScoredBefore": [
+    "/Users/jvdos/jvd-outputs/2026-11-11/london-strategy/holdout-run/results.json"
+  ]
 }
 ```
