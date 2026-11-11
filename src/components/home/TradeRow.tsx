@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { OHLCCandle } from '@/lib/types/market'
@@ -34,10 +35,15 @@ interface Props {
   open: boolean
   onToggle: () => void
   onClose: () => void
+  /** Race trades: when Close now was tapped (ms), until the race books it. */
+  closeRequestedAt?: number
+  /** Race trades: ask the next race check to close it. Rejects with a plain message. */
+  onCloseNow?: () => Promise<void>
 }
 
 export function TradeRow(props: Props) {
   const { pos, m, candles, candlesLoading, rule, now, open, onToggle, onClose } = props
+  const requested = props.closeRequestedAt
   const inst = getInstrument(pos.market)
   const name = inst?.label ?? inst?.symbol ?? pos.market
   const id = rowId(pos.key)
@@ -172,7 +178,13 @@ export function TradeRow(props: Props) {
             </span>
           </span>
         )}
-        <span style={{ ...secondary, gridArea: 'line', fontSize: FS.xs }}>{rowLine(pos, m)}</span>
+        {requested ? (
+          <span style={{ gridArea: 'line', fontSize: FS.xs, color: 'var(--amber)' }}>
+            Close requested, books at the next check
+          </span>
+        ) : (
+          <span style={{ ...secondary, gridArea: 'line', fontSize: FS.xs }}>{rowLine(pos, m)}</span>
+        )}
       </button>
       {pos.note && (
         <p style={{ ...secondary, fontSize: FS.xs, padding: '0 16px 12px' }}>
@@ -190,6 +202,16 @@ export function TradeRow(props: Props) {
           candlesLoading={candlesLoading}
           rule={rule}
           onClose={onClose}
+          closeNow={
+            props.onCloseNow && (
+              <CloseNow
+                name={`${inst?.symbol ?? pos.market} ${pos.side === 'long' ? 'buy' : 'sell'}`}
+                requestedAt={requested}
+                now={now}
+                onConfirm={props.onCloseNow}
+              />
+            )
+          }
         />
       )}
     </article>
@@ -263,6 +285,7 @@ function Panel(props: {
   candlesLoading: boolean
   rule?: Rule
   onClose: () => void
+  closeNow?: React.ReactNode
 }) {
   const { id, pos, m, inst, rule, onClose } = props
   // Same as Esc: collapse, then keep focus on this row's head.
@@ -430,10 +453,106 @@ function Panel(props: {
             {pos.source === 'demo' ? 'Manage in Demo' : 'See it in the Race'}
             <ChevronRight size={16} aria-hidden color="var(--text-secondary)" />
           </Link>
+          {/* Hide only folds the row; Close now (below) closes the trade. */}
           <button type="button" onClick={close} style={button}>
-            Close
+            Hide
           </button>
         </div>
+        {props.closeNow}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Close now, with a confirm step. Yes stores a request; the next race check
+ * books it at the open of the minute of the tap (docs/dashboard.md).
+ */
+function CloseNow(props: {
+  name: string
+  requestedAt?: number
+  now: number
+  onConfirm: () => Promise<void>
+}) {
+  const [step, setStep] = useState<'idle' | 'confirm' | 'sending'>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const box: React.CSSProperties = {
+    padding: '12px 14px',
+    borderRadius: 12,
+    background: 'var(--bg-hover)',
+    fontSize: FS.sm,
+  }
+  if (props.requestedAt)
+    return (
+      <p role="status" style={{ ...box, color: 'var(--amber)' }}>
+        Close requested at {clock(props.requestedAt, props.now)}. It books at the next check, at the
+        price of that minute.
+      </p>
+    )
+  if (step === 'idle')
+    return (
+      <div style={{ display: 'grid', gap: 6 }}>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null)
+            setStep('confirm')
+          }}
+          style={{ ...button, color: 'var(--red)', borderColor: 'var(--red)' }}
+        >
+          Close now
+        </button>
+        {error && (
+          <p role="alert" style={{ fontSize: FS.xs, color: 'var(--red)' }}>
+            {error}
+          </p>
+        )}
+      </div>
+    )
+  const yes = async () => {
+    setStep('sending')
+    try {
+      await props.onConfirm()
+    } catch (e) {
+      setError((e as Error).message)
+      setStep('idle')
+    }
+  }
+  return (
+    <div
+      role="group"
+      aria-label={`Close ${props.name}?`}
+      style={{ ...box, display: 'grid', gap: 10 }}
+    >
+      <p>
+        <b style={{ fontWeight: 600 }}>Close this {props.name} now?</b>{' '}
+        <span style={secondary}>
+          It closes at the price of this minute, booked at the next race check (every 15 minutes in
+          the session). Play money.
+        </span>
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => setStep('idle')}
+          disabled={step === 'sending'}
+          style={button}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={yes}
+          disabled={step === 'sending'}
+          style={{
+            ...button,
+            background: 'var(--red)',
+            borderColor: 'var(--red)',
+            color: 'var(--bg-primary)',
+          }}
+        >
+          {step === 'sending' ? 'Sending…' : 'Yes, close it'}
+        </button>
       </div>
     </div>
   )

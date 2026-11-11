@@ -1,5 +1,5 @@
 /**
- * Claude's picks: one more $1,000 race account where Claude chooses the trades.
+ * Claude's picks: one more race account where Claude chooses the trades.
  *
  *   npx tsx scripts/claude-picks.ts            (weekdays 03:47 AST via launchd, docs/london-open.md)
  *   npx tsx scripts/claude-picks.ts --dry-run  (print the brief and the decision, save nothing)
@@ -14,6 +14,7 @@
  *    up to 2 trades with stop, target and a short reason, or none.
  * 3. Checks every trade hard in code (src/lib/race/claudePicks.ts) and opens
  *    the ones that pass at the current price, 2% risk, same limits as the race.
+ *    The same picks go to the funded test, which applies its own limits.
  *    Saves race.json under the race lock and pushes it like a tick.
  * If Claude fails or answers junk, it logs that and does nothing.
  * Play money only: nothing here talks to a broker.
@@ -39,6 +40,8 @@ import {
 import { minStopForFullRisk, RACE_SIZING } from '../src/lib/race/account'
 import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { stepStrategy, syncRaceState, type MarketTick } from '../src/lib/race/live'
+import { entryWindowBlock } from '../src/lib/race/session'
+import { FUNDED, stepFunded } from '../src/lib/race/funded'
 import { clearKrakenCache } from '../src/lib/kraken'
 import { fetchMarket, FILE, load, push, save, waitLock } from './race-io'
 
@@ -67,6 +70,11 @@ function askClaude(prompt: string): string {
       'claude',
       [
         '-p',
+        // Model and effort per job (docs: ~/.claude/skills/model-routing).
+        '--model',
+        process.env.CLAUDE_PICKS_MODEL ?? 'opus',
+        '--effort',
+        process.env.CLAUDE_PICKS_EFFORT ?? 'medium',
         '--output-format',
         'json',
         '--setting-sources',
@@ -143,7 +151,8 @@ async function main() {
   // ── Ask Claude ──
   let answer: string
   try {
-    answer = askClaude(picksPrompt(briefs, nowSec))
+    const balance = before?.strategies[CLAUDE_PICKS.id]?.balance ?? before?.startMoney
+    answer = askClaude(picksPrompt(briefs, nowSec, balance))
   } catch (e) {
     console.log(`${stamp()} Claude failed, no picks today: ${(e as Error).message}`)
     return
@@ -229,8 +238,25 @@ async function main() {
         note: pick?.reason,
       }
     })
-    const r = stepStrategy(own, ticks, nowSec, state.sizing)
+    const blockNew = entryWindowBlock(nowSec)
+    const r = stepStrategy(own, ticks, nowSec, state.sizing, blockNew)
     state.strategies[CLAUDE_PICKS.id] = r.strategy
+    // The same picks are offered to the funded test (src/lib/race/funded.ts).
+    const f =
+      state.funded &&
+      stepFunded(
+        state.funded,
+        ticks,
+        ticks.flatMap((t) =>
+          t.signal
+            ? [{ strategy: CLAUDE_PICKS.id, market: t.market, signal: t.signal, note: t.note }]
+            : [],
+        ),
+        nowSec,
+        blockNew,
+        state.prices,
+      )
+    if (f) state.funded = f.funded
     state.prices = {
       ...state.prices,
       ...Object.fromEntries(markets.map((m) => [m.market, m.price])),
@@ -244,6 +270,10 @@ async function main() {
     }
     for (const c of r.closed) console.log(`  CLOSE ${CLAUDE_PICKS.name} ${c.market} ${c.reason}`)
     for (const x of r.passed) console.log(`  PASS  ${CLAUDE_PICKS.name} ${x.market}: ${x.reason}`)
+    for (const t of f?.opened ?? [])
+      console.log(`  OPEN  ${FUNDED.name} ${t.market} ${t.direction} at ${t.entry} (Claude's pick)`)
+    for (const c of f?.closed ?? []) console.log(`  CLOSE ${FUNDED.name} ${c.market} ${c.reason}`)
+    for (const x of f?.passed ?? []) console.log(`  PASS  ${FUNDED.name} ${x.market}: ${x.reason}`)
     console.log(`${stamp()} saved ${FILE}: ${r.opened.length} pick(s) opened (play money only)`)
     if (args.includes('--no-push')) console.log('Not pushed (--no-push)')
     else await push(state)

@@ -1,4 +1,6 @@
 import { goalBar, signedShort, usdShort } from '@/lib/positions/today'
+import { FUNDED, type FundedView } from '@/lib/race/funded'
+import { pct } from './format'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
 
 /** Shown in the summary and the list when the race feed fails and there are no rows. */
@@ -17,7 +19,16 @@ interface Props {
   /** Open trades right now. */
   count: number
   countLine: string
+  /** Open P&L: the funded test's open trades now, before fees. */
   pnl: number
+  /** The funded test's closed trades (after fees) minus entry fees still owed (settledSoFar). */
+  settled: number
+  /** When the funded test started ("7:12 PM"), or null before it has. */
+  since: string | null
+  /** The funded test's limits right now, or null before it has started. */
+  funded: FundedView | null
+  /** Clock text of a Unix-seconds time ("7:00 PM"). */
+  clockOf: (sec: number) => string
   series: { t: number; pnl: number }[]
   sinceText: string | null
   hit: { stop: number; target: number }
@@ -30,12 +41,21 @@ interface Props {
   riskPct: number
 }
 
-/** The cockpit: open P&L, its path since the first entry, where today could end, one plain line. */
+/**
+ * The cockpit: the funded test's result (closed trades + open P&L - fees),
+ * its challenge limits, the open P&L's path since the first entry, where the
+ * result could end, one plain line.
+ */
 export function Summary(p: Props) {
-  const bar = goalBar(p.hit, p.pnl)
+  // John, 2026-11-11: the big number showed only open trades (+$966, green)
+  // while closed trades had lost $1,083. It now counts both.
+  const result = p.settled + p.pnl
+  const ends = { stop: p.settled + p.hit.stop, target: p.settled + p.hit.target }
+  const bar = goalBar(ends, result)
   // Whole dollars at the bar's ends; cents only on the Now tag.
-  const stopEnd = signedShort(Math.round(p.hit.stop))
-  const targetEnd = signedShort(Math.round(p.hit.target))
+  const stopEnd = signedShort(Math.round(ends.stop))
+  const targetEnd = signedShort(Math.round(ends.target))
+  const shown = p.count > 0 || p.settled !== 0
   return (
     <section aria-label="Summary" style={{ ...card, padding: '16px 18px' }}>
       <div
@@ -47,7 +67,10 @@ export function Summary(p: Props) {
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>Open P&amp;L</p>
+          <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>
+            {FUNDED.name}
+            {p.since ? ` since ${p.since}` : ''}
+          </p>
           {!p.failed && (
             <p
               style={{
@@ -56,10 +79,19 @@ export function Summary(p: Props) {
                 fontWeight: 700,
                 lineHeight: 1.1,
                 letterSpacing: '-0.03em',
-                color: p.count ? tone(p.pnl) : 'var(--text-secondary)',
+                color: shown ? tone(result) : 'var(--text-secondary)',
               }}
             >
-              {pnlText(p.count ? p.pnl : 0)}
+              {pnlText(shown ? result : 0)}
+            </p>
+          )}
+          {!p.failed && p.settled !== 0 && (
+            <p style={{ ...secondary, fontSize: FS.sm, marginTop: 4 }} data-testid="result-parts">
+              <span style={{ whiteSpace: 'nowrap' }}>{signedShort(Math.round(p.pnl))} open</span>
+              {', '}
+              <span style={{ whiteSpace: 'nowrap' }}>
+                {signedShort(Math.round(p.settled))} closed and fees
+              </span>
             </p>
           )}
           <p
@@ -75,7 +107,9 @@ export function Summary(p: Props) {
                 ? p.countLine
                 : p.loading
                   ? 'Loading your trades…'
-                  : 'No trades open right now.'}
+                  : p.funded
+                    ? 'No trades open right now.'
+                    : `Starts with ${usdShort(FUNDED.startMoney)} at the next race check.`}
           </p>
         </div>
         {sparkReady(p.series) && p.sinceText && (
@@ -83,14 +117,16 @@ export function Summary(p: Props) {
         )}
       </div>
 
+      {p.funded && <Challenge v={p.funded} clockOf={p.clockOf} />}
+
       {bar && (
         <div style={{ marginTop: 18 }}>
           <p style={{ fontSize: FS.sm, fontWeight: 600, marginBottom: 40 }}>
-            Where today could end
+            Where the result could end
           </p>
           <div
             role="img"
-            aria-label={`Now ${pnlText(p.pnl)}, between ${stopEnd} if every trade hits its stop and ${targetEnd} if every one hits its target`}
+            aria-label={`Now ${pnlText(result)}, between ${stopEnd} if every trade hits its stop and ${targetEnd} if every one hits its target`}
             style={{
               position: 'relative',
               height: 10,
@@ -122,7 +158,7 @@ export function Summary(p: Props) {
                 left: `${Math.min(bar.zero, bar.now)}%`,
                 width: `${Math.abs(bar.now - bar.zero)}%`,
                 borderRadius: 999,
-                background: tone(p.pnl),
+                background: tone(result),
               }}
             />
             <span
@@ -167,7 +203,7 @@ export function Summary(p: Props) {
                 whiteSpace: 'nowrap',
               }}
             >
-              Now <span style={{ color: tone(p.pnl) }}>{pnlText(p.pnl)}</span>
+              Now <span style={{ color: tone(result) }}>{pnlText(result)}</span>
             </span>
           </div>
           <div
@@ -234,17 +270,142 @@ export function Summary(p: Props) {
         </p>
       )}
       <p style={{ ...secondary, fontSize: FS.sm, marginTop: 10 }}>
-        Each strategy has its own{' '}
+        One{' '}
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {usdShort(p.startMoney)} play account
         </b>{' '}
-        and risks{' '}
+        takes every strategy&apos;s signals and risks{' '}
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {p.riskPct}% ({usdShort((p.startMoney * p.riskPct) / 100)})
         </b>{' '}
-        per trade.
+        per trade, with FTMO-style limits. Each strategy&apos;s own account is in the Lab on the
+        Race tab.
       </p>
     </section>
+  )
+}
+
+const STATUS = {
+  active: { text: 'Active', color: 'var(--text-secondary)', background: 'var(--bg-hover)' },
+  passed: { text: 'Passed', color: 'var(--green)', background: 'var(--green-dim)' },
+  failed: { text: 'Failed', color: 'var(--red)', background: 'var(--red-dim)' },
+} as const
+
+/** The challenge: target, day loss, max loss and trading days, plus today's caps. */
+function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => string }) {
+  const st = STATUS[v.status]
+  // Both as a share of the start money, like FTMO: $500 is 5%, $1,000 is 10%.
+  const dayPct = (v.dayLoss / v.dayLimit) * FUNDED.dailyLossPct
+  const maxPct = ((v.maxLoss / v.maxLimit) * FUNDED.maxLossPct) as number
+  const summary = `${FUNDED.name}: ${pnlText(v.result)}, day loss used ${pct(dayPct)} of ${FUNDED.dailyLossPct}%, ${pct(maxPct)} of ${FUNDED.maxLossPct}% max, ${v.days} of ${FUNDED.minDays} days, target +${usdShort(v.target)}`
+  return (
+    <div style={{ marginTop: 16 }} data-testid="challenge">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <p style={{ fontSize: FS.sm, fontWeight: 600 }}>Challenge</p>
+        <span
+          style={{
+            fontSize: FS.xs,
+            fontWeight: 600,
+            padding: '2px 10px',
+            borderRadius: 999,
+            color: st.color,
+            background: st.background,
+          }}
+        >
+          {st.text}
+        </span>
+      </div>
+      {v.status !== 'active' && v.statusNote && (
+        <p
+          role="status"
+          style={{
+            marginTop: 8,
+            padding: '10px 12px',
+            borderRadius: 12,
+            fontSize: FS.sm,
+            color: st.color,
+            background: st.background,
+          }}
+        >
+          {v.status === 'failed' ? 'Failed: ' : 'Passed: '}
+          {v.statusNote}
+          {v.statusAt ? ` (${clockOf(v.statusAt)})` : ''}. No new trades.
+        </p>
+      )}
+      <div
+        role="group"
+        aria-label={summary}
+        style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}
+      >
+        <Meter
+          label="Target"
+          value={`${signedShort(Math.round(v.result))} of +${usdShort(v.target)}`}
+          share={v.result / v.target}
+          color="var(--green)"
+          sub={`+${FUNDED.targetPct}% to pass`}
+        />
+        <Meter
+          label="Day loss"
+          value={`${usdShort(Math.round(v.dayLoss))} of ${usdShort(Math.round(v.dayLimit))}`}
+          share={v.dayLoss / v.dayLimit}
+          color={v.dayStopped ? 'var(--amber)' : 'var(--red)'}
+          sub={`${pct(dayPct)} of ${FUNDED.dailyLossPct}% used`}
+        />
+        <Meter
+          label="Max loss"
+          value={`${usdShort(Math.round(v.maxLoss))} of ${usdShort(v.maxLimit)}`}
+          share={v.maxLoss / v.maxLimit}
+          color="var(--red)"
+          sub={`${pct(maxPct)} of ${FUNDED.maxLossPct}% used`}
+        />
+        <Meter
+          label="Trading days"
+          value={`${v.days} of ${FUNDED.minDays}`}
+          share={v.days / FUNDED.minDays}
+          color="var(--indigo)"
+          sub="at least, to pass"
+        />
+      </div>
+      <p style={{ ...secondary, fontSize: FS.xs, marginTop: 8 }}>
+        {/* One string: JSX text with entities can lose a space (docs/dashboard.md, Gotcha). */}
+        {`Today ${v.newToday} of ${FUNDED.maxNewPerDay} new trades, ${v.openCount} of ${FUNDED.sizing.maxOpen} open. The day resets at ${clockOf(v.nextDay)} (midnight in Prague). A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${usdShort((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}.`}
+      </p>
+      {v.status === 'active' && v.dayStopped && (
+        <p style={{ fontSize: FS.sm, marginTop: 6, color: 'var(--amber)' }}>
+          {`The day is down ${usdShort((v.dayLimit * FUNDED.dayStopPct) / FUNDED.dailyLossPct)} (${FUNDED.dayStopPct}% of the start): no new trades until ${clockOf(v.nextDay)}.`}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Meter(props: { label: string; value: string; share: number; color: string; sub: string }) {
+  const w = Math.max(0, Math.min(1, props.share)) * 100
+  return (
+    <div
+      style={{ background: 'var(--bg-hover)', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}
+    >
+      <p style={{ ...secondary, fontSize: FS.xs }}>{props.label}</p>
+      <p style={{ ...num, fontSize: FS.sm, fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {props.value}
+      </p>
+      <span
+        aria-hidden
+        style={{
+          display: 'block',
+          height: 6,
+          margin: '6px 0 4px',
+          borderRadius: 999,
+          background: 'var(--border)',
+          overflow: 'hidden',
+        }}
+      >
+        <span
+          style={{ display: 'block', width: `${w}%`, height: '100%', background: props.color }}
+        />
+      </span>
+      <p style={{ ...secondary, fontSize: FS.xs }}>{props.sub}</p>
+    </div>
   )
 }
 
@@ -275,7 +436,7 @@ function Spark({
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`Open P&L ${caption.toLowerCase()}, now ${pnlText(pnl)}`}
+        aria-label={`Open trades ${caption.toLowerCase()}, now ${pnlText(pnl)}`}
         style={{ display: 'block', width: '100%', height: 'auto' }}
       >
         <line
@@ -301,7 +462,11 @@ function Spark({
         />
         <circle cx={x(t1)} cy={y(pnl)} r={3.5} fill={color} />
       </svg>
-      <figcaption style={{ ...secondary, fontSize: FS.xs, marginTop: 2 }}>{caption}</figcaption>
+      <figcaption style={{ ...secondary, fontSize: FS.xs, marginTop: 2 }}>
+        Open trades
+        <br />
+        {caption}
+      </figcaption>
     </figure>
   )
 }

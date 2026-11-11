@@ -98,9 +98,6 @@ body::before {
   display: grid;
   gap: 18px;
 }
-.today-strats {
-  display: none;
-}
 /* Today's tabs: two rows of two on a phone, one row from 560px. */
 .today-tabs {
   display: grid;
@@ -122,9 +119,6 @@ body::before {
   .today-side {
     position: sticky;
     top: calc(24px + env(safe-area-inset-top));
-  }
-  .today-strats {
-    display: block;
   }
 }
 .trade {

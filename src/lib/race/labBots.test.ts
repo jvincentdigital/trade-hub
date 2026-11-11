@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 import type { OHLCCandle } from '../types/market'
 import type { Signal } from '../rules/engine'
 import {
+  applyDailyClose,
   createRaceState,
   parseRaceState,
   stepStrategy,
   syncRaceState,
   type MarketTick,
 } from './live'
+import { createFunded, stepFunded } from './funded'
+import { entryWindowBlock } from './session'
 import { FIB_NO_CHASE, LAB_BOTS, labCheck, newsCloseDue } from './labBots'
 import { parseFfWeek } from './newsFeed'
 import { parseYahooChart } from './feeds'
@@ -135,6 +138,61 @@ describe('lab bots in the live race', () => {
     )
     const parsed = parseRaceState({ ...state, strategies: { ...state.strategies, a: r.strategy } })
     expect(parsed.ok).toBe(true)
+  })
+})
+
+describe("main's race rules bind the lab bots too (merge of 2026-11-11)", () => {
+  // Wednesday 2026-11-11 13:00 AST: after the entry window and the daily close.
+  const wed1300 = Date.UTC(2026, 10, 11, 17, 0) / 1000
+  const opened = () =>
+    stepStrategy(fresh(), [tick({ signal: sig(), target1: 105, deadline: 9e9 })], 5000).strategy
+
+  it('outside 02:00 to 12:30 AST a lab signal is used up and passed', () => {
+    const block = entryWindowBlock(wed1300)
+    expect(block).toBe('new trades only from 02:00 to 12:30 AST')
+    const r = stepStrategy(
+      fresh(),
+      [tick({ signal: sig(), target1: 105 })],
+      wed1300,
+      undefined,
+      block,
+    )
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed).toEqual([{ market: 'pax-gold', reason: block }])
+    expect(r.strategy.lastSignal['pax-gold']).toBe(1000)
+  })
+
+  it('the 12:45 AST close also closes what is left of a half-closed lab trade', () => {
+    const half = stepStrategy(opened(), [tick({ path: [bar(4000 + H, 100, 106, 99, 105)] })], 9000)
+    expect(half.strategy.open[0].units).toBeCloseTo(20)
+    const base = createRaceState([{ id: 'a', name: 'A' }], 10_000, 1)
+    const state = {
+      ...base,
+      strategies: { a: half.strategy },
+      prices: { 'pax-gold': 104 },
+      dailyCloseAt: wed1300 - 86_400,
+    }
+    const r = applyDailyClose(state, wed1300, () => 0.001)
+    expect(r.closed).toHaveLength(1)
+    expect(r.closed[0]).toMatchObject({ reason: 'session', exit: 104 })
+    expect(r.closed[0].units).toBeCloseTo(20)
+    expect(r.state.strategies.a.open).toHaveLength(0)
+    expect(r.state.strategies.a.closed.map((c) => c.reason)).toEqual(['target', 'session'])
+  })
+
+  it('a lab rule bot signal re-anchors to the fill like the built-in rules', () => {
+    const r = stepStrategy(fresh(), [tick({ signal: sig(), price: 102, reanchor: true })], 5000)
+    expect(r.opened[0]).toMatchObject({ entry: 102, stop: 97, takeProfit: 112 })
+  })
+
+  it('the funded test checks its trades with the same exits (half at a first target)', () => {
+    const f0 = createFunded(0)
+    const f = { ...f0, open: [{ ...opened().open[0], strategy: 'a' }] }
+    const r = stepFunded(f, [tick({ path: [bar(4000 + H, 100, 106, 99, 105)] })], [], 9000)
+    expect(r.closed).toHaveLength(1)
+    expect(r.closed[0]).toMatchObject({ reason: 'target', exit: 105, part1Of: 0.5, strategy: 'a' })
+    expect(r.funded.open[0]).toMatchObject({ strategy: 'a' })
+    expect(r.funded.open[0].units).toBeCloseTo(20)
   })
 })
 

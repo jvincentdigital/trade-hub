@@ -80,8 +80,53 @@ Mac Mini hourly tick ──PUT (write key)──> trade-hub-race worker (KV "RAC
 - `/api/race` reads the worker when `RACE_URL` and `RACE_KEY` are set (Vercel,
   cached 60 s), else the local file. The read key is also in
   `~/.local/share/trade-hub/race-read.env` (chmod 600).
-- Usage: 24 KV writes a day (free limit 1,000), reads at most one a minute per
-  server instance (free limit 100,000).
+- Usage: one KV write per race check (about 70 a day with the 15-minute
+  session checks) plus one per Close now tap and one per booked batch (free
+  limit 1,000), reads at most two a minute per server instance (free limit
+  100,000).
+
+### Close now requests (2026-11-11)
+
+Today has a **Close now** button on each funded test trade. The live site can't
+touch `race.json` (the Mac's race check is its only writer), so:
+
+```
+Today: Close now ─> Yes ─> POST /api/race/close ─(read key)─> worker POST /close-requests (KV "close-requests")
+Mac race check ─(write key)─> GET /close-requests ─> books each one ─> saves, pushes ─> DELETE /close-requests {ids}
+```
+
+- `POST /api/race/close` (`src/app/api/race/close/route.ts`) takes
+  `{ "id": "<account>|<market>|<entry time>" }` (`funded|GBP-USD|1794406500`,
+  or a Lab strategy id instead of `funded`). It checks the passcode cookie
+  itself too (`unlocked` in `src/lib/lock.ts`, the same check `src/proxy.ts`
+  uses), takes JSON only (with the SameSite=Lax cookie, a cross-site form
+  can't send it), and refuses a trade that is not open (404).
+- Worker `/close-requests`: GET (either key) returns every pending request
+  `{ id: { id, at } }`; POST (either key; the site only has the read key)
+  stores one with the worker's own time, and a second tap on the same trade
+  keeps the first time; DELETE (write key only) removes the ids the Mac
+  booked. At most 50 pending. One KV key holds them all, so reads stay plain
+  GETs (KV list calls have a 1,000 a day limit). Two writes at the same
+  second could lose one (KV has no transactions): a lost tap shows as not
+  requested, so tap again; a lost delete is dropped at the next check.
+- `/api/race` returns `closeRequests` with the state (read with no cache), so
+  the row shows "Close requested, books at the next check" until it is booked.
+  An old worker without the endpoint answers 404, read as no requests.
+- The race check (`scripts/race-tick.ts`, logic in
+  `src/lib/race/closeRequests.ts`) books requests first, in tap order: each
+  closes at the open of the first Kraken 1-minute candle at or after the tap,
+  both fees, reason `manual` ("closed by you"). If the trade's stop or target
+  was touched between the last check and the tap (1-minute candles), that
+  close wins instead. USD/JPY and NZD/USD close at the race's own price,
+  GBP/JPY at GBP/USD times the race's USD/JPY leg (the same fallback as
+  `make race-close-all`). A trade that is no longer open (its stop, target or
+  the 12:45 close came first) drops its request. A request whose minute is
+  not printed yet, or whose 1-minute fetch failed, waits for the next check.
+  Requests are cleared after the save and push.
+- Locally (no `RACE_URL`), the site and the tick use
+  `close-requests.json` next to the race file (`RACE_CLOSE_FILE` overrides).
+  A tick run with `RACE_FILE` set never talks to the worker for requests, so
+  a test run can't book or clear real taps.
 
 Always run wrangler from inside the worker folder, never from `~`:
 
@@ -131,4 +176,7 @@ vercel curl /api/race --deployment <preview-url> -- -H "cookie: trade_hub=<hash>
   `~/.local/share/trade-hub/race.env`; the tick keeps running locally.
 - **Stop the worker:** `cd ~/dev/trade-hub/race-worker && npx -y wrangler@4.160.0 delete`
   (the site then shows the race as unavailable).
+- **Turn Close now off:** redeploy the previous `worker.js` (no
+  `/close-requests`): taps then answer "Could not send the close", and the race
+  check reads no requests.
 - **Stop the hourly race itself:** see `docs/strategy-race.md` (launchd bootout).

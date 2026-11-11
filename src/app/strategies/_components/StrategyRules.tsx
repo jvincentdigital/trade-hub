@@ -26,6 +26,7 @@ import { loadRuleCandles, ruleInstrumentIds } from '@/lib/rules/data'
 import { planWarnings } from '@/lib/paper/plan'
 import type { Rule } from '@/lib/rules/schema'
 import { RuleEditor } from './RuleEditor'
+import { MoneyInput } from '@/components/ui/MoneyInput'
 
 export default function StrategyRules() {
   const { rules, upsert, remove } = useRules()
@@ -311,14 +312,10 @@ function BacktestTable({
       </p>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{ color: 'var(--text-muted)' }}>$</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={1}
-          step={100}
+        <MoneyInput
           value={start}
-          onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))}
-          aria-label="Starting money in dollars"
+          onChange={setStart}
+          label="Starting money in dollars"
           style={{
             width: 120,
             minHeight: 44,
