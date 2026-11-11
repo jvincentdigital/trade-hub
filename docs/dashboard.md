@@ -12,8 +12,10 @@ row per trade that opens in place.
 Play money only. Nothing here talks to a broker.
 
 **Since 2026-11-11 Today follows the funded test** (`docs/strategy-race.md`,
-"Funded test account and the Lab"): one $10,000 account fed by every
-strategy's signals, with FTMO 2-Step limits. Its trades are the race rows on
+"Funded test account and the Lab"): one $10,000 account with FTMO 2-Step
+limits that takes only John's London v1 signals (GBP/USD and gold; since
+that evening, before it took every strategy's). The How sheet describes
+v1's rules (signal, entry, stop, targets) from its frozen settings. Its trades are the race rows on
 Today; the 11 strategy accounts keep running as the Lab on the Race tab and
 no longer show here. Demo trades still show in the list.
 

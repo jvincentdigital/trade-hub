@@ -11,13 +11,25 @@ import {
   type MarketTick,
 } from './live'
 import { nextPragueDayStart, pragueDate, pragueDayStart } from './session'
+import { JOHNS_LONDON } from './johnsLondonLive'
 
 // The funded test (John, 2026-11-11): "instead of every account having
-// $10,000, it would be a total account of $10,000". One play account fed by
-// the signals of every race strategy, with the limits of FTMO's 2-Step
-// challenge (the best fit in ~/jvd-outputs/2026-11-11/funded-accounts/), so
-// we can see whether the strategies would pass one. The strategy accounts
-// keep running as the Lab. Play money only. Pure, tested.
+// $10,000, it would be a total account of $10,000". One play account with the
+// limits of FTMO's 2-Step challenge (the best fit in
+// ~/jvd-outputs/2026-11-11/funded-accounts/), so we can see whether a
+// strategy would pass one. Since the evening of 2026-11-11 it takes the
+// signals of ONE strategy only, John's London v1 (FUNDED_SIGNALS_FROM): it
+// passed its clean-year test. Every strategy, v1 too, keeps its own Lab
+// account. Play money only. Pure, tested.
+
+/**
+ * The only race strategy whose signals the funded test takes (John,
+ * 2026-11-11 evening): John's London v1. A signal from any other strategy is
+ * ignored here; it still trades in that strategy's own Lab account. Its
+ * trades keep v1's own exits (half at TP1, the forced close, the news close,
+ * the lone-wick rule on GBP/USD), taken from v1's market tick.
+ */
+export const FUNDED_SIGNALS_FROM: string = JOHNS_LONDON.id
 
 export const FUNDED = {
   name: 'Funded test',
@@ -48,7 +60,7 @@ export const FUNDED = {
 
 export const signalKey = (strategy: string, market: string) => `${strategy}:${market}`
 
-/** A signal from one race strategy, offered to the funded test in a fixed order. */
+/** A signal from one race strategy, offered to the funded test (only FUNDED_SIGNALS_FROM's are taken). */
 export interface FundedCandidate {
   /** The race strategy id. */
   strategy: string
@@ -136,7 +148,10 @@ export function fundedView(
     maxLimit: (f.startMoney * FUNDED.maxLossPct) / 100,
     target: (f.startMoney * FUNDED.targetPct) / 100,
     days: new Set(all.map((t) => pragueDate(t.entryTime))).size,
-    newToday: all.filter((t) => t.entryTime >= start).length,
+    // A trade closed in two halves is two rows with one entry: it counts once.
+    newToday: new Set(
+      all.filter((t) => t.entryTime >= start).map((t) => `${t.market}|${t.entryTime}`),
+    ).size,
     openCount: f.open.length,
   }
 }
@@ -224,8 +239,13 @@ export function stepFunded(
       open.push(t)
       continue
     }
-    // The same exits as the Lab accounts (tradeExits in ./live.ts).
-    const r = tradeExits(t, m, nowSec)
+    // The same exits as the Lab accounts (tradeExits in ./live.ts). The tick is
+    // v1's, so its news close only applies to v1's own trades.
+    const r = tradeExits(
+      t,
+      t.strategy === FUNDED_SIGNALS_FROM ? m : { ...m, closeNow: false },
+      nowSec,
+    )
     for (const c of r.closed) {
       balance += c.pnl
       closed.push(c)
@@ -238,6 +258,7 @@ export function stepFunded(
   const opened: FundedTrade[] = []
   const passed: FundedStep['passed'] = []
   for (const c of candidates) {
+    if (c.strategy !== FUNDED_SIGNALS_FROM) continue // other strategies trade only in the Lab
     const k = signalKey(c.strategy, c.market)
     if (c.signal.time <= (lastSignal[k] ?? 0)) continue
     lastSignal[k] = c.signal.time
@@ -251,8 +272,12 @@ export function stepFunded(
       continue
     }
     const m = byMarket.get(c.market)
-    const levels = m && entryLevels(c.signal, m.price, c.reanchor)
-    if (!m || !levels) continue // the price already passed its stop or target, as in the Lab
+    if (!m) continue
+    const levels = entryLevels(c.signal, m.price, c.reanchor)
+    const t1 = m.target1
+    const t1Ahead = t1 == null || (c.signal.direction === 'long' ? m.price < t1 : m.price > t1)
+    // The price already passed its stop or a target, as in the Lab.
+    if (!levels || !t1Ahead) continue
     const taken = open.find((t) => t.market === c.market)
     if (taken) {
       no(`a ${c.market} trade is already open (from ${taken.strategy})`)
@@ -317,6 +342,10 @@ export function stepFunded(
       margin: size.margin,
       entryFee: size.valueUsd * m.feeRate,
       ...(c.note ? { note: c.note } : {}),
+      // v1's own exits, from its market tick (as stepStrategy does).
+      ...(m.target1 != null ? { target1: m.target1, part1: 0.5 } : {}),
+      ...(m.deadline != null ? { deadline: m.deadline } : {}),
+      ...(m.confirm ? { confirm: true } : {}),
     }
     open.push(t)
     opened.push(t)

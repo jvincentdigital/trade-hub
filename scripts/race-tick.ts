@@ -71,6 +71,7 @@ import {
   checkFunded,
   createFunded,
   FUNDED,
+  FUNDED_SIGNALS_FROM,
   fundedView,
   stepFunded,
   type FundedCandidate,
@@ -364,8 +365,10 @@ async function tick() {
     for (const id of r.waiting) console.log(`  Close request waits for its minute: ${id}`)
     clearIds = [...r.booked.map((b) => b.id), ...r.dropped]
   }
-  // Every signal of this check, in PLANS order (built-in rules, London breakout,
-  // Claude's picks; not the lab bots) and each strategy's market order: the funded test's order.
+  // The funded test takes only John's London v1's signals (FUNDED_SIGNALS_FROM in
+  // src/lib/race/funded.ts), on v1's own market ticks (closed candles, its news
+  // close, the lone-wick flag). Other markets get a plain tick, for a trade it
+  // opened before the switch.
   const candidates: FundedCandidate[] = []
   const marketTicks = new Map<string, MarketTick>()
   for (const p of PLANS) {
@@ -393,13 +396,12 @@ async function tick() {
           ? { ...johnsExtra.get(id), minRiskPct: 1, confirm: id === 'GBP-USD' }
           : {}),
       })
-      // Lab bots trade only their own Lab accounts: the funded test opens plain
-      // stop-and-target trades, without their half-off, time limit or news close.
-      if (p.kind === 'lab') continue
       const t = ticks[ticks.length - 1]
-      marketTicks.set(id, t)
-      if (t.signal)
-        candidates.push({ strategy: p.id, market: id, signal: t.signal, reanchor: t.reanchor })
+      if (p.id === FUNDED_SIGNALS_FROM) {
+        marketTicks.set(id, t)
+        if (t.signal)
+          candidates.push({ strategy: p.id, market: id, signal: t.signal, reanchor: t.reanchor })
+      } else if (p.kind !== 'lab' && !marketTicks.has(id)) marketTicks.set(id, t)
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
     state.strategies[p.id] = r.strategy
@@ -426,7 +428,7 @@ async function tick() {
         )
   }
 
-  // The funded test: one $10,000 account fed by every strategy's signals (src/lib/race/funded.ts).
+  // The funded test: one $10,000 account fed only by John's London v1 (src/lib/race/funded.ts).
   if (args.includes('--funded-reset') && state.funded) {
     const bak = `${FILE}.bak-${stamp()}-funded`
     copyFileSync(FILE, bak)
