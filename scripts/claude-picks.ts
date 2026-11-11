@@ -1,5 +1,5 @@
 /**
- * Claude's picks: one more $1,000 race account where Claude chooses the trades.
+ * Claude's picks: one more race account where Claude chooses the trades.
  *
  *   npx tsx scripts/claude-picks.ts            (weekdays 03:47 AST via launchd, docs/london-open.md)
  *   npx tsx scripts/claude-picks.ts --dry-run  (print the brief and the decision, save nothing)
@@ -143,7 +143,8 @@ async function main() {
   // ── Ask Claude ──
   let answer: string
   try {
-    answer = askClaude(picksPrompt(briefs, nowSec))
+    const balance = before?.strategies[CLAUDE_PICKS.id]?.balance ?? before?.startMoney
+    answer = askClaude(picksPrompt(briefs, nowSec, balance))
   } catch (e) {
     console.log(`${stamp()} Claude failed, no picks today: ${(e as Error).message}`)
     return

@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { COIN_MAP } from '../coingecko'
+import { getInstrument } from '../paper/instruments'
 
 // How the race sizes a new trade, like one real account per strategy (John,
 // 2026-11-10, the course's rule): every trade risks 2% of the current balance,
@@ -66,3 +68,48 @@ export function sizeRaceTrade(args: {
  */
 export const minStopForFullRisk = (entry: number, leverage: number, riskPct: number) =>
   (entry * riskPct) / 100 / leverage
+
+// ── Which new trades an account may open (John, 2026-11-11) ──────────────
+// Checked by stepStrategy (./live.ts) before sizing, so every strategy (the
+// built-in rules, London breakout, Claude's picks) passes through them. Only
+// new trades: open ones keep running and close as before.
+
+/** Crypto the race may open new trades on. Add a COIN_MAP id to allow another coin. */
+export const ALLOWED_CRYPTO: readonly string[] = ['bitcoin']
+
+/**
+ * One pound/dollar bet per account. These markets move together, so they
+ * count as one bet: the sign of a long (+1 = pound up or dollar down), a
+ * short is the negative. Never opposite sides, at most 2 the same way.
+ */
+export const POUND_DOLLAR: Record<string, 1 | -1> = {
+  'GBP-USD': 1, // pound up, dollar down
+  'GBP-JPY': 1, // pound up
+  'EUR-GBP': -1, // pound down
+  'pax-gold': 1, // gold up, dollar down
+}
+export const MAX_POUND_DOLLAR = 2
+/** GBP/JPY here is GBP/USD x a frozen daily USD/JPY (src/lib/feeds.ts): never both open. */
+const COPY_OF: Record<string, string> = { 'GBP-JPY': 'GBP-USD', 'GBP-USD': 'GBP-JPY' }
+
+type Side = { market: string; direction: 'long' | 'short' }
+const poundDollarSign = (t: Side) =>
+  POUND_DOLLAR[t.market] && POUND_DOLLAR[t.market] * (t.direction === 'long' ? 1 : -1)
+
+/** Why this account may not open `next` now, or null when it may. */
+export function newTradeBlock(next: Side, open: Side[]): string | null {
+  if (getInstrument(next.market)?.market === 'crypto' && !ALLOWED_CRYPTO.includes(next.market))
+    return `no new crypto trades except ${ALLOWED_CRYPTO.map((id) => COIN_MAP[id]?.name ?? id).join(', ')}`
+  const sign = poundDollarSign(next)
+  if (!sign) return null
+  const group = open.filter((t) => POUND_DOLLAR[t.market])
+  const against = group.find((t) => poundDollarSign(t) === -sign)
+  if (against)
+    return `against the open ${against.market} ${against.direction} (one pound/dollar bet per account)`
+  const copy = group.find((t) => t.market === COPY_OF[next.market])
+  if (copy)
+    return `${next.market} is a copy of the open ${copy.market} trade (one pound/dollar bet per account)`
+  if (group.length >= MAX_POUND_DOLLAR)
+    return `${MAX_POUND_DOLLAR} pound/dollar trades already open the same way`
+  return null
+}

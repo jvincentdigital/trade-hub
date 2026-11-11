@@ -64,8 +64,8 @@ until 2026-11-10 night, see "Real candles" below.
    rule's timeframe (the forming candle is dropped). A signal newer than the
    last one used opens a trade at the latest price, risking 2% of that
    strategy's one balance (`stepStrategy` in `live.ts`, limits below). One
-   signal makes at most one trade; a signal the limits leave out is logged as
-   `PASS` and not tried again.
+   signal makes at most one trade; a signal the limits or the two rules for
+   new trades (below) leave out is logged as `PASS` and not tried again.
 3. An open trade closes when a later real 1h candle (daily for forex) touches its
    stop (checked first) or target. A gap through the stop fills at the open.
    Both fees are paid at the close, as in the demo engine (0.1% crypto, 0.007%
@@ -139,6 +139,75 @@ because they are now paid at the close, dollar sizes turned into units). The
 tick saves a copy first as `race.json.bak-<date-time>-split`; `/api/race` only
 converts it for display. Old trades keep their old small size; new trades use
 2%.
+
+## Two rules for new trades (John, 2026-11-11)
+
+John asked for both on 2026-11-11, about 09:55 AST. They are checked in one
+place, `newTradeBlock` in `src/lib/race/account.ts`, which `stepStrategy`
+(`live.ts`) runs before sizing every new trade. Every account goes through it:
+the built-in rules and London breakout (from the tick) and Claude's picks
+(from `scripts/claude-picks.ts`). They only stop **new** trades. Trades that
+are already open keep running: their prices are still fetched, their stops
+and targets still checked, their closes still booked.
+
+**1. No new crypto except Bitcoin.** John: "I don't want you to be trading
+crypto unless it's Bitcoin... at the moment, we're just testing with Forex...
+Just wait to see if they could hit the stop, but don't execute any more trades
+regarding crypto, unless it is Bitcoin or another one that I will mention to
+you." A new trade on any other coin is refused in every account. Gold (PAX
+Gold is a metal here, not crypto) and all forex are not affected. To allow
+another coin later, add its id to `ALLOWED_CRYPTO` (for example
+`['bitcoin', 'ethereum']`; ids are the keys of `COIN_MAP` in
+`src/lib/coingecko.ts`). The race still fetches every coin, so crypto trades
+already open (BNB and POL on 2026-11-11) still close at their stop or target.
+
+**2. One pound/dollar bet per account.** John: "most of the time when you
+start doing a pair with Great British Pound, most of the time they go the
+same way. I see that you took a trade that goes the other way... when it comes
+to pound and dollar, what goes is as much as the same as the gold with the
+dollar." Inside one account, GBP/USD, GBP/JPY, EUR/GBP and gold count as one
+bet. Each trade gets a side (`POUND_DOLLAR`):
+
+| Trade        | Side of the bet           |
+| ------------ | ------------------------- |
+| GBP/USD long | + (pound up, dollar down) |
+| GBP/JPY long | + (pound up)              |
+| EUR/GBP long | - (pound down)            |
+| Gold long    | + (dollar down)           |
+
+A short is the other side. A new trade in the group is refused when:
+
+- the account has an open group trade on the other side (a GBP/USD long open
+  means no gold short and no EUR/GBP long);
+- the account already has 2 open group trades on the same side
+  (`MAX_POUND_DOLLAR`);
+- it is GBP/JPY while GBP/USD is open in that account, or GBP/USD while
+  GBP/JPY is open. In this race GBP/JPY is GBP/USD times a daily USD/JPY rate
+  that stays frozen all day (`docs/london-open.md`), so the two were the same
+  trade twice: on 2026-11-11 one rule opened both and lost $212 on each.
+
+Different accounts may still disagree: one strategy can be long GBP/USD while
+another is short gold. Trades already open on both sides stay open until they
+close.
+
+The tick log says why, one line per refused signal, like the other `PASS`
+lines. For example:
+
+```
+  PASS  MM stop hunt reversal binancecoin: no new crypto trades except Bitcoin
+  PASS  RSI range reversal pax-gold: against the open GBP-USD long (one pound/dollar bet per account)
+  PASS  EMA 50 pullback GBP-JPY: GBP-JPY is a copy of the open GBP-USD trade (one pound/dollar bet per account)
+  PASS  London breakout pax-gold: 2 pound/dollar trades already open the same way
+```
+
+Claude's picks only trades GBP/USD and gold (no crypto). Its prompt states the
+pound/dollar rule, and `checkPicks` applies the same check in Claude's order
+(its first pick wins) before anything opens; Claude's log shows a refused
+pick as `REJECT`. Its prompt now gives the account's real balance instead of
+"$1,000".
+
+The past-results leaderboard (part 1) does not use these rules: it still
+backtests every market, crypto included, to rank the rules.
 
 ## Starting over
 
@@ -236,7 +305,7 @@ hourly job is not installed yet".
 | ----------------------------- | ----------------------------------------------------------------------- |
 | `src/app/race/page.tsx`       | The page (leaderboard + live table)                                     |
 | `src/app/api/race/route.ts`   | Reads the local race file, reports whether the job is installed         |
-| `src/lib/race/account.ts`     | Pure: `RACE_SIZING`, `sizeRaceTrade` (2% risk and the limits)           |
+| `src/lib/race/account.ts`     | Pure: sizing (`sizeRaceTrade`), new-trade rules (`newTradeBlock`)       |
 | `src/lib/race/leaderboard.ts` | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`      |
 | `src/lib/race/live.ts`        | Pure: state schema, old-file move, `stepStrategy`, `summarize`          |
 | `src/lib/sizing/sizing.ts`    | Pure: units, lots, $ per pip or per $1, risk, goal, R:R, text           |

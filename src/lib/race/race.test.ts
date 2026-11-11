@@ -4,7 +4,13 @@ import type { Signal } from '../rules/engine'
 import { closedOnly } from './candles'
 import { backtest } from '../rules/engine'
 import { BUILT_IN_RULES } from '../rules/presets'
-import { minStopForFullRisk, RACE_SIZING, sizeRaceTrade } from './account'
+import {
+  ALLOWED_CRYPTO,
+  minStopForFullRisk,
+  newTradeBlock,
+  RACE_SIZING,
+  sizeRaceTrade,
+} from './account'
 import {
   portfolioBacktest,
   rankEntries,
@@ -242,6 +248,125 @@ describe('live forward test step', () => {
     expect(state.strategies.a).toEqual(st.strategies.a)
     expect(state.strategies.n.balance).toBe(1000)
     expect(syncRaceState(state, [{ id: 'n', name: 'New' }]).changes).toEqual([])
+  })
+})
+
+describe('rules for new trades (John, 2026-11-11)', () => {
+  const fx = (market: string, direction: 'long' | 'short' = 'long') =>
+    tick({
+      market,
+      leverage: 30,
+      feeRate: 0,
+      signal: direction === 'long' ? sig() : sig({ direction: 'short', stop: 105, takeProfit: 90 }),
+    })
+  /** An account with these trades already open (opened before the rules, if need be). */
+  const holding = (...trades: [string, 'long' | 'short'][]): RaceStrategy => {
+    const [t] = stepStrategy(fresh(), [tick({ signal: sig() })], 5000).strategy.open
+    return {
+      ...fresh(),
+      open: trades.map(([market, direction]) => ({ ...t, market, direction })),
+    }
+  }
+  const step = (s: RaceStrategy, ticks: MarketTick[]) => stepStrategy(s, ticks, 5000)
+
+  it('no new crypto except Bitcoin; gold and forex as before', () => {
+    const r = step(fresh(), [
+      tick({ market: 'binancecoin', signal: sig() }),
+      tick({ market: 'polygon-ecosystem-token', signal: sig() }),
+      tick({ market: 'bitcoin', signal: sig() }),
+    ])
+    expect(r.opened.map((t) => t.market)).toEqual(['bitcoin'])
+    expect(r.passed).toEqual([
+      { market: 'binancecoin', reason: 'no new crypto trades except Bitcoin' },
+      { market: 'polygon-ecosystem-token', reason: 'no new crypto trades except Bitcoin' },
+    ])
+    // the refused signal is used up, like any other PASS
+    expect(r.strategy.lastSignal.binancecoin).toBe(1000)
+    expect(ALLOWED_CRYPTO).toEqual(['bitcoin'])
+    const other = step(fresh(), [fx('pax-gold'), fx('EUR-USD', 'short')])
+    expect(other.opened.map((t) => t.market)).toEqual(['pax-gold', 'EUR-USD'])
+  })
+
+  it('an open BNB trade keeps running and still closes at its stop', () => {
+    const s = holding(['binancecoin', 'long'])
+    const quiet = stepStrategy(
+      s,
+      [tick({ market: 'binancecoin', path: [bar(4000 + H, 100, 101, 99, 100)] })],
+      9000,
+    )
+    expect(quiet.strategy.open).toHaveLength(1)
+    const hit = stepStrategy(
+      s,
+      [tick({ market: 'binancecoin', path: [bar(4000 + H, 100, 100, 94, 96)] })],
+      9000,
+    )
+    expect(hit.closed[0]).toMatchObject({ market: 'binancecoin', reason: 'stop', exit: 95 })
+    expect(hit.closed[0].pnl).toBeCloseTo(-20 - 0.4 - 0.38)
+    expect(hit.strategy.open).toHaveLength(0)
+  })
+
+  it('never opposite sides of the pound/dollar bet in one account', () => {
+    const s = holding(['GBP-USD', 'long'])
+    const r = step(s, [fx('pax-gold', 'short'), fx('EUR-GBP', 'long')])
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed).toEqual([
+      {
+        market: 'pax-gold',
+        reason: 'against the open GBP-USD long (one pound/dollar bet per account)',
+      },
+      {
+        market: 'EUR-GBP',
+        reason: 'against the open GBP-USD long (one pound/dollar bet per account)',
+      },
+    ])
+    // the same way is fine: gold long and EUR/GBP short are both "dollar down / pound up"
+    expect(step(s, [fx('pax-gold', 'long')]).opened).toHaveLength(1)
+    expect(step(s, [fx('EUR-GBP', 'short')]).opened).toHaveLength(1)
+    // a market outside the group is not affected
+    expect(step(s, [fx('EUR-USD', 'short')]).opened).toHaveLength(1)
+  })
+
+  it('at most 2 the same way', () => {
+    const r = step(holding(['GBP-USD', 'long'], ['pax-gold', 'long']), [fx('EUR-GBP', 'short')])
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed[0].reason).toBe('2 pound/dollar trades already open the same way')
+    // also inside one tick: the third signal of the tick waits
+    const one = step(fresh(), [fx('GBP-USD'), fx('pax-gold'), fx('EUR-GBP', 'short')])
+    expect(one.opened.map((t) => t.market)).toEqual(['GBP-USD', 'pax-gold'])
+  })
+
+  it('GBP/JPY is a copy of GBP/USD: never both open in one account', () => {
+    // the 2026-11-11 case: both signalled on the same tick
+    const r = step(fresh(), [fx('GBP-USD'), fx('GBP-JPY')])
+    expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD'])
+    expect(r.passed).toEqual([
+      {
+        market: 'GBP-JPY',
+        reason: 'GBP-JPY is a copy of the open GBP-USD trade (one pound/dollar bet per account)',
+      },
+    ])
+    expect(step(holding(['GBP-JPY', 'short']), [fx('GBP-USD', 'short')]).passed[0].reason).toMatch(
+      /GBP-USD is a copy of the open GBP-JPY/,
+    )
+    // GBP/JPY with gold the same way is one bet, two trades: fine
+    expect(step(holding(['pax-gold', 'long']), [fx('GBP-JPY')]).opened).toHaveLength(1)
+  })
+
+  it('other accounts may disagree; trades already open are not touched', () => {
+    const a = step(holding(['GBP-USD', 'long']), [fx('pax-gold', 'short')])
+    const b = step(fresh(), [fx('pax-gold', 'short')])
+    expect(a.opened).toHaveLength(0)
+    expect(b.opened.map((t) => `${t.market} ${t.direction}`)).toEqual(['pax-gold short'])
+    // an account already holding both sides keeps both until they close
+    const mixed = holding(['GBP-USD', 'long'], ['pax-gold', 'short'], ['GBP-JPY', 'long'])
+    const kept = step(mixed, [tick({ market: 'GBP-USD' }), tick({ market: 'pax-gold' })])
+    expect(kept.strategy.open).toEqual(mixed.open)
+  })
+
+  it('newTradeBlock on its own', () => {
+    expect(newTradeBlock({ market: 'bitcoin', direction: 'short' }, [])).toBeNull()
+    expect(newTradeBlock({ market: 'ethereum', direction: 'long' }, [])).toMatch(/except Bitcoin/)
+    expect(newTradeBlock({ market: 'GBP-USD', direction: 'long' }, [])).toBeNull()
   })
 })
 

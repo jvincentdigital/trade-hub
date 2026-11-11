@@ -4,7 +4,7 @@ import type { Signal } from '../rules/engine'
 import { LEVERAGE } from '../paper/engine'
 import { getInstrument } from '../paper/instruments'
 import { usdPerQuoteFor } from '../sizing/sizing'
-import { RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
+import { newTradeBlock, RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
 
 // "Live from today" race: a forward test. Every hour a tick looks at fresh
 // candles. Each strategy trades ONE play account across all its markets (one
@@ -244,7 +244,7 @@ export interface StepResult {
   strategy: RaceStrategy
   opened: LiveTrade[]
   closed: ClosedLiveTrade[]
-  /** Signals a limit kept out (5 open, 10% open risk, no free margin), with the reason. */
+  /** Signals a rule or limit kept out (crypto, pound/dollar, 5 open, 10% open risk, no free margin), with the reason. */
   passed: { market: string; reason: string }[]
 }
 
@@ -279,7 +279,8 @@ function exitOf(t: LiveTrade, path: OHLCCandle[]) {
  *    or target; both fees are paid then and the net P&L goes to the balance.
  * 2. Each market's signal newer than the last one used is consumed. With no
  *    trade open in that market it opens at the latest price, risking 2% of
- *    the balance, unless a limit says no (see sizeRaceTrade).
+ *    the balance, unless a rule for new trades (newTradeBlock: Bitcoin only
+ *    among crypto, one pound/dollar bet) or a limit (sizeRaceTrade) says no.
  */
 export function stepStrategy(
   s: RaceStrategy,
@@ -326,6 +327,12 @@ export function stepStrategy(
         ? p > sig.stop && p < sig.takeProfit
         : p < sig.stop && p > sig.takeProfit)
     if (!valid || open.some((t) => t.market === m.market)) continue
+    // Bitcoin only among crypto; one pound/dollar bet per account (account.ts).
+    const block = newTradeBlock({ market: m.market, direction: sig.direction }, open)
+    if (block) {
+      passed.push({ market: m.market, reason: block })
+      continue
+    }
     if (m.usdPerQuote == null) {
       passed.push({ market: m.market, reason: 'no USD rate for its quote currency' })
       continue
