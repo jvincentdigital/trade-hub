@@ -3,11 +3,11 @@ import type { OHLCCandle } from '../types/market'
 import type { Signal } from '../rules/engine'
 import { INSTRUMENTS } from '../paper/instruments'
 import { feedOf } from '../feeds'
+import { NOT_LIVE } from './account'
 import {
   checkFunded,
   createFunded,
   FUNDED,
-  FUNDED_SKIP,
   fundedView,
   stepFunded,
   type FundedCandidate,
@@ -217,7 +217,7 @@ describe('funded test: signal order and markets', () => {
     expect(again.passed).toHaveLength(0)
   })
 
-  it('skips markets priced only from a once-a-day rate', () => {
+  it('skips markets priced only from a once-a-day rate (every account, John 2026-11-11)', () => {
     const r = stepFunded(
       createFunded(0),
       markets,
@@ -226,13 +226,13 @@ describe('funded test: signal order and markets', () => {
     )
     expect(r.opened).toHaveLength(0)
     expect(r.passed.map((x) => [x.market, x.reason])).toEqual([
-      ['USD-JPY', 'priced from a once-a-day rate, not live'],
-      ['NZD-USD', 'priced from a once-a-day rate, not live'],
-      ['GBP-JPY', 'priced from a once-a-day rate, not live'],
+      ['USD-JPY', 'no new trades on USD-JPY: priced from a once-a-day rate, not live'],
+      ['NZD-USD', 'no new trades on NZD-USD: priced from a once-a-day rate, not live'],
+      ['GBP-JPY', 'no new trades on GBP-JPY: priced from a once-a-day rate, not live'],
     ])
     // the list is exactly the forex the race does not price from Kraken
     const notLive = INSTRUMENTS.filter((i) => i.market === 'forex' && feedOf(i.id) !== 'kraken')
-    expect(notLive.map((i) => i.id).sort()).toEqual([...FUNDED_SKIP].sort())
+    expect(notLive.map((i) => i.id).sort()).toEqual([...NOT_LIVE].sort())
   })
 
   it('a new account only trades signals that come after it starts', () => {

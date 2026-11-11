@@ -145,9 +145,9 @@ tick saves a copy first as `race.json.bak-<date-time>-split`; `/api/race` only
 converts it for display. Old trades keep their old small size; new trades use
 2%.
 
-## Three rules for new trades (John, 2026-11-11)
+## Four rules for new trades (John, 2026-11-11)
 
-John asked for the first two on 2026-11-11, about 09:55 AST, and the third about 12:05. They are checked in one
+John asked for the first two on 2026-11-11, about 09:55 AST, the third about 12:05 and the fourth about 15:05. They are checked in one
 place, `newTradeBlock` in `src/lib/race/account.ts`, which `stepStrategy`
 (`live.ts`) runs before sizing every new trade. Every account goes through it:
 the built-in rules and London breakout (from the tick) and Claude's picks
@@ -202,6 +202,17 @@ here it moves with GBP/USD (see above). EUR/GBP and crypto have no dollar side.
 A new trade is refused when the account already has 2 open trades on its
 dollar side (`MAX_DOLLAR`). Opposite dollar bets are allowed: they offset.
 
+**4. No new trades on markets priced once a day.** John, about 15:05 AST:
+no new trades on USD/JPY, GBP/JPY and NZD/USD in every account (the funded
+test and all Lab accounts) "until a live price exists". The race prices
+USD/JPY and NZD/USD from the ECB's daily rate, and GBP/JPY is GBP/USD times
+that daily USD/JPY (`docs/london-open.md`), so none of the three has a live
+price. One list, `NOT_LIVE` in `account.ts`. Trades already open on them run
+to their stop, target or the 12:45 close as before. The GBP/JPY copy rule
+above now only keeps a new GBP/USD out of an account that still holds an
+older GBP/JPY trade. Red news: no pause, the race trades through it (John,
+same answer).
+
 Different accounts may still disagree: one strategy can be long GBP/USD while
 another is short gold. Trades already open on both sides stay open until they
 close.
@@ -212,9 +223,10 @@ lines. For example:
 ```
   PASS  MM stop hunt reversal binancecoin: no new crypto trades except Bitcoin
   PASS  RSI range reversal pax-gold: against the open GBP-USD long (one pound/dollar bet per account)
-  PASS  EMA 50 pullback GBP-JPY: GBP-JPY is a copy of the open GBP-USD trade (one pound/dollar bet per account)
+  PASS  EMA 50 pullback GBP-USD: GBP-USD is a copy of the open GBP-JPY trade (one pound/dollar bet per account)
   PASS  London breakout pax-gold: 2 pound/dollar trades already open the same way
   PASS  MFX level 3 peak reversal GBP-USD: 2 trades already bet the dollar falls
+  PASS  RSI range reversal USD-JPY: no new trades on USD-JPY: priced from a once-a-day rate, not live
 ```
 
 Claude's picks only trades GBP/USD and gold (no crypto). Its prompt states the
@@ -235,19 +247,18 @@ as the main card (`docs/dashboard.md`); the Race tab shows it above the Lab.
 The limits copy FTMO's 2-Step challenge, the best documented fit for John's
 markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
 
-| Rule                 | Value                                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Start                | $10,000, play money                                                                                                |
-| Risk per trade       | 2% of the current balance ($200 at the start), size from the fill-to-stop distance like the Lab                    |
-| Open trades          | at most 2, one per market                                                                                          |
-| New trades a day     | at most 3 per FTMO day                                                                                             |
-| Rules for new trades | the Lab's: Bitcoin only among crypto, one pound/dollar bet, at most 2 the same way on the dollar (`newTradeBlock`) |
-| Markets              | not USD/JPY, NZD/USD or GBP/JPY (`FUNDED_SKIP`): they are priced from a once-a-day ECB rate, not live              |
-| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down 4% of its start balance                            |
-| Daily loss           | **failed** when the day's loss reaches 5% of the day-start balance, closed and open trades together                |
-| Max loss             | **failed** when the balance or the money (with open P&L) is under $9,000 (10% of the start, static)                |
-| Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                            |
-| Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)        |
+| Rule                 | Value                                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start                | $10,000, play money                                                                                                                                                                 |
+| Risk per trade       | 2% of the current balance ($200 at the start), size from the fill-to-stop distance like the Lab                                                                                     |
+| Open trades          | at most 2, one per market                                                                                                                                                           |
+| New trades a day     | at most 3 per FTMO day                                                                                                                                                              |
+| Rules for new trades | the Lab's four (`newTradeBlock`): Bitcoin only among crypto, one pound/dollar bet, at most 2 the same way on the dollar, nothing on USD/JPY, NZD/USD or GBP/JPY (once-a-day prices) |
+| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down 4% of its start balance                                                                                             |
+| Daily loss           | **failed** when the day's loss reaches 5% of the day-start balance, closed and open trades together                                                                                 |
+| Max loss             | **failed** when the balance or the money (with open P&L) is under $9,000 (10% of the start, static)                                                                                 |
+| Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                                                                                             |
+| Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)                                                                         |
 
 - **Signal order.** Each check collects every strategy's signal in a fixed
   order: the built-in rules in the order of `BUILT_IN_RULES`
@@ -275,14 +286,15 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
   trades signals that come after.
 - Not built: no check that a new trade's stop would fit under the 5% day
   limit (only the 4% buffer), no consistency rule (FTMO 2-Step has none), no
-  news freeze (FTMO's challenge has none).
+  news pause (FTMO's challenge has none, and John chose to trade through red
+  news, 2026-11-11).
 
 The tick log shows its lines with the name `Funded test`, for example:
 
 ```
   OPEN  Funded test GBP-USD long at 1.3123 (signal from london-breakout): 0.15 lots ...
   PASS  Funded test EUR-USD (ema50-pullback): 2 trades already open
-  PASS  Funded test USD-JPY (rsi-range-reversal): priced from a once-a-day rate, not live
+  PASS  Funded test USD-JPY (rsi-range-reversal): no new trades on USD-JPY: priced from a once-a-day rate, not live
   Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss $0.00 of $509.21, 2 of 4 days
 ```
 

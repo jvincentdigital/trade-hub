@@ -365,7 +365,8 @@ export function exitOf(t: LiveTrade, path: OHLCCandle[]) {
  * 2. Each market's signal newer than the last one used is consumed. With no
  *    trade open in that market it opens at the latest price, risking 2% of
  *    the balance, unless a rule for new trades (newTradeBlock: Bitcoin only
- *    among crypto, one pound/dollar bet) or a limit (sizeRaceTrade) says no.
+ *    among crypto, one pound/dollar bet, no once-a-day markets) or a limit
+ *    (sizeRaceTrade) says no.
  */
 export function stepStrategy(
   s: RaceStrategy,

@@ -183,7 +183,7 @@ export function HowSheet(props: {
         <p style={{ ...secondary, fontSize: FS.sm, margin: '14px 0 16px' }}>
           <b style={b}>Not built yet:</b>{' '}
           {
-            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade ends at its stop, its target, the 12:45 PM close, or Close now. USD/JPY and NZD/USD prices come once a day from the European Central Bank (GBP/JPY uses that rate too), so the funded test does not trade them; the other pairs and gold use real prices, checked every hour (every 15 minutes in the session).'
+            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade ends at its stop, its target, the 12:45 PM close, or Close now. USD/JPY and NZD/USD prices come once a day from the European Central Bank (GBP/JPY uses that rate too), so no account opens new trades on them; the other pairs and gold use real prices, checked every hour (every 15 minutes in the session).'
           }
         </p>
         <button

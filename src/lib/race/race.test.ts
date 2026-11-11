@@ -8,6 +8,7 @@ import {
   ALLOWED_CRYPTO,
   minStopForFullRisk,
   newTradeBlock,
+  NOT_LIVE,
   RACE_SIZING,
   sizeRaceTrade,
 } from './account'
@@ -373,20 +374,38 @@ describe('rules for new trades (John, 2026-11-11)', () => {
   })
 
   it('GBP/JPY is a copy of GBP/USD: never both open in one account', () => {
-    // the 2026-11-11 case: both signalled on the same tick
+    // the 2026-11-11 case: both signalled on the same tick. New GBP/JPY trades are
+    // off since that evening (once-a-day price), so the copy rule now only guards
+    // a new GBP/USD in an account that still holds an older GBP/JPY trade.
     const r = step(fresh(), [fx('GBP-USD'), fx('GBP-JPY')])
     expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD'])
     expect(r.passed).toEqual([
       {
         market: 'GBP-JPY',
-        reason: 'GBP-JPY is a copy of the open GBP-USD trade (one pound/dollar bet per account)',
+        reason: 'no new trades on GBP-JPY: priced from a once-a-day rate, not live',
       },
     ])
     expect(step(holding(['GBP-JPY', 'short']), [fx('GBP-USD', 'short')]).passed[0].reason).toMatch(
       /GBP-USD is a copy of the open GBP-JPY/,
     )
-    // GBP/JPY with gold the same way is one bet, two trades: fine
-    expect(step(holding(['pax-gold', 'long']), [fx('GBP-JPY')]).opened).toHaveLength(1)
+  })
+
+  it('no new trades on markets priced once a day, in every account; open ones still close', () => {
+    for (const market of ['USD-JPY', 'NZD-USD', 'GBP-JPY'])
+      expect(step(fresh(), [fx(market)]).passed).toEqual([
+        { market, reason: `no new trades on ${market}: priced from a once-a-day rate, not live` },
+      ])
+    expect(NOT_LIVE).toEqual(['USD-JPY', 'NZD-USD', 'GBP-JPY'])
+    // an open USD/JPY trade still closes at its target
+    const s = holding(['USD-JPY', 'long'])
+    const t = s.open[0]
+    const hit = step(s, [
+      tick({
+        market: 'USD-JPY',
+        path: [bar(t.entryBucket + 2 * H, t.entry, t.takeProfit + 1, t.entry, t.takeProfit)],
+      }),
+    ])
+    expect(hit.closed.map((c) => c.reason)).toEqual(['target'])
   })
 
   it('other accounts may disagree; trades already open are not touched', () => {

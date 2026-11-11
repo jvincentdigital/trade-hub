@@ -37,13 +37,6 @@ export const FUNDED = {
   maxLossPct: 10,
 } as const
 
-/**
- * Markets the race prices only from a once-a-day ECB rate (USD/JPY, NZD/USD)
- * or half from one (GBP/JPY = GBP/USD x the daily USD/JPY): not live prices,
- * so the funded test never opens them.
- */
-export const FUNDED_SKIP: readonly string[] = ['USD-JPY', 'NZD-USD', 'GBP-JPY']
-
 export const signalKey = (strategy: string, market: string) => `${strategy}:${market}`
 
 /** A signal from one race strategy, offered to the funded test in a fixed order. */
@@ -228,10 +221,6 @@ export function stepFunded(
     }
     if (blockNew) {
       no(blockNew)
-      continue
-    }
-    if (FUNDED_SKIP.includes(c.market)) {
-      no('priced from a once-a-day rate, not live')
       continue
     }
     const m = byMarket.get(c.market)
