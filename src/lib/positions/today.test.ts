@@ -110,9 +110,12 @@ describe('row line', () => {
     expect(rowLine(noTarget, measure(noTarget, 97))).toBe('Risk $20 · 30% of the way to stop')
   })
 
-  it('at entry: forex says why it is not moving', () => {
-    const fx = { ...long, market: 'GBP-USD' }
+  it('at entry: forex on daily ECB rates says why it is not moving', () => {
+    const fx = { ...long, market: 'USD-JPY' }
     expect(rowLine(fx, measure(fx, 100))).toBe('At entry, updates once a day')
+    // GBP/USD has real Kraken prices since the London open work (docs/london-open.md).
+    const kraken = { ...long, market: 'GBP-USD' }
+    expect(rowLine(kraken, measure(kraken, 100))).toBe('At entry')
     expect(wayText(long, 100)).toBe('At entry')
   })
 

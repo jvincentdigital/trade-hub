@@ -4,6 +4,7 @@ import { OHLCCandle } from '../types/market'
 import { COIN_MAP, METAL_MAP } from '../coingecko'
 import { FOREX_PAIRS } from '../forexPairs'
 import { getInstrument } from '../paper/instruments'
+import { hasIntraday } from '../feeds'
 
 // Throws on an error status, so SWR keeps the last good data and retries
 // instead of handing the page an `{ error }` body as if it were prices.
@@ -130,15 +131,16 @@ export function useForexRates() {
 }
 
 const candleUrl = (market: string) =>
-  getInstrument(market)?.market === 'forex'
+  getInstrument(market)?.market === 'forex' && !hasIntraday(market)
     ? `/api/forex/ohlc/${market}?days=90`
     : `/api/crypto/candles/${market}?tf=1h`
 
 const NO_CANDLES: Record<string, OHLCCandle[]> = {}
 
 /**
- * Candles for the Today page, one fetch per market: 1h from Kraken for crypto
- * and gold (30 days), daily for forex (90 days). Feeds the open P&L chart and
+ * Candles for the Today page, one fetch per market: 1h from Kraken for crypto,
+ * gold and the forex pairs Kraken trades (30 days; GBP/JPY computed), daily for
+ * the other forex (90 days). Feeds the open P&L chart and
  * the chart in an opened trade row. A market whose fetch fails is left out.
  */
 export function useCandleMap(markets: string[]) {

@@ -56,3 +56,13 @@ export function sizeRaceTrade(args: {
   const valueUsd = units * entry * q
   return { ok: true, units, valueUsd, margin: valueUsd / leverage, riskUsd, capped: units < want }
 }
+
+/**
+ * Smallest stop distance (in price) at which a trade risking `riskPct` of the
+ * balance still fits the margin cap with nothing else open: the position value
+ * is risk x entry / distance, and it may be at most balance x leverage. A
+ * closer stop gets cut down below `riskPct` (GBP/USD at 1.334, 2%, 30:1: 8.9
+ * pips; gold at $4,000, 20:1: $4.00).
+ */
+export const minStopForFullRisk = (entry: number, leverage: number, riskPct: number) =>
+  (entry * riskPct) / 100 / leverage

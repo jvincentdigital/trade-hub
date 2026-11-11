@@ -100,7 +100,8 @@ export default function RacePage() {
         <Link href="/strategies" style={{ color: 'var(--indigo)', padding: '14px 0' }}>
           Strategies
         </Link>
-        .
+        . London breakout and Claude&apos;s picks are live-race only: open one of their trades on
+        Today to read &quot;Why these levels&quot;.
       </p>
 
       <div role="note" style={warn}>
@@ -555,18 +556,19 @@ const candleKind = (id: string, tf: RuleTimeframe | undefined) =>
   isForex(id) ? 'daily' : (tf ?? '-')
 
 /** Which candles each market group uses, so fewer forex trades make sense. */
-function CandleNote() {
+/** Candles per market. `live`: the live race's forex feeds only, not the past-results caveat. */
+function CandleNote({ live = false }: { live?: boolean }) {
   const count = (m: string) => INSTRUMENTS.filter((i) => i.market === m).length
+  const forex = live
+    ? 'real Kraken candles for GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF and AUD/USD; GBP/JPY computed from GBP/USD; USD/JPY and NZD/USD daily (ECB)'
+    : 'past results: daily candles only (free ECB rates), so forex rules trade far less and 1h/4h rules run on daily candles there. The live race uses real Kraken candles for GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF and AUD/USD, and GBP/JPY computed from GBP/USD; USD/JPY and NZD/USD stay daily'
   const items = [
     {
       k: `Crypto (${count('crypto')})`,
       v: "real 1h, 4h and 1d candles from Kraken (free public data), in each rule's own size",
     },
     { k: 'Gold (1)', v: 'real Kraken candles too, price tracked by PAX Gold' },
-    {
-      k: `Forex (${count('forex')})`,
-      v: 'daily candles only (free ECB rates), so forex rules trade far less and 1h/4h rules run on daily candles there',
-    },
+    { k: `Forex (${count('forex')})`, v: forex },
   ]
   return (
     <ul aria-label="Candles per market" style={candleList}>
@@ -608,7 +610,7 @@ function Live({ start }: { start: number }) {
         {RACE_SIZING.riskPct}% of its balance, same limits and fees as above). Only trades after the
         start count, so nothing here can be fitted to the past.
       </p>
-      <CandleNote />
+      <CandleNote live />
 
       {isLoading ? (
         <p style={{ ...small, marginTop: 12 }}>Loading the live race…</p>

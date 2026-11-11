@@ -8,6 +8,7 @@ import { formatQuote, getInstrument, type Instrument } from '@/lib/paper/instrum
 import type { OpenPosition, PositionMetrics, PositionStatus } from '@/lib/positions/positions'
 import { MINUS, rowLine, signedShort, track, usdShort, whyLevels } from '@/lib/positions/today'
 import { fmtLots, perMoney, qty, rrText, sizingOf } from '@/lib/sizing/sizing'
+import { hasIntraday } from '@/lib/feeds'
 import { MiniChart } from './MiniChart'
 import { pct, usd } from './format'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from './ui'
@@ -173,6 +174,12 @@ export function TradeRow(props: Props) {
         )}
         <span style={{ ...secondary, gridArea: 'line', fontSize: FS.xs }}>{rowLine(pos, m)}</span>
       </button>
+      {pos.note && (
+        <p style={{ ...secondary, fontSize: FS.xs, padding: '0 16px 12px' }}>
+          <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Claude&apos;s reason:</b>{' '}
+          {pos.note}
+        </p>
+      )}
       {open && (
         <Panel
           id={id}
@@ -264,8 +271,9 @@ function Panel(props: {
     document.getElementById(`head-${id}`)?.focus()
   }
   const q = (v: number) => formatQuote(v, inst)
-  const forex = inst?.market === 'forex'
-  const candles = props.candles.slice(forex ? -40 : -48)
+  // Forex without intraday candles (ECB rates) shows daily candles.
+  const daily = inst?.market === 'forex' && !hasIntraday(pos.market)
+  const candles = props.candles.slice(daily ? -40 : -48)
   const size = sizingOf({
     inst,
     units: pos.units,
@@ -282,7 +290,7 @@ function Panel(props: {
       : size.stopPips != null
         ? `stop ${size.stopPips.toFixed(1)} pips away`
         : `stop $${q(Math.abs(pos.entry - pos.stop))} away`
-  const caption = forex
+  const caption = daily
     ? `Daily candles since ${candles[0] ? new Date(candles[0].time * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-'}. Dot: price now, which updates once a day.`
     : `Last 48 hours, 1-hour candles.${candles[0] && pos.openedAt >= candles[0].time * 1000 ? ' Dotted line: when it opened.' : ''} Dot: price now.`
 
@@ -367,7 +375,7 @@ function Panel(props: {
             dt="Size"
             dd={size.lots != null ? `${fmtLots(size.lots)} lots` : `${qty(size.units)} ${base}`}
             small={
-              forex
+              inst?.market === 'forex'
                 ? `${qty(size.units)} units`
                 : inst?.market === 'metals'
                   ? `${qty(size.units)} oz`

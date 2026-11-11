@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Trade Hub "Claude's picks": once at 03:47 Puerto Rico time (AST), Monday to
+     Friday, just before the London open (play money only; John's Claude
+     subscription, never the API). 03:47, not 03:45: the 03:45 London tick
+     takes about a minute of Kraken calls, and both at once would pass
+     Kraken's limit of about one call a second. The Mac's clock must be on AST.
+     NOT installed by default. Install steps: docs/london-open.md -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.jvd.trade-hub-claude-picks</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>/Users/jvdos/dev/trade-hub/scripts/launchd/run-claude-picks</string></array>
+  <key>WorkingDirectory</key><string>/Users/jvdos/dev/trade-hub</string>
+  <key>StandardOutPath</key><string>/Users/jvdos/Library/Logs/trade-hub/claude-picks.log</string>
+  <key>StandardErrorPath</key><string>/Users/jvdos/Library/Logs/trade-hub/claude-picks.log</string>
+  <key>ProcessType</key><string>Background</string>
+  <key>RunAtLoad</key><false/>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>3</integer><key>Minute</key><integer>47</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>3</integer><key>Minute</key><integer>47</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>3</integer><key>Minute</key><integer>47</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>3</integer><key>Minute</key><integer>47</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>3</integer><key>Minute</key><integer>47</integer></dict>
+  </array>
+</dict>
+</plist>

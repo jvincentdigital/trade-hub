@@ -8,7 +8,7 @@
 # Convention: keep targets simple. If a target needs more than a few lines of
 # shell, put the logic in scripts/ and call it from here.
 
-.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset
+.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset claude-picks
 
 PROJECT_NAME := trade-hub
 
@@ -79,6 +79,9 @@ race-tick: ## Strategy race: one live tick for every strategy's play account (st
 
 race-reset: ## Strategy race: back up race.json, start over at 2% risk per trade, first tick, push (usage: make race-reset [START=1000])
 	scripts/race-reset $(START)
+
+claude-picks: ## Claude's picks: brief, ask claude -p, open the trades that pass the checks (usage: make claude-picks [DRY=1] to only print)
+	npx tsx scripts/claude-picks.ts $(if $(DRY),--dry-run,)
 
 # ── Help ──────────────────────────────────────────────────
 

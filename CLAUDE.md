@@ -41,7 +41,7 @@ src/
       crypto/prices/    #     GET  live prices for 10 coins
       crypto/ohlc/[id]/ #     GET  OHLC candles (granularity from days param; >30 days = 4-day bars)
       crypto/candles/[id]/ #  GET  real 1h/4h/1d candles from Kraken (720 each)
-      forex/rates/      #     GET  USD-based rates for 8 pairs
+      forex/rates/      #     GET  USD-based rates for 9 pairs
       scanner/          #     GET  MM Confluence v2 setup scanner (crypto-only)
     crypto/             #   Crypto explorer (grid + detail panel w/ chart + patterns)
     forex/              #   Forex pair cards + Gold card
@@ -49,7 +49,7 @@ src/
     strategies/         #   Strategy rules + live scanner + trade plans (localStorage)
       _components/      #     StrategyRules.tsx, RuleEditor.tsx, SetupScanner.tsx
     demo/               #   Demo account: play-money paper trading
-    race/               #   Strategy race: past-results leaderboard + live forward test (docs/strategy-race.md)
+    race/               #   Strategy race: past-results leaderboard + live forward test (docs/strategy-race.md, docs/london-open.md)
     watchlist/          #   User-selected pairs (localStorage)
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
@@ -64,6 +64,7 @@ src/
   lib/
     coingecko.ts        # COIN_MAP + fetchOHLC / fetchVolumes helpers
     kraken.ts           # Kraken public OHLC: real candles for rules, backtests, race
+    feeds.ts            # Where each market's candles come from (Kraken, computed cross, ECB)
     hooks/              # useMarketData, usePaperAccount, useRules, useTradePlans, useWatchlist
     paper/              # Demo account engine: orders, fills, fees, stats, plan checks (pure, tested)
     rules/              # Strategy rules: schema, signals, backtest, built-in + course rules (pure, tested)
@@ -127,7 +128,7 @@ This project uses CLI tools for all third-party service interactions. Before usi
 Current integrations (all unauthenticated, free tier):
 
 - **CoinGecko** — `api.coingecko.com/api/v3/simple/price`, `/coins/{id}/ohlc` and `/coins/{id}/market_chart`
-- **Kraken public OHLC**: `api.kraken.com/0/public/OHLC?pair=<PAIR>&interval=<60|240|1440>`: real candles for crypto and gold (PAXGUSD) in the candles route, rules, backtests, the scanner's 4H/1D and the race. No key or account. Returns the last 720 candles (30 days of 1h, 120 days of 4h, about 2 years of 1d) plus the forming one, under a result key that is Kraken's own pair name (`XXBTZUSD` for `XBTUSD`). Public limit about 1 call a second: `src/lib/kraken.ts` spaces calls 1.1 s apart, caches each pair + size 5 minutes and retries once. Pairs in `KRAKEN_PAIRS` (DOGE is `XDGUSD`).
+- **Kraken public OHLC**: `api.kraken.com/0/public/OHLC?pair=<PAIR>&interval=<15|60|240|1440>`: real candles for crypto, gold (PAXGUSD) and the forex pairs Kraken trades well (GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF, AUD/USD; not USD/JPY, whose book is too thin) in the candles route, rules, backtests, the scanner's 4H/1D and the race. GBP/JPY is computed from GBP/USD and the ECB's USD/JPY (`src/lib/feeds.ts`, `docs/london-open.md`). No key or account. Returns the last 720 candles (7.5 days of 15m, 30 days of 1h, 120 days of 4h, about 2 years of 1d) plus the forming one, under a result key that is Kraken's own pair name (`XXBTZUSD` for `XBTUSD`). Public limit about 1 call a second: `src/lib/kraken.ts` spaces calls 1.1 s apart, caches each pair + size 5 minutes and retries once. Forex books are thin, so forex wicks are capped (`capSpikes`). Pairs in `KRAKEN_PAIRS` (DOGE is `XDGUSD`).
 - **Frankfurter (ECB)**: daily forex rates. `/api/forex/rates` reads `api.frankfurter.dev/v1/latest?base=USD`, the same ECB source the race and the forex candles use (it replaced ExchangeRate API on 2026-11-10, which rounds to 2-3 digits: CAD 1.41 against the ECB's 1.4136).
 
 ## Conventions

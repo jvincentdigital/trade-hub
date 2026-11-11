@@ -4,7 +4,7 @@ import type { Signal } from '../rules/engine'
 import { closedOnly } from './candles'
 import { backtest } from '../rules/engine'
 import { BUILT_IN_RULES } from '../rules/presets'
-import { RACE_SIZING, sizeRaceTrade } from './account'
+import { minStopForFullRisk, RACE_SIZING, sizeRaceTrade } from './account'
 import {
   portfolioBacktest,
   rankEntries,
@@ -70,6 +70,19 @@ describe('sizing a new trade (one real account)', () => {
       ok: false,
       reason: 'no free margin',
     })
+  })
+
+  it('minStopForFullRisk: the closest stop that still risks the full 2% within the margin cap', () => {
+    // GBP/USD at 1.334, 30:1: 8.9 pips. A 3.6-pip stop gets cut to about 0.8% risk.
+    const d = minStopForFullRisk(1.334, 30, 2)
+    expect(d).toBeCloseTo(0.000889, 6)
+    const gbp = { ...base, entry: 1.334, leverage: 30 }
+    const full = sizeRaceTrade({ ...gbp, stop: 1.334 - d })
+    expect(full.ok && full.riskUsd).toBeCloseTo(20, 6)
+    const tight = sizeRaceTrade({ ...gbp, stop: 1.334 - 0.00036 })
+    expect(tight.ok && tight.capped).toBe(true)
+    expect(tight.ok && tight.riskUsd).toBeCloseTo(8.1, 1)
+    expect(minStopForFullRisk(4000, 20, 2)).toBeCloseTo(4, 10) // gold: $4.00
   })
 
   it('at most 5 open, and total open risk at most 10% of the balance', () => {
@@ -199,6 +212,23 @@ describe('live forward test step', () => {
     // 4 units x +$5 = +$20, minus the $0.40 entry fee
     expect(s.money).toBeCloseTo(1000 + 20 - 0.4)
     expect(s.open).toHaveLength(1)
+  })
+
+  it('a market moved to smaller path candles never checks candles from before the entry', () => {
+    // Opened at 5000 on a daily path (bucket 0); the path is now 15m candles.
+    const s = { ...opened(), open: opened().open.map((t) => ({ ...t, entryBucket: 0 })) }
+    const before = stepStrategy(s, [tick({ path: [bar(4100, 100, 100, 90, 100)] })], 9000)
+    expect(before.closed).toHaveLength(0)
+    const later = stepStrategy(s, [tick({ path: [bar(5400, 100, 100, 90, 100)] })], 9000)
+    expect(later.closed[0].reason).toBe('stop')
+  })
+
+  it("keeps a signal's note on the trade it opens, through the close", () => {
+    const r = stepStrategy(fresh(), [tick({ signal: sig(), note: 'Range break' })], 5000)
+    expect(r.opened[0].note).toBe('Range break')
+    const c = stepStrategy(r.strategy, [tick({ path: [bar(4000 + H, 100, 111, 99, 108)] })], 9000)
+    expect(c.closed[0].note).toBe('Range break')
+    expect(raceStateSchema.shape.strategies.safeParse({ a: c.strategy }).success).toBe(true)
   })
 
   it('a new built-in strategy joins with fresh money; running again changes nothing', () => {

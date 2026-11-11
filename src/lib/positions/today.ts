@@ -1,6 +1,8 @@
 import type { OHLCCandle } from '../types/market'
 import type { Rule, RuleTimeframe } from '../rules/schema'
 import { getInstrument, type PriceMap } from '../paper/instruments'
+import { EXTRA_STRATEGIES } from '../race/extras'
+import { hasIntraday } from '../feeds'
 import {
   periodStarts,
   tally,
@@ -47,9 +49,9 @@ export const sideWord = (s: Side) => (s === 'long' ? 'buy' : 'sell')
 
 /**
  * The price a trade is valued at. Race forex trades use the race's own last
- * price: the daily ECB rate they opened on and close on (the live forex feed
- * is another source and would show moves the race never sees). Everything
- * else uses the live feeds first.
+ * price: the Kraken price of its last tick, or the daily ECB rate for pairs
+ * without intraday data (the live forex feed is the ECB's and would show
+ * moves the race never sees). Everything else uses the live feeds first.
  */
 export function priceFor(
   p: OpenPosition,
@@ -94,12 +96,14 @@ const pctOf = (share: number) => {
   return n < 1 ? 'under 1%' : `${n}%`
 }
 
-/** "48% of the way to target", "At entry, updates once a day" (forex). */
+/** "48% of the way to target", "At entry, updates once a day" (forex on daily ECB rates). */
 export function wayText(p: OpenPosition, price: number | null): string {
   const w = way(p, price)
   if (!w) return 'No live price yet'
   if (w.toward === 'entry')
-    return getInstrument(p.market)?.market === 'forex' ? 'At entry, updates once a day' : 'At entry'
+    return getInstrument(p.market)?.market === 'forex' && !hasIntraday(p.market)
+      ? 'At entry, updates once a day'
+      : 'At entry'
   if (w.share == null)
     return w.toward === 'target' ? 'In profit, no target set' : 'In a loss, no stop set'
   const pct = pctOf(w.share)
@@ -268,6 +272,8 @@ export const TF_WORD: Record<RuleTimeframe, string> = {
 /** The "Why these levels" note: how the strategy set this stop and target. */
 export function whyLevels(p: OpenPosition, rule?: Pick<Rule, 'stop' | 'rr' | 'timeframe'>): string {
   if (!rule) {
+    const extra = p.ruleId ? EXTRA_STRATEGIES[p.ruleId] : undefined
+    if (extra) return extra.why
     if (p.stop == null) return 'No stop was set in Demo, so the loss is not capped.'
     return 'You set this stop and target when you placed it in Demo.'
   }

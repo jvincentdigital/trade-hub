@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Trade Hub strategy race: one live tick every hour (play money only).
+<!-- Trade Hub strategy race: one live tick every hour at minute 07 (play money
+     only). A fixed minute, not StartInterval: StartInterval counts from the
+     end of the last run, so the start drifted about 40 s an hour into the
+     London ticks at :00, :15, :30 and :45 (docs/london-open.md).
      NOT installed by default. Install steps: docs/strategy-race.md -->
 <plist version="1.0">
 <dict>
@@ -12,6 +15,7 @@
   <key>StandardErrorPath</key><string>/Users/jvdos/Library/Logs/trade-hub/race.log</string>
   <key>ProcessType</key><string>Background</string>
   <key>RunAtLoad</key><false/>
-  <key>StartInterval</key><integer>3600</integer>
+  <key>StartCalendarInterval</key>
+  <dict><key>Minute</key><integer>7</integer></dict>
 </dict>
 </plist>

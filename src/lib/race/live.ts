@@ -33,6 +33,8 @@ export const liveTradeSchema = z.object({
   margin: z.number(),
   /** Paid together with the exit fee when the trade closes. */
   entryFee: z.number(),
+  /** Why it was opened, in plain words (Claude's picks). */
+  note: z.string().optional(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
 
@@ -234,6 +236,8 @@ export interface MarketTick {
   usdPerQuote: number | null
   feeRate: number
   leverage: number
+  /** Stored on a trade this signal opens (Claude's picks: the reason). */
+  note?: string
 }
 
 export interface StepResult {
@@ -249,11 +253,16 @@ const dir = (d: 'long' | 'short') => (d === 'long' ? 1 : -1)
 /** Dollars lost if the stop is hit, from entry, before fees. */
 export const tradeRisk = (t: LiveTrade) => t.units * Math.abs(t.entry - t.stop) * t.usdPerQuote
 
-/** First later path candle that hits the stop (checked first; a gap fills at the open) or target. */
+/**
+ * First later path candle that hits the stop (checked first; a gap fills at the open) or target.
+ * Skipped: the candle the entry happened in, and any candle that started
+ * before the entry (a market whose path moved to smaller candles, like
+ * forex from daily to 15m on 2026-11-10, must not look before its entry).
+ */
 function exitOf(t: LiveTrade, path: OHLCCandle[]) {
   const long = t.direction === 'long'
   for (const c of path) {
-    if (c.time <= t.entryBucket) continue
+    if (c.time <= t.entryBucket || c.time < t.entryTime) continue
     if (long ? c.low <= t.stop : c.high >= t.stop) {
       const gapped = long ? c.open < t.stop : c.open > t.stop
       return { exit: gapped ? c.open : t.stop, time: c.time, reason: 'stop' as const }
@@ -347,6 +356,7 @@ export function stepStrategy(
       usdPerQuote: m.usdPerQuote,
       margin: size.margin,
       entryFee: size.valueUsd * m.feeRate,
+      ...(m.note ? { note: m.note } : {}),
     }
     open.push(t)
     opened.push(t)
