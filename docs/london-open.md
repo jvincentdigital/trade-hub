@@ -27,7 +27,11 @@ done").
 | 07:00             | 11:00       | Last 15-minute tick; the hourly tick carries on as always                   |
 | every hour at :07 |             | The hourly race tick (`com.jvd.trade-hub-race`), 24/7                       |
 
-Weekdays only for the London jobs (Monday to Friday, launchd `Weekday` 1-5).
+Weekdays only for the London jobs (Monday to Friday). The plists set `WEEKDAYS_ONLY=1`
+and the wrappers exit on Saturday and Sunday. Don't use launchd `Weekday` keys: on the
+Mac Mini they never fired (2026-11-11, `runs = 0` all night, while Hour/Minute-only
+jobs ran). Since 2026-11-11 the 15-minute ticks run 02:00-12:45 AST (London to New
+York) and Claude's picks at 03:47 and 09:47 AST.
 All three jobs use the Mac Mini's clock, which is on AST.
 
 - **Breakouts start at 02:00, an hour before Frankfurt.** That is the spec
