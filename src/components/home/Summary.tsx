@@ -294,7 +294,8 @@ const STATUS = {
 /** The challenge: target, day loss, max loss and trading days, plus today's caps. */
 function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => string }) {
   const st = STATUS[v.status]
-  const dayPct = v.dayStart > 0 ? (v.dayLoss / v.dayStart) * 100 : 0
+  // Both as a share of the start money, like FTMO: $500 is 5%, $1,000 is 10%.
+  const dayPct = (v.dayLoss / v.dayLimit) * FUNDED.dailyLossPct
   const maxPct = ((v.maxLoss / v.maxLimit) * FUNDED.maxLossPct) as number
   const summary = `${FUNDED.name}: ${pnlText(v.result)}, day loss used ${pct(dayPct)} of ${FUNDED.dailyLossPct}%, ${pct(maxPct)} of ${FUNDED.maxLossPct}% max, ${v.days} of ${FUNDED.minDays} days, target +${usdShort(v.target)}`
   return (
@@ -371,7 +372,7 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
       </p>
       {v.status === 'active' && v.dayStopped && (
         <p style={{ fontSize: FS.sm, marginTop: 6, color: 'var(--amber)' }}>
-          The day is down {FUNDED.dayStopPct}%: no new trades until {clockOf(v.nextDay)}.
+          {`The day is down ${usdShort((v.dayLimit * FUNDED.dayStopPct) / FUNDED.dailyLossPct)} (${FUNDED.dayStopPct}% of the start): no new trades until ${clockOf(v.nextDay)}.`}
         </p>
       )}
     </div>

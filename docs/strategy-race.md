@@ -254,8 +254,8 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
 | Open trades          | at most 2, one per market                                                                                                                                                           |
 | New trades a day     | at most 3 per FTMO day                                                                                                                                                              |
 | Rules for new trades | the Lab's four (`newTradeBlock`): Bitcoin only among crypto, one pound/dollar bet, at most 2 the same way on the dollar, nothing on USD/JPY, NZD/USD or GBP/JPY (once-a-day prices) |
-| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down 4% of its start balance                                                                                             |
-| Daily loss           | **failed** when the day's loss reaches 5% of the day-start balance, closed and open trades together                                                                                 |
+| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down $400 (4% of the start) from its opening balance                                                                     |
+| Daily loss           | **failed** when the day loses $500 (5% of the start, FTMO's rule) from its opening balance, closed and open trades together                                                         |
 | Max loss             | **failed** when the balance or the money (with open P&L) is under $9,000 (10% of the start, static)                                                                                 |
 | Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                                                                                             |
 | Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)                                                                         |
@@ -295,7 +295,7 @@ The tick log shows its lines with the name `Funded test`, for example:
   OPEN  Funded test GBP-USD long at 1.3123 (signal from london-breakout): 0.15 lots ...
   PASS  Funded test EUR-USD (ema50-pullback): 2 trades already open
   PASS  Funded test USD-JPY (rsi-range-reversal): no new trades on USD-JPY: priced from a once-a-day rate, not live
-  Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss $0.00 of $509.21, 2 of 4 days
+  Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss $0.00 of $500.00, 2 of 4 days
 ```
 
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)

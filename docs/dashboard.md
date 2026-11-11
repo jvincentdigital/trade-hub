@@ -36,13 +36,13 @@ column sits on the left and stays in view while the trades scroll on the right.
    - **Challenge** (`Challenge` in `Summary.tsx`, numbers from `fundedView`
      in `src/lib/race/funded.ts`, priced like the rows): a status pill (Active,
      Passed, Failed) and four tiles with a bar each: **Target** ("+$426 of
-     +$1,000"), **Day loss** ("$374 of $540", "3.46% of 5% used"; amber once
-     the day is down 4%), **Max loss** ("$0 of $1,000", "0.00% of 10% used")
+     +$1,000"), **Day loss** ("$374 of $500", "3.74% of 5% used"; both of the
+     $10,000 start, like FTMO; amber once the day is down $400), **Max loss** ("$0 of $1,000", "0.00% of 10% used")
      and **Trading days** ("2 of 4"). The tiles' group label reads it as one
-     line: "Funded test: +$425.93, day loss used 3.46% of 5%, 0.00% of 10% max,
+     line: "Funded test: +$425.93, day loss used 3.74% of 5%, 0.00% of 10% max,
      2 of 4 days, target +$1,000". Under them: "Today 3 of 3 new trades, 2 of 2
      open. The day resets at 7:00 PM (midnight in Prague)." Once the day is
-     down 4%: "no new trades until 7:00 PM". Failed or passed: a red or green
+     down $400: "no new trades until 7:00 PM". Failed or passed: a red or green
      box with the rule that broke (or the pass) and its time, "No new trades".
    - A small line of the open P&L since the first open trade ("Open trades,
      since 4:59 PM"; at most 7 days back). The line prices each open trade at every

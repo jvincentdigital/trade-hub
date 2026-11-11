@@ -259,7 +259,7 @@ describe('funded test: signal order and markets', () => {
 })
 
 describe('funded test: FTMO limits', () => {
-  it('stops new trades once the day is down 4%', () => {
+  it('stops new trades once the day is down 4% of the start ($400)', () => {
     const at4 = withClosed([closedT(-400, NOW - 1800)])
     const v = fundedView(at4, PRICE, NOW)
     expect(v.dayStart).toBe(10_000)
@@ -267,7 +267,9 @@ describe('funded test: FTMO limits', () => {
     expect(v.dayStopped).toBe(true)
     const r = stepFunded(at4, markets, [cand('a', 'GBP-USD')], NOW)
     expect(r.opened).toHaveLength(0)
-    expect(r.passed[0].reason).toBe('the day is down 4%: no new trades until the next FTMO day')
+    expect(r.passed[0].reason).toBe(
+      'the day is down $400.00, 4% of the start or more: no new trades until the next FTMO day',
+    )
     expect(r.funded.status).toBe('active')
     // $399 down still trades
     const under = withClosed([closedT(-399, NOW - 1800)])
@@ -276,7 +278,7 @@ describe('funded test: FTMO limits', () => {
     expect(fundedView(at4, PRICE, ast(2026, 11, 11, 19)).dayStopped).toBe(false)
   })
 
-  it('fails when the day loses 5% of the day-start balance, closed and open together', () => {
+  it('fails when the day loses 5% of the start ($500) from its day-start balance, closed and open together', () => {
     // -$400 closed today, then the open GBP/USD trade hits its $200 stop: -$600
     const f = withClosed([closedT(-400, NOW - 1800)], [trade('GBP-USD')])
     const hit = mt('GBP-USD', {
@@ -289,7 +291,7 @@ describe('funded test: FTMO limits', () => {
     expect(r.closed[0].reason).toBe('stop')
     expect(r.funded.status).toBe('failed')
     expect(r.funded.statusNote).toBe(
-      'daily loss limit: the day lost $600.00, 5% of the $10,000.00 day start is $500.00',
+      'daily loss limit: the day lost $600.00 from its $10,000.00 start, the limit is $500.00 (5% of $10,000.00)',
     )
     expect(r.passed[0].reason).toBe('the funded test is failed')
     // open loss counts: -$400 closed plus -$100 open is exactly 5%
@@ -299,6 +301,22 @@ describe('funded test: FTMO limits', () => {
     expect(checkFunded(open, { ...p, 'GBP-USD': 1.2936 }, NOW).status).toBe('active')
     // once failed it stays failed, even after a recovery
     expect(checkFunded(r.funded, PRICE, NOW + 3600).status).toBe('failed')
+  })
+
+  it('the day limits stay $500 and $400 when the account is up or down (FTMO: % of the start)', () => {
+    // yesterday +$800: today starts at $10,800, but the limits are still $500 and $400
+    const up = withClosed([closedT(800, NOW - 90_000), closedT(-400, NOW - 1800)])
+    const v = fundedView(up, PRICE, NOW)
+    expect(v.dayStart).toBe(10_800)
+    expect(v.dayLimit).toBe(500)
+    expect(v.dayStopped).toBe(true) // $400 down, under 4% of $10,800 but 4% of the start
+    expect(checkFunded(up, PRICE, NOW).status).toBe('active')
+    const out = withClosed([closedT(800, NOW - 90_000), closedT(-500, NOW - 1800)])
+    expect(checkFunded(out, PRICE, NOW).status).toBe('failed') // $500, under 5% of $10,800
+    // yesterday -$500: today starts at $9,500, and $399 down still trades
+    const down = withClosed([closedT(-500, NOW - 90_000), closedT(-399, NOW - 1800)])
+    expect(fundedView(down, PRICE, NOW).dayStopped).toBe(false)
+    expect(checkFunded(down, PRICE, NOW).status).toBe('active')
   })
 
   it('fails when the balance or the money falls under $9,000 (10% static)', () => {
@@ -318,7 +336,7 @@ describe('funded test: FTMO limits', () => {
     const down = { ...PRICE, 'GBP-USD': 1.3 - 0.00975 } // $150 down of a $200 risk
     const v = fundedView(f, down, NOW)
     expect(v.money).toBeCloseTo(8950)
-    expect(v.dayLoss).toBeCloseTo(150) // under the day limit of $455
+    expect(v.dayLoss).toBeCloseTo(150) // under the day limit of $500
     expect(checkFunded(f, down, NOW).statusNote).toContain('max loss')
   })
 

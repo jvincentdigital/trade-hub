@@ -29,9 +29,12 @@ export const FUNDED = {
   /** Pass: +10% ($1,000) and at least 4 trading days. */
   targetPct: 10,
   minDays: 4,
-  /** Fail: the day loses 5% of the day-start balance (FTMO's day starts at midnight in Prague). */
+  /**
+   * Fail: the day loses 5% of the START money ($500), counted from the balance
+   * at the start of FTMO's day (midnight in Prague). FTMO's rule exactly.
+   */
   dailyLossPct: 5,
-  /** Our own buffer: no new trades for the day once it is down 4%. */
+  /** Our own buffer: no new trades for the day once it is down 4% of the start ($400). */
   dayStopPct: 4,
   /** Fail: balance or money under $9,000 (10% of the start, static). */
   maxLossPct: 10,
@@ -85,7 +88,7 @@ export interface FundedView {
   /** Balance at the start of today's FTMO day and the loss since then (0 when up). */
   dayStart: number
   dayLoss: number
-  /** 5% of the day start: reaching it fails the test. */
+  /** 5% of the start money ($500): losing that since the day start fails the test. */
   dayLimit: number
   /** True once the day is down 4%: no new trades until the next FTMO day. */
   dayStopped: boolean
@@ -120,8 +123,8 @@ export function fundedView(
     result: money - f.startMoney,
     dayStart,
     dayLoss,
-    dayLimit: (dayStart * FUNDED.dailyLossPct) / 100,
-    dayStopped: dayLoss >= (dayStart * FUNDED.dayStopPct) / 100,
+    dayLimit: (f.startMoney * FUNDED.dailyLossPct) / 100,
+    dayStopped: dayLoss >= (f.startMoney * FUNDED.dayStopPct) / 100,
     nextDay: nextPragueDayStart(nowSec),
     maxLoss: Math.max(0, f.startMoney - Math.min(money, f.balance)),
     maxLimit: (f.startMoney * FUNDED.maxLossPct) / 100,
@@ -149,7 +152,7 @@ export function checkFunded(
   if (v.dayLoss >= v.dayLimit)
     return end(
       'failed',
-      `daily loss limit: the day lost ${usd(v.dayLoss)}, ${FUNDED.dailyLossPct}% of the ${usd(v.dayStart)} day start is ${usd(v.dayLimit)}`,
+      `daily loss limit: the day lost ${usd(v.dayLoss)} from its ${usd(v.dayStart)} start, the limit is ${usd(v.dayLimit)} (${FUNDED.dailyLossPct}% of ${usd(f.startMoney)})`,
     )
   const floor = f.startMoney - v.maxLimit
   if (v.money < floor || f.balance < floor)
@@ -233,7 +236,9 @@ export function stepFunded(
     }
     const v = fundedView({ ...acc, open }, prices, nowSec)
     if (v.dayStopped) {
-      no(`the day is down ${FUNDED.dayStopPct}%: no new trades until the next FTMO day`)
+      no(
+        `the day is down ${usd(v.dayLoss)}, ${FUNDED.dayStopPct}% of the start or more: no new trades until the next FTMO day`,
+      )
       continue
     }
     if (v.newToday >= FUNDED.maxNewPerDay) {

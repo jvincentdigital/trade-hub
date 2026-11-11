@@ -135,7 +135,7 @@ export function HowSheet(props: {
             ],
             [
               'Limits.',
-              `At most ${FUNDED.sizing.maxOpen} trades open and ${FUNDED.maxNewPerDay} new a day, one per market; the first strategy in the race's order wins a market. Like FTMO's challenge: a day that loses ${FUNDED.dailyLossPct}% or money under ${usdShort(startMoney * (1 - FUNDED.maxLossPct / 100))} fails it, +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it, and no new trades once the day is down ${FUNDED.dayStopPct}%. A trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1). A signal that does not fit is left out.`,
+              `At most ${FUNDED.sizing.maxOpen} trades open and ${FUNDED.maxNewPerDay} new a day, one per market; the first strategy in the race's order wins a market. Like FTMO's challenge: a day that loses ${usdShort((startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start) or money under ${usdShort(startMoney * (1 - FUNDED.maxLossPct / 100))} fails it, +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it, and no new trades once the day is down ${usdShort((startMoney * FUNDED.dayStopPct) / 100)}. A trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1). A signal that does not fit is left out.`,
             ],
             [
               'Fees.',
