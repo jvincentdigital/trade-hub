@@ -18,5 +18,8 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   // Only these exact public paths skip the lock (a prefix like "unlock" would also open "/unlocked-page").
-  matcher: ['/((?!unlock$|_next/|_vercel/|favicon\\.ico$).*)'],
+  // The manifest and icons stay public because phones fetch them without the cookie.
+  matcher: [
+    '/((?!unlock$|_next/|_vercel/|manifest\\.webmanifest$|icon-192\\.png$|icon-512\\.png$|icon-maskable-512\\.png$|apple-icon\\.png$|favicon\\.ico$).*)',
+  ],
 }

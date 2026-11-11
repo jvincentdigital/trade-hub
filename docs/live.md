@@ -10,17 +10,55 @@ add-ons), Cloudflare is the free plan (it stops at its limits, it never bills).
 Same approach as Idea OS.
 
 - `src/proxy.ts` runs on every request except `/unlock`, `/_next/*`,
-  `/_vercel/*` and `/favicon.ico`. Without the cookie, pages redirect to
-  `/unlock` and `/api/*` answers 401 JSON.
+  `/_vercel/*`, `/favicon.ico`, `/manifest.webmanifest` and the four icon
+  files by exact name (`/icon-192.png`, `/icon-512.png`,
+  `/icon-maskable-512.png`, `/apple-icon.png`; phones fetch those without the
+  cookie). A new public file has to be added there by name; a prefix would
+  also open any page that starts with it. Without the cookie, pages redirect
+  to `/unlock` and `/api/*` answers 401 JSON.
 - `/unlock` (`src/app/unlock/`) takes the passcode once per device and sets an
   httpOnly cookie `trade_hub` holding a SHA-256 hash of it (never the
-  passcode), for a year. A wrong passcode waits 1.5 s.
+  passcode), for a year. A wrong passcode waits 1.5 s. With a valid cookie,
+  `/unlock` sends you straight to `/`.
 - Env `TRADE_HUB_PASSCODE`. Not set (local dev) = no lock.
 - The passcode lives only in Vercel (sensitive) and in
   `~/.local/share/trade-hub/passcode.env` on the Mac Mini (chmod 600). Read it
   there to give it to John. Never paste it in chat, docs or git.
 - Change it: new value with `vercel env add TRADE_HUB_PASSCODE preview|production --sensitive --force`
   (value on stdin), update `passcode.env`, redeploy. Every device has to type the new one.
+
+## Home-screen app
+
+Added 2026-11-10. Trade Hub installs like an app: iPhone Safari, Share, Add to
+Home Screen; Android Chrome, menu, Install app (or Add to Home screen).
+
+- `src/app/manifest.ts`: name, `display: standalone`, `start_url: /`, colors
+  `#0a0a0a` (`--bg-primary`), icons 192, 512 and a maskable 512.
+- Icons: three rising indigo candles on near-black. `public/icon-*.png`,
+  `src/app/apple-icon.png` (180, iPhone) and `src/app/favicon.ico` all come
+  from `node scripts/make-icons.mjs` (draws one SVG with the installed Chrome
+  through Playwright; edit the SVG there and rerun, then commit the files).
+- iPhone: `appleWebApp` in `layout.tsx` (status bar `black-translucent`, so
+  the page runs under the clock) and `viewport-fit=cover`. The translucent bar
+  has no background of its own, so `body::before` in `globals.css` paints a
+  strip of page color as tall as the top inset; scrolled content passes under
+  it, not under the clock. Safe-area padding (`env(safe-area-inset-*)`) in
+  `globals.css` (`.main-content`, sticky `.today-side`), `Sidebar.tsx` and the
+  bottom sheets (`HowSheet.tsx`, `RuleEditor.tsx`) keeps content clear of the
+  status bar, notch and home bar. A new fixed or sticky element near an edge
+  needs the same.
+- Landscape on a phone is wider than 768 px, so it shows the sidebar, which
+  is taller than the screen there: the sidebar scrolls (`100dvh`,
+  `overflow-y: auto`).
+- It needs a connection: there is no service worker or offline page. Offline,
+  changing tabs shows the browser's own error page, and the installed iPhone
+  app has no Reload button, so close it and open it again once back online.
+- The installed app has its own cookie jar on iPhone (separate from Safari),
+  so the passcode is typed once inside the app; the cookie is server-set and
+  lasts a year, so it stays unlocked on reopen.
+- Check on a computer: puppeteer at 390x844 with the CDP call
+  `Emulation.setSafeAreaInsetsOverride` (`top: 59, bottom: 34`) shows the
+  insets the way an iPhone does.
 
 ## Race relay (Cloudflare Worker + KV)
 

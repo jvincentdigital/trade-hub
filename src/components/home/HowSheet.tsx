@@ -72,7 +72,8 @@ export function HowSheet(props: {
       onClose={() => openRef.current && onClose()}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{ padding: '8px 20px 20px' }}>
+      {/* The sheet sits on the bottom edge on phones: keep Got it above the home bar. */}
+      <div style={{ padding: '8px 20px calc(20px + env(safe-area-inset-bottom))' }}>
         <div
           aria-hidden
           className="sheet-grab"

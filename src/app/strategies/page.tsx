@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { Plus, Edit2, Trash2, X, Bell } from 'lucide-react'
 import SetupScanner from './_components/SetupScanner'
 import StrategyRules from './_components/StrategyRules'
+import { useOverlay } from '@/lib/hooks/useOverlay'
 import { useTradePlans } from '@/lib/hooks/useTradePlans'
 import type { TradePlan, TradePlanTimeframe } from '@/lib/schemas'
 import { PATTERN_NAMES, type PatternName, detectAll } from '@/lib/patterns/detector'
@@ -60,16 +61,20 @@ export default function StrategiesPage() {
 function TradePlansSection() {
   const searchParams = useSearchParams()
   const { plans, add, update, remove, reload } = useTradePlans()
-  const [editing, setEditing] = useState<TradePlan | null>(null)
+  // Esc and Back close the plan form (useOverlay).
+  const [editing, edit, stopEditing] = useOverlay<TradePlan>()
   const lastCheckedRef = useRef<number>(0)
 
   // Pre-fill modal when redirected from a detail page with ?new=1&market=X&pair=Y.
+  // Once per URL: Back closes the form, and it must not open again.
+  const prefilled = useRef<string | null>(null)
   useEffect(() => {
-    if (searchParams.get('new') !== '1') return
+    if (searchParams.get('new') !== '1' || prefilled.current === searchParams.toString()) return
+    prefilled.current = searchParams.toString()
     const market = (searchParams.get('market') as 'crypto' | 'forex') || 'crypto'
     const pair = searchParams.get('pair') || ''
-    setEditing(emptyPlan(market, pair))
-  }, [searchParams])
+    edit(emptyPlan(market, pair))
+  }, [searchParams, edit])
 
   // Check active plans against live pattern detection. Runs on mount and every 2 min.
   useEffect(() => {
@@ -120,7 +125,7 @@ function TradePlansSection() {
   const save = (p: TradePlan) => {
     if (p.id) update(p.id, p)
     else add({ ...p, id: crypto.randomUUID() })
-    setEditing(null)
+    stopEditing()
   }
 
   return (
@@ -140,7 +145,7 @@ function TradePlansSection() {
           </p>
         </div>
         <button
-          onClick={() => setEditing(emptyPlan())}
+          onClick={() => edit(emptyPlan())}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -209,7 +214,7 @@ function TradePlansSection() {
                 <PlanCard
                   key={p.id}
                   plan={p}
-                  onEdit={() => setEditing(p)}
+                  onEdit={() => edit(p)}
                   onClose={() => update(p.id, { status: 'closed' })}
                   onDelete={() => {
                     if (window.confirm(`Delete "${p.name || p.pair}"? This can't be undone.`)) {
@@ -230,7 +235,7 @@ function TradePlansSection() {
             save(p)
             reload()
           }}
-          onCancel={() => setEditing(null)}
+          onCancel={stopEditing}
         />
       )}
     </section>
