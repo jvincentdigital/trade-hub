@@ -21,11 +21,27 @@ export const KRAKEN_PAIRS: Record<string, string> = {
   polkadot: 'DOTUSD',
   'polygon-ecosystem-token': 'POLUSD',
   'pax-gold': 'PAXGUSD', // gold, see docs/gold.md
+  // Forex with real intraday candles (docs/london-open.md). Checked 2026-11-10:
+  // these have tight books and thousands of trades a day. Not here: USD/JPY
+  // (Kraken's yen book was bid 157.36 / ask 161.50, trades bounce between the
+  // two) and NZD/USD (no pair); those stay on the ECB's daily rates.
+  'GBP-USD': 'GBPUSD',
+  'EUR-USD': 'EURUSD',
+  'EUR-GBP': 'EURGBP',
+  'USD-CAD': 'USDCAD',
+  'USD-CHF': 'USDCHF',
+  'AUD-USD': 'AUDUSD',
 }
 
-export type CandleTf = '1h' | '4h' | '1d'
-export const CANDLE_TF_HOURS: Record<CandleTf, number> = { '1h': 1, '4h': 4, '1d': 24 }
-export const KRAKEN_INTERVAL: Record<CandleTf, number> = { '1h': 60, '4h': 240, '1d': 1440 }
+export type CandleTf = '15m' | '1h' | '4h' | '1d'
+export const CANDLE_TF_HOURS: Record<CandleTf, number> = { '15m': 0.25, '1h': 1, '4h': 4, '1d': 24 }
+/** 720 candles each: 7.5 days of 15m, 30 days of 1h, 120 days of 4h, about 2 years of 1d. */
+export const KRAKEN_INTERVAL: Record<CandleTf, number> = {
+  '15m': 15,
+  '1h': 60,
+  '4h': 240,
+  '1d': 1440,
+}
 
 const responseSchema = z.object({
   error: z.array(z.string()),
@@ -70,6 +86,11 @@ let queue: Promise<unknown> = Promise.resolve()
 let lastCall = 0
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** Forget cached candles, so the next fetch is fresh (Claude's picks, before it opens). */
+export function clearKrakenCache() {
+  cache.clear()
+}
+
 function spaced<T>(fn: () => Promise<T>): Promise<T> {
   const run = queue.then(async () => {
     const wait = lastCall + GAP_MS - Date.now()
@@ -87,7 +108,7 @@ async function getOnce(pair: string, interval: number): Promise<OHLCCandle[]> {
   return parseKrakenOHLC(await res.json())
 }
 
-/** Real candles for a coin or gold. The last one is still forming. */
+/** Real candles for a coin, gold or a forex pair in KRAKEN_PAIRS. The last one is still forming. */
 export function fetchKrakenCandles(id: string, tf: CandleTf): Promise<OHLCCandle[]> {
   const pair = KRAKEN_PAIRS[id]
   if (!pair) return Promise.reject(new Error(`No Kraken pair for ${id}`))

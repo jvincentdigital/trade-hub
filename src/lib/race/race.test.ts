@@ -201,6 +201,23 @@ describe('live forward test step', () => {
     expect(s.open).toHaveLength(1)
   })
 
+  it('a market moved to smaller path candles never checks candles from before the entry', () => {
+    // Opened at 5000 on a daily path (bucket 0); the path is now 15m candles.
+    const s = { ...opened(), open: opened().open.map((t) => ({ ...t, entryBucket: 0 })) }
+    const before = stepStrategy(s, [tick({ path: [bar(4100, 100, 100, 90, 100)] })], 9000)
+    expect(before.closed).toHaveLength(0)
+    const later = stepStrategy(s, [tick({ path: [bar(5400, 100, 100, 90, 100)] })], 9000)
+    expect(later.closed[0].reason).toBe('stop')
+  })
+
+  it("keeps a signal's note on the trade it opens, through the close", () => {
+    const r = stepStrategy(fresh(), [tick({ signal: sig(), note: 'Range break' })], 5000)
+    expect(r.opened[0].note).toBe('Range break')
+    const c = stepStrategy(r.strategy, [tick({ path: [bar(4000 + H, 100, 111, 99, 108)] })], 9000)
+    expect(c.closed[0].note).toBe('Range break')
+    expect(raceStateSchema.shape.strategies.safeParse({ a: c.strategy }).success).toBe(true)
+  })
+
   it('a new built-in strategy joins with fresh money; running again changes nothing', () => {
     const st = createRaceState([{ id: 'a', name: 'A' }], 1000, 1)
     st.strategies.a = opened()

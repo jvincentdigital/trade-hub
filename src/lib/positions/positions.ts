@@ -24,6 +24,8 @@ export interface OpenPosition {
   usdPerQuote: number | null
   /** Milliseconds. */
   openedAt: number
+  /** Why it was opened (Claude's picks). */
+  note?: string
 }
 
 export type PositionStatus = 'Near target' | 'Near stop' | 'Running' | 'No stop' | 'No price'
@@ -118,6 +120,7 @@ export function racePositions(state: RaceState | null | undefined): OpenPosition
       // Fixed at entry, like openPnl, so the card and the race agree.
       usdPerQuote: t.usdPerQuote,
       openedAt: t.entryTime * 1000,
+      ...(t.note ? { note: t.note } : {}),
     })),
   )
 }

@@ -31,7 +31,7 @@ only: nothing talks to a broker, nothing can move real money.
 | `src/lib/paper/schema.ts`          | Zod schema of the stored account (`version: 1`).                                                                                      |
 | `src/lib/paper/stats.ts`           | `computeStats` (shared with backtests) and `maxDrawdown`.                                                                             |
 | `src/lib/paper/plan.ts`            | Plan-check warnings.                                                                                                                  |
-| `src/lib/paper/instruments.ts`     | The 19 markets (10 crypto, gold, 8 forex), `instrumentHref`, `quoteToUsd`, price formatting.                                          |
+| `src/lib/paper/instruments.ts`     | The 20 markets (10 crypto, gold, 9 forex), `instrumentHref`, `quoteToUsd`, price formatting.                                          |
 | `src/lib/hooks/usePaperAccount.ts` | Shared store over localStorage key `trade-hub-paper-account` (cross-tab sync), plus `useLivePrices`.                                  |
 | `src/app/demo/page.tsx`            | The page.                                                                                                                             |
 

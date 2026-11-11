@@ -4,6 +4,7 @@ import type { RaceState } from '@/lib/race/live'
 import type { Rule } from '@/lib/rules/schema'
 import type { OpenPosition, PositionMetrics } from '@/lib/positions/positions'
 import { TF_WORD } from '@/lib/positions/today'
+import { EXTRA_STRATEGIES } from '@/lib/race/extras'
 import { usd } from './format'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
 
@@ -67,7 +68,11 @@ export function Strategies(props: {
             </span>
             <span style={{ ...secondary, ...num, fontSize: FS.xs }}>
               {r.n} of {maxOpen} open
-              {rule ? `, ${TF_WORD[rule.timeframe]} candles` : ''}
+              {rule
+                ? `, ${TF_WORD[rule.timeframe]} candles`
+                : EXTRA_STRATEGIES[r.ruleId]
+                  ? `, ${EXTRA_STRATEGIES[r.ruleId].candles} candles`
+                  : ''}
               <br />
               {usd(r.money)} in account
             </span>

@@ -565,7 +565,7 @@ function CandleNote() {
     { k: 'Gold (1)', v: 'real Kraken candles too, price tracked by PAX Gold' },
     {
       k: `Forex (${count('forex')})`,
-      v: 'daily candles only (free ECB rates), so forex rules trade far less and 1h/4h rules run on daily candles there',
+      v: 'past results: daily candles only (free ECB rates), so forex rules trade far less and 1h/4h rules run on daily candles there. The live race uses real Kraken candles for GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF and AUD/USD, and GBP/JPY computed from GBP/USD; USD/JPY and NZD/USD stay daily',
     },
   ]
   return (

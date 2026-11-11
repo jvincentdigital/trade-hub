@@ -38,8 +38,11 @@ describe('parseKrakenOHLC', () => {
     expect(() => parseKrakenOHLC({ nope: true })).toThrow(/schema/)
   })
 
-  it('has a pair for every coin and gold', () => {
-    expect(Object.keys(KRAKEN_PAIRS)).toHaveLength(11)
+  it('has a pair for every coin, gold and the forex pairs Kraken trades well', () => {
+    expect(Object.keys(KRAKEN_PAIRS)).toHaveLength(17)
+    expect(KRAKEN_PAIRS['GBP-USD']).toBe('GBPUSD')
+    // Kraken's yen book is too thin to trust (docs/london-open.md).
+    expect(KRAKEN_PAIRS['USD-JPY']).toBeUndefined()
     expect(KRAKEN_PAIRS['pax-gold']).toBe('PAXGUSD')
     expect(KRAKEN_PAIRS.dogecoin).toBe('XDGUSD')
   })

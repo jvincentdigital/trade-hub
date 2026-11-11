@@ -6,6 +6,12 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**London open (2026-11-10, late night), branch `feat/london-open`.** John asked the race to trade the London open hard on the pound and gold, same 2% rules. Real 15m/1h/4h forex candles from Kraken (GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF, AUD/USD), GBP/JPY computed from GBP/USD and the ECB's USD/JPY (Kraken's yen book is too thin), a new "London breakout" account (Asian range, first 15m close outside it, 06:00-10:00 UTC), a new "Claude's picks" account (locked-down `claude -p` on the subscription at 03:45 AST, every trade checked in code), a 15-minute tick 02:00-07:00 AST on weekdays, a race lock, and on Today a "London open" line plus a "Pound & gold" tab. See `docs/london-open.md`.
+
+- [ ] @john: merge the PR, then on the Mac Mini install the two new launchd jobs (`docs/london-open.md`, "Install"). The hourly job stays.
+- [ ] First tick after the merge: the two GBP/USD longs opened on the ECB's stale daily rate close at their stops (about -$21 each), expected.
+- [ ] Late March: move the London hours an hour earlier for European summer time (`docs/london-open.md`, "Not done").
+
 **Today: Cockpit layout (2026-11-10, late night), branch `today-cockpit`.** John's pick (mockup A plus the best of B and C): a summary card (open P&L with a small line since the first entry, a "where today could end" bar from all stops to all targets, one plain "needs a look" line, closed today), then one row per trade with a stop-to-target bar ("Stop −$20 … Target +$40") and "48% of the way to target", opening in place to the chart, size and levels (Esc and Back close it). Tabs All / Needs a look / By strategy; wide screens get a sticky summary column with each strategy's account and slots. Race forex trades are now valued at the race's own ECB rate, so they read "At entry, updates once a day" instead of a fake move. See `docs/dashboard.md`.
 
 Review fixes on the same branch: EUR/GBP was priced wrong (0.745 instead of 0.835; it closed a demo trade at a fake loss), the live forex feed is now the ECB rate the race uses (ExchangeRate API rounded CAD to 1.41), double taps on Close/Esc/tabs/the sheet no longer leave Today, the strategies card uses the same live P&L as the rows, a failed race feed says so instead of "No trades open", true minus signs, bars line up, 44 px targets on the other pages too.

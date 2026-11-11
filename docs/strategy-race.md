@@ -1,6 +1,12 @@
 # Strategy race
 
-Added 2026-11-10. Page: `/race` ("Race", trophy icon in the nav). John asked:
+Added 2026-11-10. Page: `/race` ("Race", trophy icon in the nav).
+
+**London open (2026-11-10 night):** real 15m/1h/4h forex candles from Kraken
+for GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF and AUD/USD, a computed
+GBP/JPY, two new live accounts (London breakout, Claude's picks), a 15-minute
+tick around the London open and a lock so two runs never write at once. See
+`docs/london-open.md`. John asked:
 "we have a lot of demo accounts, try the strategies out and see how much money
 they could make". The race gives every built-in strategy its own play-money
 account and answers in dollars which one makes the most.
@@ -19,7 +25,7 @@ until 2026-11-10 night, see "Real candles" below.
 - Starting money is editable (default $1,000) and the same for every strategy.
 - **One account per strategy** (since 2026-11-10 night, see "Sizing" below):
   each strategy trades one account across every market it can trade (19 for
-  all-markets rules: 10 crypto, gold, 8 forex; 10 for the crypto-only MM
+  all-markets rules: 10 crypto, gold, 9 forex; 10 for the crypto-only MM
   Confluence v2). Each market's normal `backtest` gives the trades the rule
   would take there; `portfolioBacktest` (`leaderboard.ts`) merges them in time
   order into that one account, and every trade risks 2% of the balance at its

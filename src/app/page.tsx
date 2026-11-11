@@ -29,14 +29,17 @@ import {
   pnlSeries,
   priceFor,
 } from '@/lib/positions/today'
+import { POUND_AND_GOLD } from '@/lib/positions/london'
+import { EXTRA_STRATEGIES } from '@/lib/race/extras'
 import { HowSheet } from '@/components/home/HowSheet'
+import { LondonStrip } from '@/components/home/LondonStrip'
 import { Strategies } from '@/components/home/Strategies'
 import { FAILED_TEXT, Summary } from '@/components/home/Summary'
 import { TradeRow, rowId } from '@/components/home/TradeRow'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from '@/components/home/ui'
 import { formatChange, changeColor } from '@/lib/utils/formatters'
 
-type Tab = 'all' | 'look' | 'strategy'
+type Tab = 'all' | 'look' | 'strategy' | 'pound'
 type Row = { pos: OpenPosition; m: PositionMetrics }
 
 const RULES = new Map(BUILT_IN_RULES.map((r) => [r.id, r]))
@@ -123,6 +126,7 @@ function Today() {
 
   const openPnl = rows.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
   const look = rows.filter((r) => needsLook(r.m.status))
+  const pound = rows.filter((r) => POUND_AND_GOLD.includes(r.pos.market))
   const series = useMemo(
     () =>
       pnlSeries(
@@ -194,6 +198,7 @@ function Today() {
     { id: 'all', label: 'All', n: rows.length },
     { id: 'look', label: 'Needs a look', n: look.length },
     { id: 'strategy', label: 'By strategy' },
+    { id: 'pound', label: 'Pound & gold', n: pound.length },
   ]
 
   return (
@@ -231,6 +236,8 @@ function Today() {
           . Play money only.
         </p>
       </header>
+
+      <LondonStrip now={now} />
 
       <div className="today-grid" style={{ marginTop: 16 }}>
         <div className="today-side">
@@ -283,12 +290,11 @@ function Today() {
             <div
               role="group"
               aria-label="Show"
+              className="today-tabs"
               style={{
-                display: 'flex',
                 gap: 4,
                 margin: '12px 0 14px',
                 padding: 4,
-                borderRadius: 999,
                 background: 'var(--bg-card)',
                 border: '0.5px solid var(--border)',
               }}
@@ -300,7 +306,6 @@ function Today() {
                   aria-pressed={tab === t.id}
                   onClick={() => pickTab(t.id)}
                   style={{
-                    flex: '1 1 0',
                     minWidth: 0,
                     minHeight: 44,
                     padding: '0 8px',
@@ -342,6 +347,15 @@ function Today() {
                 </Empty>
               ) : tab === 'all' ? (
                 rows.map(renderRow)
+              ) : tab === 'pound' ? (
+                pound.length ? (
+                  pound.map(renderRow)
+                ) : (
+                  <Empty>
+                    No pound or gold trades open. GBP/USD, GBP/JPY, EUR/GBP and gold are watched
+                    every 15 minutes around the London open (2:00 to 7:00 AM).
+                  </Empty>
+                )
               ) : tab === 'look' ? (
                 look.length ? (
                   look.map(renderRow)
@@ -364,6 +378,7 @@ function Today() {
                 groups.map((g) => {
                   const first = g[0].pos
                   const rule = first.ruleId ? RULES.get(first.ruleId) : undefined
+                  const extra = first.ruleId ? EXTRA_STRATEGIES[first.ruleId] : undefined
                   const sum = g.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
                   return (
                     <div key={first.by} style={{ display: 'grid', gap: 10 }}>
@@ -381,7 +396,7 @@ function Today() {
                           <p style={{ ...secondary, fontSize: FS.xs }}>
                             {first.source === 'demo'
                               ? `${g.length} open in your demo account`
-                              : `${g.length} of ${sizing.maxOpen} open${rule ? `, ${TF_WORD[rule.timeframe]} candles, target ${rule.rr}x` : ''}`}
+                              : `${g.length} of ${sizing.maxOpen} open${rule ? `, ${TF_WORD[rule.timeframe]} candles, target ${rule.rr}x` : extra ? `, ${extra.candles} candles, target ${extra.rr}` : ''}`}
                           </p>
                         </div>
                         <span

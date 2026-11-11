@@ -183,7 +183,7 @@ export function HowSheet(props: {
         <p style={{ ...secondary, fontSize: FS.sm, margin: '14px 0 16px' }}>
           <b style={b}>Not built yet:</b>{' '}
           {
-            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade only ends at its stop or its target. Forex prices come once a day from the European Central Bank, so forex P&L moves once a day.'
+            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade only ends at its stop or its target. USD/JPY and NZD/USD prices come once a day from the European Central Bank, so their P&L moves once a day; the other pairs and gold use real prices, checked every hour (every 15 minutes around the London open).'
           }
         </p>
         <button
