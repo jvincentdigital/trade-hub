@@ -2544,3 +2544,93 @@ export function assertDesignCandles(c: OHLCCandle[], path: string) {
   if (c[0].time < DESIGN_START)
     throw new Error(`design loader: ${path} starts before 2025-11-11 00:00 UTC`)
 }
+
+// ── Loader guard (section 10, clean mode) and the freeze record (section 5) ──
+
+/** The clean year: 2024-11-11 00:00 UTC up to, not including, 2025-11-11 00:00 UTC. */
+export const CLEAN_START = 1_731_283_200
+export const CLEAN_END = DESIGN_START
+/** The freeze record, committed in the build checkout before the clean year is opened. */
+export const FREEZE_FILE = 'docs/london-v1-freeze.md'
+
+/** Only <clean dir>/<MARKET>/<MARKET>_1m.csv.gz for GBPUSD or XAUUSD. */
+export function assertCleanFile(path: string, id: string) {
+  if (!/\/history-1m-24mo\//.test(path))
+    throw new Error(`clean loader: ${path} is not in the clean folder`)
+  if (!LONDON_MARKETS.includes(id as LondonMarketId))
+    throw new Error(`clean loader: v1 has no market ${id}`)
+  if (!path.endsWith(`/${id}/${id}_1m.csv.gz`))
+    throw new Error(`clean loader: only the 1-minute file, not ${path}`)
+}
+
+/** Keep the clean year only. Later candles in the file are not used. */
+export function cleanYear(c: OHLCCandle[], path: string): OHLCCandle[] {
+  const kept = c.filter((b) => b.time >= CLEAN_START && b.time < CLEAN_END)
+  if (!kept.length) throw new Error(`clean loader: ${path} has no clean-year candle`)
+  return kept
+}
+
+export interface FreezeRecord {
+  codeCommit: string
+  spec: { path: string; sha256: string }
+  /** Every file the clean run reads, by absolute path: the two 1-minute files and the news list. */
+  files: Record<string, { size: number; sha256: string }>
+  settings: { k: number; b: number; ext: number; g: number; c: number; w: boolean }
+  /** Section 4 steps 5 and 7: false means "the design year did not qualify" goes on every report. */
+  designYearQualified?: { v1: boolean; ny: boolean }
+  window: { from: string; to: string }
+}
+
+/** What the runner found on disk and in git just before it would read a candle. */
+export interface FreezeFacts {
+  /** `git status --porcelain` lines. */
+  dirty: string[]
+  /** `git diff --name-only <codeCommit> HEAD`, or null when the commit is unknown. */
+  changedSinceCode: string[] | null
+  specSha256: string | null
+  files: Record<string, { size: number; sha256: string } | null>
+  /** The copy next to the results (holdout-run/FROZEN.txt) is the committed record, byte for byte. */
+  copyMatches: boolean
+}
+
+/** The freeze record is the one ```json block of the freeze file. */
+export function parseFreezeRecord(md: string): FreezeRecord {
+  const blocks = [...md.matchAll(/```json\n([\s\S]*?)\n```/g)]
+  if (blocks.length !== 1) throw new Error('freeze record: expected exactly one json block')
+  return JSON.parse(blocks[0][1]) as FreezeRecord
+}
+
+/** Every reason the clean run must refuse to start (section 5). Empty means it may start. */
+export function freezeProblems(rec: FreezeRecord, facts: FreezeFacts): string[] {
+  const out: string[] = []
+  if (facts.dirty.length) out.push(`the working tree is not clean: ${facts.dirty.join('; ')}`)
+  if (facts.changedSinceCode == null)
+    out.push(`code commit ${rec.codeCommit} is not in this checkout`)
+  else if (facts.changedSinceCode.join(',') !== FREEZE_FILE)
+    out.push(
+      `since ${rec.codeCommit} the change must be ${FREEZE_FILE} only, got: ${facts.changedSinceCode.join(', ') || 'nothing'}`,
+    )
+  if (facts.specSha256 !== rec.spec.sha256) out.push(`SPEC.md changed: ${facts.specSha256}`)
+  for (const [path, want] of Object.entries(rec.files)) {
+    const got = facts.files[path]
+    if (!got) out.push(`missing ${path}`)
+    else if (got.size !== want.size || got.sha256 !== want.sha256) out.push(`${path} changed`)
+  }
+  if (Object.keys(rec.files).length < 3)
+    out.push('the record must hash both 1-minute files and the news list')
+  const s = rec.settings
+  if (
+    !s ||
+    !(V1_GRID.k as readonly number[]).includes(s.k) ||
+    !(V1_GRID.b as readonly number[]).includes(s.b) ||
+    !(FLIP_GRID.ext as readonly number[]).includes(s.ext) ||
+    !(FLIP_GRID.g as readonly number[]).includes(s.g) ||
+    !(NY_GRID.c as readonly number[]).includes(s.c) ||
+    !(NY_GRID.w as readonly boolean[]).includes(s.w)
+  )
+    out.push('the frozen settings are not pre-registered values')
+  if (rec.window?.from !== '2024-11-11' || rec.window?.to !== '2025-11-10')
+    out.push('the window must be 2024-11-11 to 2025-11-10')
+  if (!facts.copyMatches) out.push('holdout-run/FROZEN.txt is not the committed freeze record')
+  return out
+}

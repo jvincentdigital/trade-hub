@@ -15,19 +15,38 @@
  * Design data only: the loader refuses the clean holdout folder, any file but
  * the 1-minute ones, and any candle before 2025-11-11 00:00 UTC. Play money
  * only: no network, nothing live is touched. See docs/strategy-lab.md.
+ *
+ * Clean mode (SPEC.md sections 5 and 10), once:
+ *
+ *   npx tsx scripts/lab/london-v1.ts --clean --history ~/jvd-outputs/trading/history-1m-24mo \
+ *     --from 2024-11-11 --to 2025-11-10 --out DIR
+ *
+ * Before it reads a candle it checks the freeze record (docs/london-v1-freeze.md):
+ * a clean working tree, nothing but that file changed since the code commit,
+ * SPEC.md, the two 1-minute files and the news list still match their hashes,
+ * DIR/FROZEN.txt is the committed record, and DIR has no results yet. It
+ * refuses to start otherwise. The settings come from the record, never from
+ * this year's results: the other pre-registered runs are context only.
  */
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { OHLCCandle } from '../../src/lib/types/market'
 import {
+  assertCleanFile,
   assertDesignCandles,
   assertDesignFile,
   chartOf,
+  CLEAN_END,
+  CLEAN_START,
+  cleanYear,
   coinRun,
   DESIGN_START,
   FLIP_GRID,
   flipBeatsPlain,
+  FREEZE_FILE,
+  freezeProblems,
   LONDON_MARKETS,
   mirrorTest,
   NY_GRID,
@@ -35,6 +54,7 @@ import {
   nyLevels,
   nySessionFor,
   p95,
+  parseFreezeRecord,
   passLines,
   pickFlip,
   pickNY,
@@ -52,6 +72,7 @@ import {
   trackDay,
   V1,
   V1_GRID,
+  type FreezeRecord,
   type LondonData,
   type LondonMarketId,
   type LondonTrade,
@@ -73,14 +94,64 @@ const FROM = Date.parse(`${arg('from')}T00:00:00Z`) / 1000
 const TO = Date.parse(`${arg('to')}T00:00:00Z`) / 1000 + DAY // --to is the last day, included
 const OUT = resolve(arg('out'))
 const COIN_RUNS = 1000
+const CLEAN = process.argv.includes('--clean')
 
 if (!Number.isFinite(FROM) || !Number.isFinite(TO) || TO <= FROM) throw new Error('bad --from/--to')
-if (FROM < DESIGN_START) throw new Error('design runs start on 2025-11-11 or later')
-if (/history-1m-24mo|history-old/.test(HISTORY))
-  throw new Error('refusing the clean or old history')
+if (!CLEAN) {
+  if (FROM < DESIGN_START) throw new Error('design runs start on 2025-11-11 or later')
+  if (/history-1m-24mo|history-old/.test(HISTORY))
+    throw new Error('refusing the clean or old history')
+}
 
-async function loadDesign(id: LondonMarketId): Promise<OHLCCandle[]> {
+const shaOf = (b: Buffer | string) => createHash('sha256').update(b).digest('hex')
+function fileFacts(path: string) {
+  if (!existsSync(path)) return null
+  const buf = readFileSync(path)
+  return { size: buf.length, sha256: shaOf(buf) }
+}
+
+/** Clean mode: the freeze record's checks (section 5). Throws, before any candle is read, if one fails. */
+function checkFreeze(): { rec: FreezeRecord; head: string } {
+  const git = (...a: string[]) => execFileSync('git', a, { encoding: 'utf8' }).trim()
+  const root = git('rev-parse', '--show-toplevel')
+  const md = readFileSync(join(root, FREEZE_FILE), 'utf8')
+  const rec = parseFreezeRecord(md)
+  let changed: string[] | null
+  try {
+    changed = git('-C', root, 'diff', '--name-only', rec.codeCommit, 'HEAD')
+      .split('\n')
+      .filter(Boolean)
+  } catch {
+    changed = null
+  }
+  const copy = join(OUT, 'FROZEN.txt')
+  const problems = freezeProblems(rec, {
+    dirty: git('-C', root, 'status', '--porcelain').split('\n').filter(Boolean),
+    changedSinceCode: changed,
+    specSha256: fileFacts(rec.spec.path)?.sha256 ?? null,
+    files: Object.fromEntries(Object.keys(rec.files).map((p) => [p, fileFacts(p)])),
+    copyMatches: existsSync(copy) && readFileSync(copy, 'utf8') === md,
+  })
+  if (FROM !== CLEAN_START || TO !== CLEAN_END)
+    problems.push('--from and --to must be the clean year, 2024-11-11 to 2025-11-10')
+  for (const p of [
+    ...LONDON_MARKETS.map((id) => historyFile(HISTORY, id, '1m' as never)),
+    join(HISTORY, 'news-high-impact.csv'),
+  ])
+    if (!rec.files[p]) problems.push(`${p} is not in the freeze record`)
+  if (existsSync(join(OUT, 'results.json')))
+    problems.push(`the clean year was already scored: ${join(OUT, 'results.json')} exists`)
+  if (problems.length) throw new Error(`clean run refused:\n- ${problems.join('\n- ')}`)
+  return { rec, head: git('rev-parse', 'HEAD') }
+}
+
+async function loadYear(id: LondonMarketId): Promise<OHLCCandle[]> {
   const file = historyFile(HISTORY, id, '1m' as never)
+  if (CLEAN) {
+    assertCleanFile(file, id)
+    if (!existsSync(file)) throw new Error(`missing ${file}`)
+    return cleanYear(await loadCandleFile(file), file)
+  }
   assertDesignFile(file, id)
   if (!existsSync(file)) throw new Error(`missing ${file}`)
   const c = await loadCandleFile(file)
@@ -88,7 +159,7 @@ async function loadDesign(id: LondonMarketId): Promise<OHLCCandle[]> {
   return c.filter((b) => b.time >= FROM && b.time < TO)
 }
 
-const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+const sha = (s: string) => shaOf(s)
 const f = (x: number | null | undefined, d = 2) =>
   x == null || !Number.isFinite(x) ? 'n/a' : (Math.abs(x) < 0.5 * 10 ** -d ? 0 : x).toFixed(d)
 const usd = (x: number) =>
@@ -569,11 +640,12 @@ function compareBuild1(plain: Scored[]) {
 }
 
 async function main() {
+  const frozen = CLEAN ? checkFreeze() : null
   mkdirSync(OUT, { recursive: true })
   const news = [...(await loadNews(HISTORY)), ...ismEvents(FROM - 30 * DAY, TO + DAY)]
   const data: LondonData[] = []
   for (const id of LONDON_MARKETS) {
-    const m1 = await loadDesign(id)
+    const m1 = await loadYear(id)
     data.push(prepareMarket(id, m1, news))
     console.log(
       `${id}: ${m1.length} one-minute candles, ${isoMinute(m1[0].time)} to ${isoMinute(m1[m1.length - 1].time)}`,
@@ -602,8 +674,10 @@ async function main() {
       maxDrawdown: p.run.maxDrawdown,
     })),
   )
-  const picked = plain.find((p) => p.run.options.k === pick.k && p.run.options.b === pick.b)!
-  const { k, b } = pick
+  // Clean mode: the frozen settings. The pick rule on this year is reported as context only.
+  const fs = frozen?.rec.settings
+  const { k, b } = fs ? { k: fs.k, b: fs.b } : pick
+  const picked = plain.find((p) => p.run.options.k === k && p.run.options.b === b)!
 
   // Runs 5-8: v1-flip.
   const flips: Scored[] = []
@@ -618,7 +692,7 @@ async function main() {
       log(x)
     }
   const rides = (x: Scored) => x.perKind.ride?.trades ?? 0
-  const flipPick = pickFlip(
+  const flipPickHere = pickFlip(
     flips.map((x) => ({
       ext: x.run.options.ext as number,
       g: x.run.options.g as number,
@@ -626,6 +700,7 @@ async function main() {
       rides: rides(x),
     })),
   )
+  const flipPick = fs ? { ext: fs.ext, g: fs.g } : flipPickHere
   const flipPicked = flips.find(
     (x) => x.run.options.ext === flipPick.ext && x.run.options.g === flipPick.g,
   )!
@@ -659,7 +734,7 @@ async function main() {
       nys.push(x)
       log(x)
     }
-  const nyPick = pickNY(
+  const nyPickHere = pickNY(
     nys.map((x) => ({
       c: x.run.options.c as number,
       w: x.run.options.w as boolean,
@@ -668,6 +743,9 @@ async function main() {
       maxDrawdown: x.run.maxDrawdown,
     })),
   )
+  const nyPick = fs
+    ? { c: fs.c, w: fs.w, qualified: frozen!.rec.designYearQualified?.ny ?? false, eligible: [] }
+    : nyPickHere
   const nyPicked = nys.find((x) => x.run.options.c === nyPick.c && x.run.options.w === nyPick.w)!
 
   // Run 13: v1 with thirds.
@@ -683,18 +761,22 @@ async function main() {
   })
 
   const k2 = plain.find((p) => p.run.options.k === 2 && p.run.options.b === 0.5)!
-  const examples = checkValues(k2.run)
-  const noTradeExample =
-    k2.run.outcomes.find(
-      (o) =>
-        o.market === 'GBPUSD' &&
-        o.kind === 'fib' &&
-        o.T === Date.parse('2025-11-17T11:30:00Z') / 1000,
-    ) ?? null
-  const rideCheck = rideChecks(byId.get('GBPUSD')!)
-  const nyCheck = nyChecks(byId)
-  const thirdsCheck = thirdsChecks(byId.get('GBPUSD')!)
-  const build1 = compareBuild1(plain)
+  // The check values and the first-build comparison are design-year days: not run on the clean year.
+  const examples = CLEAN ? [] : checkValues(k2.run)
+  const noTradeExample = CLEAN
+    ? null
+    : (k2.run.outcomes.find(
+        (o) =>
+          o.market === 'GBPUSD' &&
+          o.kind === 'fib' &&
+          o.T === Date.parse('2025-11-17T11:30:00Z') / 1000,
+      ) ?? null)
+  const rideCheck = CLEAN ? null : rideChecks(byId.get('GBPUSD')!)
+  const nyCheck = CLEAN ? ({} as ReturnType<typeof nyChecks>) : nyChecks(byId)
+  const thirdsCheck = CLEAN
+    ? ({} as ReturnType<typeof thirdsChecks>)
+    : thirdsChecks(byId.get('GBPUSD')!)
+  const build1 = CLEAN ? null : compareBuild1(plain)
   const all = [...plain, ...flips, ...nys, thirds]
   const outsideRaceHours = all.map((x) => ({
     name: x.name,
@@ -716,14 +798,38 @@ async function main() {
       ],
     },
     rules: V1,
-    selection: {
-      v1: { k, b, qualified: pick.qualified, eligible: pick.eligible },
-      flip: flipPick,
-      ny: { c: nyPick.c, w: nyPick.w, qualified: nyPick.qualified, eligible: nyPick.eligible },
-      thirds: 'nothing is picked',
-    },
-    flipBeatsPlainOnDesignYear: Object.fromEntries(flips.map((x) => [x.name, beats(x)])),
-    thirdsBeatsAllAtOnceOnDesignYear: pair,
+    selection: frozen
+      ? {
+          frozen: true,
+          freezeRecord: FREEZE_FILE,
+          codeCommit: frozen.rec.codeCommit,
+          runCommit: frozen.head,
+          v1: { k, b, designYearQualified: frozen.rec.designYearQualified?.v1 ?? null },
+          flip: flipPick,
+          ny: { c: nyPick.c, w: nyPick.w, designYearQualified: nyPick.qualified },
+          thirds: 'nothing is picked',
+          contextOnlyPickRuleOnThisYear: { v1: pick, flip: flipPickHere, ny: nyPickHere },
+        }
+      : {
+          v1: { k, b, qualified: pick.qualified, eligible: pick.eligible },
+          flip: flipPick,
+          ny: { c: nyPick.c, w: nyPick.w, qualified: nyPick.qualified, eligible: nyPick.eligible },
+          thirds: 'nothing is picked',
+        },
+    verdicts: frozen
+      ? {
+          v1: picked.pass,
+          flipBeatsPlain: beats(flipPicked),
+          flipOwnSixLines: flipPicked.pass,
+          ny: nyPicked.pass,
+          nyLabel: nyPick.qualified ? null : 'the design year did not qualify',
+          thirdsBeatsAllAtOnce: pair,
+        }
+      : undefined,
+    [CLEAN ? 'flipBeatsPlainOnCleanYear' : 'flipBeatsPlainOnDesignYear']: Object.fromEntries(
+      flips.map((x) => [x.name, beats(x)]),
+    ),
+    [CLEAN ? 'thirdsBeatsAllAtOnceOnCleanYear' : 'thirdsBeatsAllAtOnceOnDesignYear']: pair,
     oldStopAndReverseFlip:
       'dropped from scoring; design year +$1,602 against v1 +$4,913 (first build, ceb7a2b)',
     checkValues: {
@@ -779,27 +885,56 @@ async function main() {
   }
   const head =
     '| Run | Trades | Win rate | $ result | Profit factor | Max drop | Average | Total |\n|---|---|---|---|---|---|---|---|'
-  L.push("# John's London strategies: design year results", '')
+  L.push(`# John's London strategies: ${CLEAN ? 'clean year' : 'design year'} results`, '')
   L.push(
-    `Design data only, ${arg('from')} to ${arg('to')} (UTC). GBP/USD and gold, one $10,000 play account per run, 2% risk a trade. Not the verdict: the clean year is scored later, once.`,
+    CLEAN
+      ? `Clean year, ${arg('from')} to ${arg('to')} (UTC), scored once with the settings of the freeze record (${FREEZE_FILE}, code ${frozen!.rec.codeCommit}, run from ${frozen!.head}). GBP/USD and gold, one $10,000 play account per run, 2% risk a trade. Only the frozen runs count. The other pre-registered runs are context and change nothing.`
+      : `Design data only, ${arg('from')} to ${arg('to')} (UTC). GBP/USD and gold, one $10,000 play account per run, 2% risk a trade. Not the verdict: the clean year is scored later, once.`,
     '',
   )
-  L.push('## The picks', '')
+  if (frozen) {
+    const vl = (p: Scored['pass']) =>
+      p
+        ? `${p.lines.map((l) => `${l.line} ${l.ok ? 'yes' : 'no'}`).join(', ')}. ${p.verdict}`
+        : 'n/a'
+    L.push('## Verdicts (frozen settings)', '')
+    L.push(`- v1 k = ${k}, b = ${b}: ${vl(picked.pass)}.`)
+    L.push(
+      `- v1-flip ext = ${flipPick.ext}, g = ${flipPick.g}: flip beats plain ${beats(flipPicked).beats ? 'yes' : 'no'} (${beats(
+        flipPicked,
+      )
+        .checks.map((c) => `${c.text}: ${c.ok ? 'yes' : 'no'}`)
+        .join('; ')}). Its own six lines: ${vl(flipPicked.pass)}.`,
+    )
+    L.push(
+      `- v1-NY c = ${nyPick.c}, w = ${nyPick.w ? 'on' : 'off'}${nyPick.qualified ? '' : ' (the design year did not qualify)'}: ${vl(nyPicked.pass)}.`,
+    )
+    L.push(
+      `- Thirds beats all at once: ${pair.beats ? 'yes' : 'no'} (${pair.checks.map((c) => `${c.text}: ${c.ok ? 'yes' : 'no'}`).join('; ')}).`,
+      '',
+    )
+  }
+  L.push(
+    frozen ? '## What the pick rule would say on this year (context only)' : '## The picks',
+    '',
+  )
+  const flipPickShown = flipPickHere
+  const nyPickShown = nyPickHere
   L.push(
     pick.qualified
-      ? `- v1: k = ${k}, b = ${b}. ${pick.eligible.length} of 4 pairs were eligible (100 or more trades, max drop 25% or less).`
-      : `- v1: the design year did not qualify. The defaults are used: k = ${k}, b = ${b}.`,
+      ? `- v1: k = ${pick.k}, b = ${pick.b}. ${pick.eligible.length} of 4 pairs were eligible (100 or more trades, max drop 25% or less).`
+      : `- v1: the ${CLEAN ? 'clean' : 'design'} year did not qualify. The defaults are used: k = ${pick.k}, b = ${pick.b}.`,
   )
   L.push(
-    `- v1-flip: ext = ${flipPick.ext}, g = ${flipPick.g}. Flip beats plain on the design year: ${beats(flipPicked).beats ? 'yes' : 'no'}.`,
+    `- v1-flip: ext = ${flipPickShown.ext}, g = ${flipPickShown.g}. Flip beats plain on the ${CLEAN ? 'clean' : 'design'} year: ${beats(flipPicked).beats ? 'yes' : 'no'}.`,
   )
   L.push(
-    nyPick.qualified
-      ? `- v1-NY: c = ${nyPick.c}, w = ${nyPick.w ? 'on' : 'off'}. ${nyPick.eligible.length} of 4 were eligible.`
-      : `- v1-NY: the design year did not qualify. The defaults are used: c = ${nyPick.c}, w = ${nyPick.w ? 'on' : 'off'}.`,
+    nyPickShown.qualified
+      ? `- v1-NY: c = ${nyPickShown.c}, w = ${nyPickShown.w ? 'on' : 'off'}. ${nyPickShown.eligible.length} of 4 were eligible.`
+      : `- v1-NY: the ${CLEAN ? 'clean' : 'design'} year did not qualify. The defaults are used: c = ${nyPickShown.c}, w = ${nyPickShown.w ? 'on' : 'off'}.`,
   )
   L.push(
-    `- Thirds: nothing is picked. Thirds beats all at once on the design year: ${pair.beats ? 'yes' : 'no'} (${pair.checks.map((c) => `${c.text}: ${c.ok ? 'yes' : 'no'}`).join('; ')}).`,
+    `- Thirds: nothing is picked. Thirds beats all at once on the ${CLEAN ? 'clean' : 'design'} year: ${pair.beats ? 'yes' : 'no'} (${pair.checks.map((c) => `${c.text}: ${c.ok ? 'yes' : 'no'}`).join('; ')}).`,
     '',
   )
   L.push('## v1, the four settings', '', head)
@@ -928,16 +1063,17 @@ async function main() {
       L.push(`- Drag (30 or more trades and a net loss): ${drag.map(mName).join(', ')}.`)
     if (x.pass)
       L.push(
-        `- The six pass lines, on this design year (for information only): ${x.pass.lines.map((l) => `${l.line} ${l.ok ? 'yes' : 'no'}`).join(', ')}. Reads as: ${x.pass.verdict}.`,
+        `- The six pass lines, on this ${CLEAN ? 'clean year' : 'design year (for information only)'}: ${x.pass.lines.map((l) => `${l.line} ${l.ok ? 'yes' : 'no'}`).join(', ')}. Reads as: ${x.pass.verdict}.`,
       )
     L.push('')
   }
   L.push('## Each run', '')
   for (const x of all) detail(x)
 
-  L.push('## The first build against this one (v1, the four settings)', '')
-  if (!build1) L.push('No first-build results were found next to this run.', '')
-  else
+  if (!CLEAN) L.push('## The first build against this one (v1, the four settings)', '')
+  if (!build1) {
+    if (!CLEAN) L.push('No first-build results were found next to this run.', '')
+  } else
     for (const c of build1) {
       if ('missing' in c) continue
       L.push(
@@ -950,26 +1086,28 @@ async function main() {
         )
       L.push('')
     }
-  L.push('## Check values', '')
-  for (const e of examples)
+  if (rideCheck) {
+    L.push('## Check values', '')
+    for (const e of examples)
+      L.push(
+        `- 2.9 ${e.want.day} ${e.want.side}: ${e.ok ? 'matches' : 'DIFFERS'}. Spec: fill ${e.want.E}, stop ${e.want.stop}, plan ${e.want.rr}R, ${e.want.why}, ${e.want.r}R. Code: ${e.got ? `fill ${e.got.E}, stop ${e.got.stop}, plan ${e.got.rr}R, ${e.got.why} at ${e.got.exit}, ${e.got.r}R` : 'no trade'}.`,
+      )
     L.push(
-      `- 2.9 ${e.want.day} ${e.want.side}: ${e.ok ? 'matches' : 'DIFFERS'}. Spec: fill ${e.want.E}, stop ${e.want.stop}, plan ${e.want.rr}R, ${e.want.why}, ${e.want.r}R. Code: ${e.got ? `fill ${e.got.E}, stop ${e.got.stop}, plan ${e.got.rr}R, ${e.got.why} at ${e.got.exit}, ${e.got.r}R` : 'no trade'}.`,
+      `- 2.9 2025-11-17 SELL signal at 11:15: ${noTradeExample ? noTradeExample.result : 'no signal found'} (spec: no trade, plan under 1.5R).`,
     )
-  L.push(
-    `- 2.9 2025-11-17 SELL signal at 11:15: ${noTradeExample ? noTradeExample.result : 'no signal found'} (spec: no trade, plan under 1.5R).`,
-  )
-  L.push(
-    `- M6 ride A: ${rideCheck.A.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(rideCheck.A.got)}`,
-  )
-  L.push(
-    `- M6 ride B: ${rideCheck.B.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(rideCheck.B.got)}`,
-  )
-  L.push(`- M6: no ride at 07:00 with g = 2.5: ${rideCheck.noRideAt0700WithG25 ? 'yes' : 'NO'}`)
-  for (const [kk, v] of Object.entries(nyCheck))
-    L.push(`- N9 break ${kk}: ${v.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(v.got)}`)
-  for (const [kk, v] of Object.entries(thirdsCheck))
-    L.push(`- T8 example ${kk}: ${v.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(v.got)}`)
-  L.push('')
+    L.push(
+      `- M6 ride A: ${rideCheck.A.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(rideCheck.A.got)}`,
+    )
+    L.push(
+      `- M6 ride B: ${rideCheck.B.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(rideCheck.B.got)}`,
+    )
+    L.push(`- M6: no ride at 07:00 with g = 2.5: ${rideCheck.noRideAt0700WithG25 ? 'yes' : 'NO'}`)
+    for (const [kk, v] of Object.entries(nyCheck))
+      L.push(`- N9 break ${kk}: ${v.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(v.got)}`)
+    for (const [kk, v] of Object.entries(thirdsCheck))
+      L.push(`- T8 example ${kk}: ${v.ok ? 'matches' : 'DIFFERS'} ${JSON.stringify(v.got)}`)
+    L.push('')
+  }
   L.push(
     `Race hours (02:00 to 12:30 AST entries, flat at 12:45 AST): ${outsideRaceHours.every((r) => !r.entriesRefused && !r.endedByTheFlatRule) ? 'no entry was refused and no trade was ended by them in any run' : JSON.stringify(outsideRaceHours)}.`,
     '',
@@ -987,7 +1125,7 @@ async function main() {
       )
     L.push('')
   }
-  L.push('## Trade lists (picked settings)', '')
+  L.push(`## Trade lists (${CLEAN ? 'frozen' : 'picked'} settings)`, '')
   tradeTable(picked)
   tradeTable(flipPicked)
   tradeTable(nyPicked)
@@ -999,15 +1137,16 @@ async function main() {
   writeFileSync(join(OUT, 'results.md'), L.join('\n'))
 
   console.log(
-    `picked v1 k=${k} b=${b} (qualified ${pick.qualified}); flip ext=${flipPick.ext} g=${flipPick.g}; NY c=${nyPick.c} w=${nyPick.w} (qualified ${nyPick.qualified})`,
+    `${CLEAN ? 'frozen' : 'picked'} v1 k=${k} b=${b} (qualified ${pick.qualified}); flip ext=${flipPick.ext} g=${flipPick.g}; NY c=${nyPick.c} w=${nyPick.w} (qualified ${nyPick.qualified})`,
   )
   console.log(
     `flip beats plain: ${beats(flipPicked).beats}; thirds beats all at once: ${pair.beats}`,
   )
   for (const e of examples) console.log(`2.9 ${e.want.day}: ${e.ok ? 'ok' : 'DIFFERS'}`)
-  console.log(
-    `M6 A ${rideCheck.A.ok} B ${rideCheck.B.ok} noRideA@2.5 ${rideCheck.noRideAt0700WithG25}`,
-  )
+  if (rideCheck)
+    console.log(
+      `M6 A ${rideCheck.A.ok} B ${rideCheck.B.ok} noRideA@2.5 ${rideCheck.noRideAt0700WithG25}`,
+    )
   for (const [kk, v] of Object.entries(nyCheck)) console.log(`N9 ${kk}: ${v.ok}`)
   for (const [kk, v] of Object.entries(thirdsCheck)) console.log(`T8 ${kk}: ${v.ok}`)
   console.log(`wrote ${join(OUT, 'results.json')} and results.md`)

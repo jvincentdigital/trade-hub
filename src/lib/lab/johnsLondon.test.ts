@@ -8,8 +8,17 @@ import { labMarket } from './markets'
 import { ismEvents, type NewsEvent } from './news'
 import { seeded } from './control'
 import {
+  assertCleanFile,
   assertDesignCandles,
   assertDesignFile,
+  CLEAN_END,
+  CLEAN_START,
+  cleanYear,
+  FREEZE_FILE,
+  freezeProblems,
+  parseFreezeRecord,
+  type FreezeFacts,
+  type FreezeRecord,
   breakLines,
   chartOf,
   coinDraw,
@@ -1738,6 +1747,91 @@ describe('10 design loader guard', () => {
     const c = (time: number) => [{ time, open: 1, high: 1, low: 1, close: 1 }]
     expect(() => assertDesignCandles(c(DESIGN_START - 60), 'f')).toThrow()
     expect(() => assertDesignCandles(c(DESIGN_START), 'f')).not.toThrow()
+  })
+})
+
+describe('10 clean loader and the freeze record (section 5)', () => {
+  const G = '/x/history-1m-24mo/GBPUSD/GBPUSD_1m.csv.gz'
+  const X = '/x/history-1m-24mo/XAUUSD/XAUUSD_1m.csv.gz'
+  const N = '/x/history-1m-24mo/news-high-impact.csv'
+  const rec: FreezeRecord = {
+    codeCommit: 'abc1234',
+    spec: { path: '/x/SPEC.md', sha256: 'spec' },
+    files: {
+      [G]: { size: 10, sha256: 'g' },
+      [X]: { size: 20, sha256: 'x' },
+      [N]: { size: 30, sha256: 'n' },
+    },
+    settings: { k: 2, b: 0.5, ext: 0.272, g: 2.5, c: 15, w: true },
+    designYearQualified: { v1: true, ny: false },
+    window: { from: '2024-11-11', to: '2025-11-10' },
+  }
+  const ok = (): FreezeFacts => ({
+    dirty: [],
+    changedSinceCode: [FREEZE_FILE],
+    specSha256: 'spec',
+    files: {
+      [G]: { size: 10, sha256: 'g' },
+      [X]: { size: 20, sha256: 'x' },
+      [N]: { size: 30, sha256: 'n' },
+    },
+    copyMatches: true,
+  })
+  it('reads only the clean 1-minute files of GBP/USD and gold', () => {
+    expect(() => assertCleanFile(G, 'GBPUSD')).not.toThrow()
+    expect(() => assertCleanFile('/x/history/GBPUSD/GBPUSD_1m.csv.gz', 'GBPUSD')).toThrow()
+    expect(() => assertCleanFile('/x/history-1m-24mo/GBPUSD/GBPUSD_1h.csv.gz', 'GBPUSD')).toThrow()
+    expect(() => assertCleanFile('/x/history-1m-24mo/EURGBP/EURGBP_1m.csv.gz', 'EURGBP')).toThrow()
+  })
+  it('keeps 2024-11-11 00:00 up to, not including, 2025-11-11 00:00 UTC', () => {
+    expect(CLEAN_START).toBe(Date.UTC(2024, 10, 11) / 1000)
+    expect(CLEAN_END).toBe(DESIGN_START)
+    const c = [CLEAN_START - 60, CLEAN_START, CLEAN_END - 60, CLEAN_END].map((time) => ({
+      time,
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 1,
+    }))
+    expect(cleanYear(c, 'f').map((b) => b.time)).toEqual([CLEAN_START, CLEAN_END - 60])
+    expect(() => cleanYear(c.slice(3), 'f')).toThrow()
+  })
+  it('parses the one json block of the freeze file', () => {
+    const md = `# Freeze\n\ntext\n\n\`\`\`json\n${JSON.stringify(rec)}\n\`\`\`\n`
+    expect(parseFreezeRecord(md)).toEqual(rec)
+    expect(() => parseFreezeRecord('no block')).toThrow()
+    expect(() => parseFreezeRecord(md + md)).toThrow()
+  })
+  it('starts when everything matches', () => {
+    expect(freezeProblems(rec, ok())).toEqual([])
+  })
+  it('refuses a dirty tree, any other change since the code commit, or an unknown commit', () => {
+    expect(freezeProblems(rec, { ...ok(), dirty: [' M src/lib/lab/johnsLondon.ts'] })).toHaveLength(
+      1,
+    )
+    expect(
+      freezeProblems(rec, { ...ok(), changedSinceCode: [FREEZE_FILE, 'scripts/lab/london-v1.ts'] }),
+    ).toHaveLength(1)
+    expect(freezeProblems(rec, { ...ok(), changedSinceCode: [] })).toHaveLength(1)
+    expect(freezeProblems(rec, { ...ok(), changedSinceCode: null })).toHaveLength(1)
+  })
+  it('refuses a changed SPEC.md, a changed or missing data file, or a changed copy', () => {
+    expect(freezeProblems(rec, { ...ok(), specSha256: 'other' })).toHaveLength(1)
+    expect(
+      freezeProblems(rec, { ...ok(), files: { ...ok().files, [G]: { size: 10, sha256: 'z' } } }),
+    ).toHaveLength(1)
+    expect(
+      freezeProblems(rec, { ...ok(), files: { ...ok().files, [X]: { size: 21, sha256: 'x' } } }),
+    ).toHaveLength(1)
+    expect(freezeProblems(rec, { ...ok(), files: { ...ok().files, [N]: null } })).toHaveLength(1)
+    expect(freezeProblems(rec, { ...ok(), copyMatches: false })).toHaveLength(1)
+  })
+  it('refuses settings that were not pre-registered, or another window', () => {
+    expect(freezeProblems({ ...rec, settings: { ...rec.settings, k: 2.5 } }, ok())).toHaveLength(1)
+    expect(freezeProblems({ ...rec, settings: { ...rec.settings, g: 2 } }, ok())).toHaveLength(1)
+    expect(
+      freezeProblems({ ...rec, window: { from: '2024-11-01', to: '2025-11-10' } }, ok()),
+    ).toHaveLength(1)
   })
 })
 

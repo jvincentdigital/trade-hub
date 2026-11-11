@@ -416,8 +416,16 @@ flip is gone, and v1-flip, v1-NY and thirds are new.
   `results.json` (every run, every trade, every thirds part) and
   `results.md`. Design mode only: the loader refuses `history-1m-24mo` and
   `history-old`, any file but the 1m ones, and any file whose first candle is
-  before 2025-11-11. There is no clean-year mode yet: that run needs the
-  freeze record and checks of spec section 5 first.
+  before 2025-11-11.
+- **Clean mode** (`--clean --history ~/jvd-outputs/trading/history-1m-24mo
+--from 2024-11-11 --to 2025-11-10 --out DIR`): runs once, only from the
+  commit that adds `docs/london-v1-freeze.md`. Before it reads a candle it
+  checks (`freezeProblems`): the working tree is clean, nothing but that file
+  changed since the record's code commit, SPEC.md, both 1m files and the news
+  list match their hashes, `DIR/FROZEN.txt` is the committed record and `DIR`
+  has no `results.json` yet. The settings come from the record. The other
+  pre-registered runs are context only. The check values and the first-build
+  comparison are skipped (they are design-year days).
 - **Design year (2025-11-11 to 2026-11-10)**, second build:
   - v1 picked k = 2, b = 0.5: 121 trades, +24.1R, $10,000 to $15,508, max
     drop 13.7%, mirror z 1.83. The first build had 123 trades (+22.1R); the
