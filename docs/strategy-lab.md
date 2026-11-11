@@ -348,6 +348,50 @@ first run is kept there as `run1-*`.
 - London breakout (live rule): lost in UK winter time in-sample (-$5,116 on
   GBP/USD and gold together); the race is in winter time now.
 
+## John's London v1 (`johnsLondon.ts`, added 2026-11-11)
+
+A separate, frozen strategy, not one of the bots above. The rules live in
+`~/jvd-outputs/2026-11-11/london-strategy/SPEC.md`; the code follows it
+section by section (comments point to the spec numbers).
+
+- **What**: GBP/USD and gold only, 15-minute candles built from the 1-minute
+  BID files. Entries from 07:00 to 15:00 London, flat by 16:30 London (UK
+  summer time aware). After a big move (k ATRs inside 12 candles) the Fib has
+  1 at the last opposite candle and 0 at the end of the move. A closed candle
+  that reaches 0.786 without passing 1 is the signal; the trade opens at the
+  next 1-minute open. Stop past 1 by b ATRs, at least 10 round trips of costs,
+  plan between 1.5R and 2.5R. Half off at 0, the rest at -0.272. No trades 30
+  minutes around red news, at most 2 trades per market per day.
+- **v1-flip**: after the day's first trade is stopped before TP1, a reverse
+  trade at the stop fill with a quick target (q stop distances, 2 hours at
+  most), then one re-entry at a better price if the reverse won.
+- **Code**: `src/lib/lab/johnsLondon.ts` (pure: signals, plan, 1-minute exit
+  walk, one account for both markets, mirror, coin flips, the pick rule, the
+  loader guard) and `johnsLondon.test.ts` (one test per rule, look-ahead
+  guards, the flip state machine, and the spec's check values on the design
+  data when the files are there). It reuses `impulseAt` and `fibLevel`
+  (`fib.ts`), `atrSeries`, `londonSummer`, the news windows and ISM dates
+  (`news.ts`), `spreadAt`/`slippageAt` (`markets.ts`), `seeded` and
+  `directionTest`. It does not use `johnsFib` or the lab engine's exits.
+  Gold has its own costs (0.040% a round trip), not `labMarket('XAUUSD')`.
+- **Runner**: `npx tsx scripts/lab/london-v1.ts --history DIR --from
+2025-11-11 --to 2026-11-10 --out DIR`. Six runs: v1 for the 4 (k, b) pairs,
+  the pick, then v1-flip for q = 0.5 and 1.0. Writes `results.json` (every
+  run, every trade, per market) and `results.md`. Design mode only: the
+  loader refuses `history-1m-24mo` and `history-old`, any file but the 1m
+  ones, and any file whose first candle is before 2025-11-11. There is no
+  clean-year mode yet: that run needs the freeze record and checks of spec
+  section 5 first.
+- **Design year (2025-11-11 to 2026-11-10)**: picked k = 2, b = 0.5, q = 0.5.
+  v1: 123 trades (GBP/USD 43, gold 80), +22.1R, $10,000 to $14,913, max drop
+  13.7%, mirror z 1.75. v1-flip: 172 trades, +9.6R, $11,602; its 47 reverse
+  trades lost 10.0R, so flip does not beat plain. All three check values in
+  spec 2.9 match. Run folder:
+  `~/jvd-outputs/2026-11-11/london-strategy/design-run/`.
+- **Versus the prototype** (134 trades, +23.9R): the prototype missed the ISM
+  news blocks (it appended them to a sorted list and stopped its loop early),
+  so it took a few trades the spec does not. Gold costs now follow the price.
+
 ## Not done
 
 - 5-30 minute history before 2025-11 and for EUR/USD, USD/JPY, US30,
