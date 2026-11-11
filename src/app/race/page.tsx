@@ -24,6 +24,7 @@ import { summarize, type RaceState } from '@/lib/race/live'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
+import { MoneyInput } from '@/components/ui/MoneyInput'
 
 const RULES = BUILT_IN_RULES.map((rule) => ({
   rule,
@@ -116,14 +117,10 @@ export default function RacePage() {
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 4px' }}>
         <span style={{ fontSize: 13 }}>Starting money per strategy</span>
         <span style={{ color: 'var(--text-secondary)' }}>$</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={1}
-          step={100}
+        <MoneyInput
           value={start}
-          onChange={(e) => setStart(Math.max(0, Number(e.target.value) || 0))}
-          aria-label="Starting money per strategy in dollars"
+          onChange={setStart}
+          label="Starting money per strategy in dollars"
           style={input}
         />
       </label>
