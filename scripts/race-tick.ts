@@ -25,7 +25,9 @@
  * writing at once: a tick that finds it taken waits up to 3 minutes, then
  * prints one line and stops.
  *
- * After saving, the state is PUT to the race relay worker (docs/live.md) when
+ * Close now taps from Today (stored in the relay worker) are booked first, at
+ * the minute of the tap (src/lib/race/closeRequests.ts), and cleared after
+ * the save. After saving, the state is PUT to the race relay worker (docs/live.md) when
  * ~/.local/share/trade-hub/race.env exists (RACE_PUT_URL + RACE_WRITE_KEY).
  * A failed push only logs a line; the tick itself still counts.
  */
@@ -61,9 +63,29 @@ import {
   summarize,
   syncRaceState,
   type MarketTick,
+  type RaceState,
 } from '../src/lib/race/live'
 import type { OHLCCandle } from '../src/lib/types/market'
-import { fetchMarket, FILE, load, money, push, save, waitLock } from './race-io'
+import {
+  clearCloseRequests,
+  fetchMarket,
+  fetchMinutes,
+  FILE,
+  load,
+  loadCloseRequests,
+  money,
+  push,
+  save,
+  sleep,
+  waitLock,
+} from './race-io'
+import {
+  bookCloseRequests,
+  findOpen,
+  type CloseRequests,
+  type Minute,
+} from '../src/lib/race/closeRequests'
+import { KRAKEN_PAIRS } from '../src/lib/kraken'
 
 const args = process.argv.slice(2)
 const startArg = args.includes('--start') ? Number(args[args.indexOf('--start') + 1]) : 1000
@@ -220,6 +242,25 @@ async function tick() {
   let checked = 0
   let opened = 0
   let closed = 0
+
+  // Close now taps from Today, booked before anything else (src/lib/race/closeRequests.ts).
+  const requests = await loadCloseRequests()
+  let clearIds: string[] = []
+  if (Object.keys(requests).length) {
+    // The last check saw candles up to its quarter hour: from there on is unchecked.
+    const fromSec = Math.floor((state.ticks.at(-1)?.at ?? 0) / 1000 / 900) * 900
+    const minutes = await requestMinutes(state, requests, fromSec)
+    const r = bookCloseRequests(state, requests, (m) => minutes.get(m), fromSec, feeRate)
+    state = r.state
+    closed += r.booked.length
+    for (const b of r.booked)
+      console.log(
+        `  CLOSE ${b.account} ${b.closed.market} ${b.closed.reason === 'manual' ? 'closed by you' : `${b.closed.reason} (touched before the tap)`} at ${b.closed.exit}: ${money(b.closed.pnl)}`,
+      )
+    for (const id of r.dropped) console.log(`  Close request for a trade that is not open: ${id}`)
+    for (const id of r.waiting) console.log(`  Close request waits for its minute: ${id}`)
+    clearIds = [...r.booked.map((b) => b.id), ...r.dropped]
+  }
   // Every signal of this check, in PLANS order (built-in rules, London breakout,
   // Claude's picks) and each strategy's market order: the funded test's order.
   const candidates: FundedCandidate[] = []
@@ -342,6 +383,45 @@ async function tick() {
   console.log(`Saved ${FILE} (play money only)`)
   if (args.includes('--no-push')) console.log('Not pushed (--no-push)')
   else await push(state)
+  await clearCloseRequests(clearIds)
+}
+
+/**
+ * Kraken 1-minute candles for each market a close request names, from the
+ * earlier of the last check and the tap. GBP/JPY: GBP/USD times the race's
+ * USD/JPY leg; USD/JPY and NZD/USD have none (null: the race's own price, as
+ * in race-close-all.ts). A failed fetch is undefined: the request waits.
+ */
+async function requestMinutes(state: RaceState, requests: CloseRequests, fromSec: number) {
+  const out = new Map<string, Minute[] | null | undefined>()
+  const since = Math.min(fromSec, ...Object.values(requests).map((r) => Math.floor(r.at / 1000)))
+  const pairOf = (m: string) => KRAKEN_PAIRS[m === 'GBP-JPY' ? 'GBP-USD' : m]
+  const byPair = new Map<string, Minute[] | undefined>()
+  for (const r of Object.values(requests)) {
+    const m = findOpen(state, r.id)?.trade.market
+    if (!m || out.has(m)) continue
+    const pair = pairOf(m)
+    if (!pair) {
+      out.set(m, null)
+      continue
+    }
+    if (!byPair.has(pair)) {
+      await sleep(1100) // Kraken's public limit: about one call a second
+      try {
+        byPair.set(pair, await fetchMinutes(pair, since))
+      } catch (e) {
+        console.log(`  ${pair} 1-minute candles not loaded: ${(e as Error).message}`)
+        byPair.set(pair, undefined)
+      }
+    }
+    const rows = byPair.get(pair)
+    const leg = m === 'GBP-JPY' ? state.prices['GBP-JPY'] / state.prices['GBP-USD'] : 1
+    out.set(
+      m,
+      rows?.map((x) => ({ t: x.t, o: x.o * leg, h: x.h * leg, l: x.l * leg })),
+    )
+  }
+  return out
 }
 
 main().catch((e) => {
