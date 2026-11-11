@@ -2,6 +2,12 @@
 # launchd wrapper for Trade Hub "Claude's picks" (com.jvd.trade-hub-claude-picks,
 # weekdays 03:47 AST). Play money only. Install steps: docs/london-open.md.
 set -u
+# The London and Claude's picks plists fire on minutes only (every hour) and set
+# WEEKDAYS_ONLY=1 and RUN_HOURS (local AST hours), so the day and hour checks live
+# here. On the Mac Mini launchd ran every Hour entry 4 hours late (2026-11-11: 02:00
+# fired at 06:00, 03:47 at 07:47), while the minute-only hourly job ran on time.
+if [[ "${WEEKDAYS_ONLY:-}" == 1 && $(date +%u) -gt 5 ]]; then exit 0; fi
+if [[ -n "${RUN_HOURS:-}" && " $RUN_HOURS " != *" $(( 10#$(date +%H) )) "* ]]; then exit 0; fi
 source ~/.zprofile >/dev/null 2>&1   # PATH (Homebrew node, ~/.local/bin) and CLAUDE_CODE_OAUTH_TOKEN
 cd ~/dev/trade-hub || exit 1
 echo "$(date '+%F %T') start Claude's picks (node $(node -v))"
