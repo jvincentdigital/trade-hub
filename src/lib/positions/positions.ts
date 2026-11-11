@@ -192,7 +192,7 @@ export interface ClosedRow {
   pnl: number
   /** Milliseconds. */
   closedAt: number
-  reason: 'stop' | 'target' | 'manual'
+  reason: 'stop' | 'target' | 'manual' | 'session'
 }
 
 export function closedTrades(

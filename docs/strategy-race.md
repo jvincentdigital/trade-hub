@@ -218,6 +218,32 @@ pound/dollar rule, and `checkPicks` applies the same check in Claude's order
 pick as `REJECT`. Its prompt now gives the account's real balance instead of
 "$1,000".
 
+## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)
+
+John: "after the New York session ends, close all the trades and take the
+profit". He chose 12:45 AST. Every account (the Lab strategies and the funded
+test, below) follows the same day, in Puerto Rico time (AST = UTC-4 all year,
+no daylight saving), from `src/lib/race/session.ts`:
+
+- **New trades only from 02:00 to 12:30 AST, Monday to Friday**
+  (`entryWindowBlock`). 02:00 is the first London-open check; 12:30 leaves
+  15 minutes before the close. A signal outside the window is used up and
+  logged as `PASS ... new trades only from 02:00 to 12:30 AST` (or `no new
+trades on the weekend`), so it can't open later at a stale price. Claude's
+  picks go through the same check.
+- **Daily close at 12:45 AST, Monday to Friday** (`applyDailyClose` in
+  `live.ts`): the first race check at or after 12:45 closes every open trade
+  in every account at that check's price (each market's last price), both fees
+  booked, reason `session`, shown as "closed at 12:45". It is time-based inside
+  the tick, not a launchd job (launchd jobs with an Hour key fire 4 hours late
+  on the Mac Mini, see PR #9), so a 12:45 check that is missed or late (12:52,
+  13:07) still does it, once. `dailyCloseAt` in `race.json` remembers the
+  check that did it. A race that has never had it starts counting at its first
+  check, so turning the rule on never closes trades on the spot; the first
+  close is the next 12:45.
+- Stops and targets are checked first in that same check, so a trade that hit
+  its stop before 12:45 books the stop, not the 12:45 price.
+
 ## Stop and target follow the fill (2026-11-11 post-mortem)
 
 A built-in rule's signal comes with a stop and a target measured from the

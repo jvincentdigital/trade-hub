@@ -39,6 +39,7 @@ import {
 import { minStopForFullRisk, RACE_SIZING } from '../src/lib/race/account'
 import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { stepStrategy, syncRaceState, type MarketTick } from '../src/lib/race/live'
+import { entryWindowBlock } from '../src/lib/race/session'
 import { clearKrakenCache } from '../src/lib/kraken'
 import { fetchMarket, FILE, load, push, save, waitLock } from './race-io'
 
@@ -235,7 +236,7 @@ async function main() {
         note: pick?.reason,
       }
     })
-    const r = stepStrategy(own, ticks, nowSec, state.sizing)
+    const r = stepStrategy(own, ticks, nowSec, state.sizing, entryWindowBlock(nowSec))
     state.strategies[CLAUDE_PICKS.id] = r.strategy
     state.prices = {
       ...state.prices,

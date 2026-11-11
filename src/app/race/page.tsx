@@ -20,7 +20,7 @@ import {
   WINDOW_DAYS,
   windowStart,
 } from '@/lib/race/leaderboard'
-import { summarize, type RaceState } from '@/lib/race/live'
+import { REASON_TEXT, summarize, type RaceState } from '@/lib/race/live'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
@@ -685,12 +685,7 @@ function Live({ start }: { start: number }) {
                         market: t.market,
                         direction: t.direction,
                         time: t.exitTime,
-                        how:
-                          t.reason === 'target'
-                            ? 'hit target'
-                            : t.reason === 'manual'
-                              ? 'closed by you'
-                              : 'hit stop',
+                        how: REASON_TEXT[t.reason],
                         pnl: t.pnl * scale,
                         size: sizeOf(t, scale),
                       }))}

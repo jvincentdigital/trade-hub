@@ -42,7 +42,9 @@ import { feedOf } from '../src/lib/feeds'
 import type { CandleTf } from '../src/lib/kraken'
 import { LONDON_BREAKOUT, londonBreakout } from '../src/lib/race/londonBreakout'
 import { CLAUDE_PICKS } from '../src/lib/race/claudePicks'
+import { entryWindowBlock } from '../src/lib/race/session'
 import {
+  applyDailyClose,
   createRaceState,
   MAX_TICK_LOG,
   stepStrategy,
@@ -93,6 +95,7 @@ const pathTf = (id: string): CandleTf =>
 /** ECB-only forex has daily candles whatever size is asked for. */
 const sizeFor = (id: string, tf: CandleTf): CandleTf => (ecb(id) ? '1d' : tf)
 const key = (id: string, tf: CandleTf) => `${id}:${sizeFor(id, tf)}`
+const feeRate = (id: string) => FEE_RATE[getInstrument(id)?.market ?? 'forex']
 
 async function main() {
   if (args.includes('--push-only')) {
@@ -174,6 +177,10 @@ async function tick() {
   const shut = forexClosed(nowSec)
   if (shut)
     console.log('  Forex market closed (Friday 17:00 to Sunday 17:00 New York): no forex signals')
+  // New trades only from 02:00 to 12:30 AST on weekdays (src/lib/race/session.ts).
+  const blockNew = entryWindowBlock(nowSec)
+  if (blockNew) console.log(`  No new trades now: ${blockNew}`)
+  const riskPct = state.sizing.riskPct
   const signalFor = (p: Plan, id: string): Signal | null => {
     if (p.kind === 'picks') return null
     const inst = getInstrument(id)
@@ -186,7 +193,7 @@ async function tick() {
       // close that the margin cap would cut the trade below the race's risk.
       const r = londonBreakout(m15, h1, nowSec, {
         price: prices[id],
-        minDist: minStopForFullRisk(prices[id], LEVERAGE[inst.market], state.sizing.riskPct),
+        minDist: minStopForFullRisk(prices[id], LEVERAGE[inst.market], riskPct),
       })
       console.log(`  LONDON ${id}: ${r.note}`)
       return r.signal
@@ -221,7 +228,7 @@ async function tick() {
         reanchor: p.kind === 'rule',
       })
     }
-    const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing)
+    const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
     state.strategies[p.id] = r.strategy
     checked += ticks.length
     closed += r.closed.length
@@ -237,6 +244,15 @@ async function tick() {
     }
     for (const x of r.passed) console.log(`  PASS  ${p.name} ${x.market}: ${x.reason}`)
   }
+
+  // Daily close: the first check at or after 12:45 AST on a weekday closes every open trade.
+  const daily = applyDailyClose(state, nowSec, feeRate)
+  state = daily.state
+  closed += daily.closed.length
+  for (const c of daily.closed)
+    console.log(`  CLOSE ${c.strategy} ${c.market} at 12:45 (${c.exit}): ${money(c.pnl)}`)
+  if (daily.missing.length)
+    console.log(`  still open after the daily close (no price): ${daily.missing.join(', ')}`)
 
   state.tickCount += 1
   state.ticks = [
