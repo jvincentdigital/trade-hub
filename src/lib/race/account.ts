@@ -89,7 +89,11 @@ export const POUND_DOLLAR: Record<string, 1 | -1> = {
   'pax-gold': 1, // gold up, dollar down
 }
 export const MAX_POUND_DOLLAR = 2
-/** GBP/JPY here is GBP/USD x a frozen daily USD/JPY (src/lib/feeds.ts): never both open. */
+/**
+ * GBP/JPY here is GBP/USD x a frozen daily USD/JPY (src/lib/feeds.ts): never both
+ * open. New GBP/JPY trades are off (NOT_LIVE); this still keeps a new GBP/USD out
+ * of an account that holds an older GBP/JPY trade.
+ */
 const COPY_OF: Record<string, string> = { 'GBP-JPY': 'GBP-USD', 'GBP-USD': 'GBP-JPY' }
 
 /**
@@ -116,10 +120,21 @@ const signOf = (map: Record<string, 1 | -1>, t: Side) =>
 const poundDollarSign = (t: Side) => signOf(POUND_DOLLAR, t)
 const dollarSign = (t: Side) => signOf(DOLLAR, t)
 
+/**
+ * Markets the race prices only from a once-a-day ECB rate (USD/JPY, NZD/USD)
+ * or half from one (GBP/JPY = GBP/USD x the daily USD/JPY, src/lib/feeds.ts):
+ * not live prices, so no account opens new trades on them (John, 2026-11-11:
+ * "until a live price exists"). Trades already open run to their stop, target
+ * or the daily close as before.
+ */
+export const NOT_LIVE: readonly string[] = ['USD-JPY', 'NZD-USD', 'GBP-JPY']
+
 /** Why this account may not open `next` now, or null when it may. */
 export function newTradeBlock(next: Side, open: Side[]): string | null {
   if (getInstrument(next.market)?.market === 'crypto' && !ALLOWED_CRYPTO.includes(next.market))
     return `no new crypto trades except ${ALLOWED_CRYPTO.map((id) => COIN_MAP[id]?.name ?? id).join(', ')}`
+  if (NOT_LIVE.includes(next.market))
+    return `no new trades on ${next.market}: priced from a once-a-day rate, not live`
   const sign = poundDollarSign(next)
   if (sign) {
     const group = open.filter((t) => POUND_DOLLAR[t.market])

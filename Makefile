@@ -8,7 +8,7 @@
 # Convention: keep targets simple. If a target needs more than a few lines of
 # shell, put the logic in scripts/ and call it from here.
 
-.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset claude-picks
+.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset funded-reset claude-picks
 
 PROJECT_NAME := trade-hub
 
@@ -79,6 +79,9 @@ race-tick: ## Strategy race: one live tick for every strategy's play account (st
 
 race-close-all: ## Strategy race: close every open trade by hand at the first 1-minute price at or after AT (usage: make race-close-all AT=2026-11-11T17:04:31Z [DRY=1])
 	npx tsx scripts/race-close-all.ts --at $(AT) $(if $(DRY),--dry-run)
+
+funded-reset: ## Funded test: back up race.json, start a fresh $10,000 funded test at this tick (Lab accounts untouched)
+	npx tsx scripts/race-tick.ts --funded-reset
 
 race-reset: ## Strategy race: back up race.json, start over at 2% risk per trade, first tick, push (usage: make race-reset [START=1000])
 	scripts/race-reset $(START)

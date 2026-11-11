@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 import { formatQuote, getInstrument } from '@/lib/paper/instruments'
 import type { OpenPosition } from '@/lib/positions/positions'
 import { shortName, sideWord, signedShort, usdShort } from '@/lib/positions/today'
-import { RACE_SIZING } from '@/lib/race/account'
+import { FUNDED } from '@/lib/race/funded'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
 import { perMoveText, sizeText, sizingOf } from '@/lib/sizing/sizing'
 import { FS, button, secondary } from './ui'
@@ -60,7 +60,7 @@ export function HowSheet(props: {
     if (!open && d.open) d.close()
   }, [open])
   const ex = example(props.sample)
-  const risk = (startMoney * RACE_SIZING.riskPct) / 100
+  const risk = (startMoney * FUNDED.sizing.riskPct) / 100
   const b = { color: 'var(--text-primary)', fontWeight: 600 }
 
   return (
@@ -116,7 +116,7 @@ export function HowSheet(props: {
             ],
             [
               'Entry.',
-              'At the open of the next candle: the hourly check buys or sells at the live price, which is about that open.',
+              'At the open of the next candle: the next race check buys or sells at the live price, which is about that open. New trades only from 2:00 AM to 12:30 PM, Monday to Friday; at 12:45 PM every open trade closes.',
             ],
             [
               'Stop.',
@@ -127,15 +127,15 @@ export function HowSheet(props: {
             ],
             [
               'Target.',
-              `About ${mainRr} times the stop distance${otherRr.length ? `; ${otherRr.join('; ')}` : ''}. The fill comes a little after the signal, so each trade shows its own ratio.`,
+              `About ${mainRr} times the stop distance${otherRr.length ? `; ${otherRr.join('; ')}` : ''}. The fill comes a little after the signal, so the stop and target move with it and keep that ratio.`,
             ],
             [
               'Size.',
-              `Each strategy trades one ${usdShort(startMoney)} play account, and every trade risks ${RACE_SIZING.riskPct}% of its balance at that moment: about ${usdShort(risk)} if the stop hits. A far stop means a smaller position. Forex is shown in lots (1 lot = 100,000 units), gold in lots of 100 oz, crypto in coins.`,
+              `The funded test is one ${usdShort(startMoney)} play account that takes every strategy's signals, and every trade risks ${FUNDED.sizing.riskPct}% of its balance at that moment: about ${usdShort(risk)} if the stop hits. A far stop means a smaller position. Forex is shown in lots (1 lot = 100,000 units), gold in lots of 100 oz, crypto in coins.`,
             ],
             [
               'Limits.',
-              `At most ${RACE_SIZING.maxOpen} trades open per strategy, and one per market. All open stops together can lose at most ${RACE_SIZING.maxOpenRiskPct}% of the balance. A trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1). A signal that does not fit is left out.`,
+              `At most ${FUNDED.sizing.maxOpen} trades open and ${FUNDED.maxNewPerDay} new a day, one per market; the first strategy in the race's order wins a market. Like FTMO's challenge: a day that loses ${usdShort((startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start) or money under ${usdShort(startMoney * (1 - FUNDED.maxLossPct / 100))} fails it, +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it, and no new trades once the day is down ${usdShort((startMoney * FUNDED.dayStopPct) / 100)}. A new trade also waits if the day's worst case, every open trade and it hitting their stops, would pass ${usdShort((startMoney * FUNDED.worstCasePct) / 100)}. A trade can only use the free balance times its leverage (crypto 1:1, gold 20:1, forex 30:1). A signal that does not fit is left out.`,
             ],
             [
               'Fees.',
@@ -183,7 +183,7 @@ export function HowSheet(props: {
         <p style={{ ...secondary, fontSize: FS.sm, margin: '14px 0 16px' }}>
           <b style={b}>Not built yet:</b>{' '}
           {
-            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade only ends at its stop or its target. USD/JPY and NZD/USD prices come once a day from the European Central Bank, so their P&L moves once a day; the other pairs and gold use real prices, checked every hour (every 15 minutes around the London open).'
+            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade ends at its stop, its target, the 12:45 PM close, or Close now. USD/JPY and NZD/USD prices come once a day from the European Central Bank (GBP/JPY uses that rate too), so no account opens new trades on them; the other pairs and gold use real prices, checked every hour (every 15 minutes in the session).'
           }
         </p>
         <button

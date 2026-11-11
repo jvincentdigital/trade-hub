@@ -1,5 +1,5 @@
 /**
- * Close every open race trade by hand (John, 2026-11-11: "close all the
+ * Close every open race trade by hand, the funded test's too (John, 2026-11-11: "close all the
  * trades and take the profit"). Each trade closes at the open of the first
  * 1-minute Kraken candle at or after --at (the minute after he asked, so no
  * hindsight). Markets the race prices from daily ECB rates (USD/JPY, NZD/USD)
@@ -17,30 +17,14 @@ import { FEE_RATE } from '../src/lib/paper/engine'
 import { getInstrument } from '../src/lib/paper/instruments'
 import { KRAKEN_PAIRS } from '../src/lib/kraken'
 import { closeAll } from '../src/lib/race/live'
-import { load, money, push, save, waitLock, FILE } from './race-io'
+import { FUNDED } from '../src/lib/race/funded'
+import type { Minute } from '../src/lib/race/closeRequests'
+import { fetchMinutes, load, money, push, save, waitLock, FILE } from './race-io'
 
 const args = process.argv.slice(2)
 const atIdx = args.indexOf('--at')
 const atMs = atIdx >= 0 ? Date.parse(args[atIdx + 1] ?? '') : NaN
 const dry = args.includes('--dry-run')
-
-type Row = { t: number; o: number; h: number; l: number }
-
-async function minutes(pair: string, sinceSec: number): Promise<Row[]> {
-  const res = await fetch(
-    `https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=1&since=${sinceSec - 60}`,
-    { signal: AbortSignal.timeout(20_000) },
-  )
-  const j = (await res.json()) as { error?: string[]; result?: Record<string, unknown> }
-  if (j.error?.length || !j.result) throw new Error(`Kraken ${pair}: ${j.error?.join(', ')}`)
-  const key = Object.keys(j.result).find((k) => k !== 'last')!
-  return (j.result[key] as string[][]).map((r) => ({
-    t: Number(r[0]),
-    o: Number(r[1]),
-    h: Number(r[2]),
-    l: Number(r[3]),
-  }))
-}
 
 async function main() {
   if (!(atMs > 0)) throw new Error('usage: race-close-all.ts --at <ISO time> [--dry-run]')
@@ -53,14 +37,17 @@ async function main() {
     const lastCheck = state.ticks.at(-1)?.at ?? 0
     // The last check saw candles closed before it ran: from that quarter hour on is unchecked.
     const fromSec = Math.floor(lastCheck / 1000 / 900) * 900
-    const open = Object.values(state.strategies).flatMap((s) =>
-      s.open.map((t) => ({ ...t, strategy: s.name })),
-    )
+    const open = [
+      ...Object.values(state.strategies).flatMap((s) =>
+        s.open.map((t) => ({ ...t, strategy: s.name })),
+      ),
+      ...(state.funded?.open ?? []).map((t) => ({ ...t, strategy: FUNDED.name })),
+    ]
     const markets = [...new Set(open.map((t) => t.market))]
     const pairOf = (m: string) => KRAKEN_PAIRS[m === 'GBP-JPY' ? 'GBP-USD' : m]
-    const rows = new Map<string, Row[]>()
+    const rows = new Map<string, Minute[]>()
     for (const pair of new Set(markets.map(pairOf).filter(Boolean))) {
-      rows.set(pair, await minutes(pair, fromSec))
+      rows.set(pair, await fetchMinutes(pair, fromSec))
       await new Promise((r) => setTimeout(r, 1100))
     }
 

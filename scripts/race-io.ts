@@ -1,7 +1,8 @@
 /**
  * Shared by scripts/race-tick.ts and scripts/claude-picks.ts: where the race
- * file lives, reading and writing it, pushing it to the live site, the lock
- * that keeps two runs from writing at once, and fetching candles politely.
+ * file lives, reading and writing it, pushing it to the live site, the Close
+ * now requests, the lock that keeps two runs from writing at once, and
+ * fetching candles politely.
  * Play money only: nothing here talks to a broker.
  */
 import {
@@ -20,6 +21,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { parseRaceState, type RaceState } from '../src/lib/race/live'
+import { closeRequestsSchema, type CloseRequests, type Minute } from '../src/lib/race/closeRequests'
 import { feedOf } from '../src/lib/feeds'
 import { fetchMarketCandles } from '../src/lib/race/feeds'
 import { dropClosedForex } from '../src/lib/race/candles'
@@ -52,9 +54,9 @@ export function save(state: RaceState) {
   renameSync(tmp, FILE)
 }
 
-/** Send the saved state to the live site's relay. Never throws, never prints the key. */
-export async function push(state: RaceState) {
-  if (!existsSync(ENV_FILE)) return
+/** RACE_PUT_URL and RACE_WRITE_KEY from race.env, or null. Never printed. */
+function relayEnv(): { url: string; key: string } | null {
+  if (!existsSync(ENV_FILE)) return null
   const env = Object.fromEntries(
     readFileSync(ENV_FILE, 'utf8')
       .split('\n')
@@ -62,12 +64,25 @@ export async function push(state: RaceState) {
       .filter((l) => l && !l.startsWith('#') && l.includes('='))
       .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
   )
-  if (!env.RACE_PUT_URL || !env.RACE_WRITE_KEY) return
+  return env.RACE_PUT_URL && env.RACE_WRITE_KEY
+    ? { url: env.RACE_PUT_URL, key: env.RACE_WRITE_KEY }
+    : null
+}
+
+/** Send the saved state to the live site's relay. Never throws, never prints the key. */
+export async function push(state: RaceState) {
+  // A test file (RACE_FILE set) never goes to the live site, even without --no-push.
+  if (process.env.RACE_FILE) {
+    console.log('Not pushed: RACE_FILE is set, so this is a test file (live site untouched)')
+    return
+  }
+  const env = relayEnv()
+  if (!env) return
   try {
-    const res = await fetch(env.RACE_PUT_URL, {
+    const res = await fetch(env.url, {
       method: 'PUT',
       headers: {
-        authorization: `Bearer ${env.RACE_WRITE_KEY}`,
+        authorization: `Bearer ${env.key}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify(state),
@@ -79,6 +94,82 @@ export async function push(state: RaceState) {
   } catch (e) {
     console.log(`Push to the live site failed: ${(e as Error).message}`)
   }
+}
+
+// ── Close now requests (docs/live.md) ────────────────────────────────────
+// The live site stores taps in the relay worker; the Mac's race check books
+// them. A test run (RACE_FILE set) uses a local file instead, so it can
+// never book or clear John's real requests.
+
+export const CLOSE_FILE = process.env.RACE_CLOSE_FILE || join(dirname(FILE), 'close-requests.json')
+const closeRelay = () => {
+  const env = process.env.RACE_FILE ? null : relayEnv()
+  return env && { url: new URL('/close-requests', env.url).toString(), key: env.key }
+}
+
+/** Pending requests by trade id; {} when there are none or the relay can't be read. */
+export async function loadCloseRequests(): Promise<CloseRequests> {
+  const relay = closeRelay()
+  try {
+    const raw = relay
+      ? await fetch(relay.url, {
+          headers: { authorization: `Bearer ${relay.key}` },
+          signal: AbortSignal.timeout(20_000),
+        }).then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`)
+          return r.json()
+        })
+      : existsSync(CLOSE_FILE)
+        ? JSON.parse(readFileSync(CLOSE_FILE, 'utf8'))
+        : {}
+    const parsed = closeRequestsSchema.safeParse(raw)
+    if (!parsed.success) throw new Error('not a list of close requests')
+    return parsed.data
+  } catch (e) {
+    console.log(`  Close requests not read: ${(e as Error).message}`)
+    return {}
+  }
+}
+
+/** Remove booked or dropped requests. Never throws; a request left over is dropped next check. */
+export async function clearCloseRequests(ids: string[]) {
+  if (!ids.length) return
+  const relay = closeRelay()
+  try {
+    if (relay) {
+      const res = await fetch(relay.url, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${relay.key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ ids }),
+        signal: AbortSignal.timeout(20_000),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    } else if (existsSync(CLOSE_FILE)) {
+      const all = JSON.parse(readFileSync(CLOSE_FILE, 'utf8')) as Record<string, unknown>
+      for (const id of ids) delete all[id]
+      writeFileSync(`${CLOSE_FILE}.tmp`, JSON.stringify(all))
+      renameSync(`${CLOSE_FILE}.tmp`, CLOSE_FILE)
+    }
+  } catch (e) {
+    console.log(`  Close requests not cleared: ${(e as Error).message}`)
+  }
+}
+
+/** Kraken 1-minute candles since `sinceSec` (the last 720 minutes at most), oldest first. */
+export async function fetchMinutes(pair: string, sinceSec: number): Promise<Minute[]> {
+  const res = await fetch(
+    `https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=1&since=${sinceSec - 60}`,
+    { signal: AbortSignal.timeout(20_000) },
+  )
+  const j = (await res.json()) as { error?: string[]; result?: Record<string, unknown> }
+  if (j.error?.length || !j.result) throw new Error(`Kraken ${pair}: ${j.error?.join(', ')}`)
+  const key = Object.keys(j.result).find((k) => k !== 'last')!
+  return (j.result[key] as string[][]).map((r) => ({
+    t: Number(r[0]),
+    o: Number(r[1]),
+    h: Number(r[2]),
+    l: Number(r[3]),
+  }))
 }
 
 // ── Lock: one writer at a time ───────────────────────────────────────────

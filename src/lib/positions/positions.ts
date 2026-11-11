@@ -1,9 +1,12 @@
 import type { PaperAccount } from '../paper/schema'
 import { getInstrument, quoteToUsd, type PriceMap } from '../paper/instruments'
 import type { RaceState } from '../race/live'
+import { FUNDED } from '../race/funded'
+import { FUNDED_ACCOUNT, tradeId } from '../race/closeRequests'
 
-// Open trades from the race (every strategy) and the demo account in one
-// shape, plus the numbers the home screen shows per card. Pure, tested.
+// Open trades from the funded test (the race account Today follows, fed by
+// every strategy's signals) and the demo account in one shape, plus the
+// numbers the home screen shows per card. Pure, tested.
 
 export type Side = 'long' | 'short'
 
@@ -26,6 +29,8 @@ export interface OpenPosition {
   openedAt: number
   /** Why it was opened (Claude's picks). */
   note?: string
+  /** Race trades: the id a Close now request names it by. */
+  closeId?: string
 }
 
 export type PositionStatus = 'Near target' | 'Near stop' | 'Running' | 'No stop' | 'No price'
@@ -102,27 +107,29 @@ export function measure(p: OpenPosition, price: number | undefined | null): Posi
   }
 }
 
-/** Every open race trade, one per strategy and market. */
-export function racePositions(state: RaceState | null | undefined): OpenPosition[] {
-  if (!state) return []
-  return Object.values(state.strategies).flatMap((s) =>
-    s.open.map((t) => ({
-      key: `race:${s.ruleId}:${t.market}`,
-      source: 'race' as const,
-      by: s.name,
-      ruleId: s.ruleId,
-      market: t.market,
-      side: t.direction,
-      entry: t.entry,
-      stop: t.stop,
-      target: t.takeProfit,
-      units: t.units,
-      // Fixed at entry, like openPnl, so the card and the race agree.
-      usdPerQuote: t.usdPerQuote,
-      openedAt: t.entryTime * 1000,
-      ...(t.note ? { note: t.note } : {}),
-    })),
-  )
+/**
+ * The funded test's open trades (one per market). `by` is the strategy whose
+ * signal opened it, so the row and "Why these levels" read from its rule.
+ */
+export function fundedPositions(state: RaceState | null | undefined): OpenPosition[] {
+  if (!state?.funded) return []
+  return state.funded.open.map((t) => ({
+    key: `funded:${t.market}`,
+    source: 'race' as const,
+    by: state.strategies[t.strategy]?.name ?? t.strategy,
+    ruleId: t.strategy,
+    closeId: tradeId(FUNDED_ACCOUNT, t),
+    market: t.market,
+    side: t.direction,
+    entry: t.entry,
+    stop: t.stop,
+    target: t.takeProfit,
+    units: t.units,
+    // Fixed at entry, like openPnl, so the card and the race agree.
+    usdPerQuote: t.usdPerQuote,
+    openedAt: t.entryTime * 1000,
+    ...(t.note ? { note: t.note } : {}),
+  }))
 }
 
 /**
@@ -192,26 +199,22 @@ export interface ClosedRow {
   pnl: number
   /** Milliseconds. */
   closedAt: number
-  reason: 'stop' | 'target' | 'manual'
+  reason: 'stop' | 'target' | 'manual' | 'session'
 }
 
 export function closedTrades(
   state: RaceState | null | undefined,
   account: PaperAccount,
 ): ClosedRow[] {
-  const race: ClosedRow[] = state
-    ? Object.values(state.strategies).flatMap((s) =>
-        s.closed.map((t) => ({
-          key: `race:${s.ruleId}:${t.market}:${t.exitTime}`,
-          by: s.name,
-          market: t.market,
-          side: t.direction,
-          pnl: t.pnl,
-          closedAt: t.exitTime * 1000,
-          reason: t.reason,
-        })),
-      )
-    : []
+  const race: ClosedRow[] = (state?.funded?.closed ?? []).map((t) => ({
+    key: `funded:${t.market}:${t.exitTime}`,
+    by: FUNDED.name,
+    market: t.market,
+    side: t.direction,
+    pnl: t.pnl,
+    closedAt: t.exitTime * 1000,
+    reason: t.reason,
+  }))
   const demo: ClosedRow[] = account.history.map((t) => ({
     key: `demo:${t.id}`,
     by: 'Demo',
@@ -225,16 +228,14 @@ export function closedTrades(
 }
 
 /**
- * Money already settled in the race accounts: every closed trade (after fees)
- * minus the entry fees open trades still owe. Plus the open P&L, this is the
- * result the Race tab shows (`summarize` in race/live.ts). 0 without a race.
+ * Money already settled in the funded test: every closed trade (after fees)
+ * minus the entry fees open trades still owe. Plus the open P&L, this is its
+ * result (`fundedMoney` in race/funded.ts minus the start). 0 without one.
  */
 export function settledSoFar(state: RaceState | null | undefined): number {
-  if (!state) return 0
-  return Object.values(state.strategies).reduce(
-    (a, s) => a + s.balance - state.startMoney - s.open.reduce((f, t) => f + t.entryFee, 0),
-    0,
-  )
+  const f = state?.funded
+  if (!f) return 0
+  return f.balance - f.startMoney - f.open.reduce((a, t) => a + t.entryFee, 0)
 }
 
 export interface Tally {

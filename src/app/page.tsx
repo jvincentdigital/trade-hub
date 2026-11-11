@@ -6,15 +6,15 @@ import { HelpCircle } from 'lucide-react'
 import { useCandleMap, useCryptoPrices, useForexRates } from '@/lib/hooks/useMarketData'
 import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
-import { RACE_SIZING } from '@/lib/race/account'
+import { FUNDED, fundedView } from '@/lib/race/funded'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
 import { getInstrument } from '@/lib/paper/instruments'
 import {
   closedTrades,
   demoPositions,
   ifAllHit,
+  fundedPositions,
   measure,
-  racePositions,
   settledSoFar,
   sortPositions,
   type OpenPosition,
@@ -34,7 +34,6 @@ import { POUND_AND_GOLD } from '@/lib/positions/london'
 import { EXTRA_STRATEGIES } from '@/lib/race/extras'
 import { HowSheet } from '@/components/home/HowSheet'
 import { LondonStrip } from '@/components/home/LondonStrip'
-import { Strategies } from '@/components/home/Strategies'
 import { FAILED_TEXT, Summary } from '@/components/home/Summary'
 import { TradeRow, rowId } from '@/components/home/TradeRow'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from '@/components/home/ui'
@@ -102,7 +101,7 @@ function useUrlState() {
 }
 
 function Today() {
-  const { state, isLoading: raceLoading, error: raceError } = useRace()
+  const { state, closeRequests, requestClose, isLoading: raceLoading, error: raceError } = useRace()
   const account = usePaperAccount()
   const { prices } = useLivePrices()
   const [tab, setTab] = useState<Tab>('all')
@@ -116,7 +115,8 @@ function Today() {
   }, [])
 
   const rows = useMemo(() => {
-    const all = [...racePositions(state), ...demoPositions(account, prices)]
+    // The funded test's trades (the account Today follows) and the demo account's.
+    const all = [...fundedPositions(state), ...demoPositions(account, prices)]
     return sortPositions(
       all.map((pos) => ({ pos, m: measure(pos, priceFor(pos, prices, state?.prices)) })),
     )
@@ -125,22 +125,31 @@ function Today() {
   // The race feed failed and there is nothing to show: say so, not "no trades".
   const failed = !!raceError && rows.length === 0
 
-  const openPnl = rows.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
+  // The summary is the funded test only; demo trades show in the list.
+  const funded = useMemo(() => rows.filter((r) => r.pos.source === 'race'), [rows])
+  const openPnl = funded.reduce((a, r) => a + (r.m.pnl ?? 0), 0)
   const look = rows.filter((r) => needsLook(r.m.status))
   const pound = rows.filter((r) => POUND_AND_GOLD.includes(r.pos.market))
   const series = useMemo(
     () =>
       pnlSeries(
-        rows.map((r) => r.pos),
+        funded.map((r) => r.pos),
         candles,
         now,
         openPnl,
       ),
-    [rows, candles, now, openPnl],
+    [funded, candles, now, openPnl],
   )
+  // Priced like the rows, so the challenge and the big number agree.
+  const challenge = useMemo(() => {
+    if (!state?.funded) return null
+    const live = Object.fromEntries(
+      funded.flatMap((r) => (r.m.price ? [[r.pos.market, r.m.price]] : [])),
+    )
+    return fundedView(state.funded, { ...state.prices, ...live }, Math.floor(now / 1000))
+  }, [state, funded, now])
   const strategyCount = state ? Object.keys(state.strategies).length : 0
-  const startMoney = state?.startMoney ?? 1000
-  const sizing = state?.sizing ?? RACE_SIZING
+  const startMoney = FUNDED.startMoney
   const closedToday = useMemo(
     () => closedTodayLine(closedTrades(state, account), now),
     [state, account, now],
@@ -192,6 +201,8 @@ function Today() {
       open={trade === r.pos.key}
       onToggle={() => (trade === r.pos.key ? close('trade') : nav.open('trade', r.pos.key))}
       onClose={() => close('trade')}
+      closeRequestedAt={r.pos.closeId ? closeRequests[r.pos.closeId]?.at : undefined}
+      onCloseNow={r.pos.closeId ? () => requestClose(r.pos.closeId!).then(() => {}) : undefined}
     />
   )
 
@@ -252,26 +263,19 @@ function Today() {
             )}
             pnl={openPnl}
             settled={settledSoFar(state)}
-            since={state ? clock(state.startedAt, now) : null}
+            since={state?.funded ? clock(state.funded.startedAt, now) : null}
+            funded={challenge}
+            clockOf={(sec) => clock(sec * 1000, now)}
             series={series}
             sinceText={series.length > 1 ? `Since ${clock(series[0].t, now)}` : null}
-            hit={ifAllHit(rows.map((r) => r.m))}
-            notCounted={notCountedLine(rows)}
+            hit={ifAllHit(funded.map((r) => r.m))}
+            notCounted={notCountedLine(funded)}
             lookLine={lookLine(rows)}
             needsLook={look.length > 0}
             closedToday={closedToday}
             startMoney={startMoney}
-            riskPct={sizing.riskPct}
+            riskPct={FUNDED.sizing.riskPct}
           />
-          {state && (
-            <Strategies
-              groups={groups.filter((g) => g[0].pos.source === 'race')}
-              state={state}
-              rules={RULES}
-              startMoney={startMoney}
-              maxOpen={sizing.maxOpen}
-            />
-          )}
         </div>
 
         <div style={{ display: 'grid', gap: 18, minWidth: 0, alignContent: 'start' }}>
@@ -399,7 +403,7 @@ function Today() {
                           <p style={{ ...secondary, fontSize: FS.xs }}>
                             {first.source === 'demo'
                               ? `${g.length} open in your demo account`
-                              : `${g.length} of ${sizing.maxOpen} open${rule ? `, ${TF_WORD[rule.timeframe]} candles, target ${rule.rr}x` : extra ? `, ${extra.candles} candles, target ${extra.rr}` : ''}`}
+                              : `${g.length} open${rule ? `, ${TF_WORD[rule.timeframe]} candles, target ${rule.rr}x` : extra ? `, ${extra.candles} candles, target ${extra.rr}` : ''}`}
                           </p>
                         </div>
                         <span

@@ -8,6 +8,7 @@ import {
   ALLOWED_CRYPTO,
   minStopForFullRisk,
   newTradeBlock,
+  NOT_LIVE,
   RACE_SIZING,
   sizeRaceTrade,
 } from './account'
@@ -21,6 +22,7 @@ import {
 } from './leaderboard'
 import {
   createRaceState,
+  entryLevels,
   parseRaceState,
   raceStateSchema,
   stepStrategy,
@@ -147,6 +149,41 @@ describe('live forward test step', () => {
     const r = stepStrategy(fresh(), [tick({ signal: sig(), price: 111 })], 5000)
     expect(r.opened).toHaveLength(0)
     expect(r.strategy.lastSignal.bitcoin).toBe(1000)
+  })
+
+  it('re-anchor: a rule trade that fills away from the signal keeps its planned 2R', () => {
+    // Signal at 100: stop 95 (5 away), target 110 (10 away, 2R). The fill comes at 102.
+    const old = stepStrategy(fresh(), [tick({ signal: sig(), price: 102 })], 5000).opened[0]
+    expect(old.stop).toBe(95)
+    expect(old.takeProfit).toBe(110)
+    expect((old.takeProfit - old.entry) / (old.entry - old.stop)).toBeCloseTo(8 / 7) // drifted
+    const t = stepStrategy(fresh(), [tick({ signal: sig(), price: 102, reanchor: true })], 5000)
+      .opened[0]
+    expect(t.stop).toBeCloseTo(97)
+    expect(t.takeProfit).toBeCloseTo(112)
+    expect((t.takeProfit - t.entry) / (t.entry - t.stop)).toBeCloseTo(2)
+    // the size comes from the fill-to-stop distance: $20 at the stop exactly
+    expect(t.units * (t.entry - t.stop)).toBeCloseTo(20)
+    // a short moves the same way, mirrored
+    const s = stepStrategy(
+      fresh(),
+      [
+        tick({
+          signal: sig({ direction: 'short', stop: 105, takeProfit: 90 }),
+          price: 99,
+          reanchor: true,
+        }),
+      ],
+      5000,
+    ).opened[0]
+    expect(s.stop).toBeCloseTo(104)
+    expect(s.takeProfit).toBeCloseTo(89)
+  })
+
+  it('re-anchor still skips a signal whose original stop or target the price already passed', () => {
+    expect(entryLevels(sig(), 111, true)).toBeNull()
+    expect(entryLevels(sig(), 94, true)).toBeNull()
+    expect(entryLevels(sig(), 100, true)).toEqual({ stop: 95, takeProfit: 110 })
   })
 
   const opened = () => stepStrategy(fresh(), [tick({ signal: sig() })], 5000).strategy
@@ -337,20 +374,38 @@ describe('rules for new trades (John, 2026-11-11)', () => {
   })
 
   it('GBP/JPY is a copy of GBP/USD: never both open in one account', () => {
-    // the 2026-11-11 case: both signalled on the same tick
+    // the 2026-11-11 case: both signalled on the same tick. New GBP/JPY trades are
+    // off since that evening (once-a-day price), so the copy rule now only guards
+    // a new GBP/USD in an account that still holds an older GBP/JPY trade.
     const r = step(fresh(), [fx('GBP-USD'), fx('GBP-JPY')])
     expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD'])
     expect(r.passed).toEqual([
       {
         market: 'GBP-JPY',
-        reason: 'GBP-JPY is a copy of the open GBP-USD trade (one pound/dollar bet per account)',
+        reason: 'no new trades on GBP-JPY: priced from a once-a-day rate, not live',
       },
     ])
     expect(step(holding(['GBP-JPY', 'short']), [fx('GBP-USD', 'short')]).passed[0].reason).toMatch(
       /GBP-USD is a copy of the open GBP-JPY/,
     )
-    // GBP/JPY with gold the same way is one bet, two trades: fine
-    expect(step(holding(['pax-gold', 'long']), [fx('GBP-JPY')]).opened).toHaveLength(1)
+  })
+
+  it('no new trades on markets priced once a day, in every account; open ones still close', () => {
+    for (const market of ['USD-JPY', 'NZD-USD', 'GBP-JPY'])
+      expect(step(fresh(), [fx(market)]).passed).toEqual([
+        { market, reason: `no new trades on ${market}: priced from a once-a-day rate, not live` },
+      ])
+    expect(NOT_LIVE).toEqual(['USD-JPY', 'NZD-USD', 'GBP-JPY'])
+    // an open USD/JPY trade still closes at its target
+    const s = holding(['USD-JPY', 'long'])
+    const t = s.open[0]
+    const hit = step(s, [
+      tick({
+        market: 'USD-JPY',
+        path: [bar(t.entryBucket + 2 * H, t.entry, t.takeProfit + 1, t.entry, t.takeProfit)],
+      }),
+    ])
+    expect(hit.closed.map((c) => c.reason)).toEqual(['target'])
   })
 
   it('other accounts may disagree; trades already open are not touched', () => {
