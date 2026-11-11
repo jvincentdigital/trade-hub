@@ -326,6 +326,28 @@ short regime, the EUR/GBP and USD/JPY conversions, the lab's London breakout
 skipping "no chase", and John's Fib only checked for arithmetic. Most results
 got worse after the fixes; see the report's "Before and after".
 
+## Results (second run, 2026-11-11 08:22 UTC)
+
+Report: `~/jvd-outputs/2026-11-11/strategy-lab/REPORT.md` (and `.html`); the
+first run is kept there as `run1-*`.
+
+- 893 bots (717 distinct), 429 with 30+ out-of-sample trades: 33 made money
+  out-of-sample (first run 52), 13 in both halves (26). Random-direction test:
+  23 of 429 under p 0.05, about 21 expected by luck; 1 passes Holm (RSI range
+  reversal 1h on USD/JPY, flat in-sample: a regime, not an edge).
+- Holdout (2019 to 2024-11): 7 of 104 bots made money there, none in all
+  three periods. **All five live picks lost there**: RSI range reversal US30
+  -$5,649 (PF 0.90), John's Fib EUR/USD 4h -$8,588 (0.67), MFX EMA 12/36 gold
+  4h -$3,388 (0.85), John's Fib London hours US30 -$5,909 (0.80), MM stop hunt
+  gold 1h -$8,374 (0.65). They run live as a forward test only.
+- John's Fib: about 0R a trade before costs on 5-30 minute charts; at its
+  levels the mirrored (pullback-continues) trade did clearly better in 70 of
+  306 distinct Fib bots (about 15 by chance).
+- News: closing before red news helped 146 and hurt 78 single-market pairs
+  (sign test p < 0.001); partly the cost model's own 3x news spread.
+- London breakout (live rule): lost in UK winter time in-sample (-$5,116 on
+  GBP/USD and gold together); the race is in winter time now.
+
 ## Not done
 
 - 5-30 minute history before 2025-11 and for EUR/USD, USD/JPY, US30,

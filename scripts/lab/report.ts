@@ -259,7 +259,7 @@ function botCard(d: Detailed, i: number | null): { title: string; lines: string[
   ]
   if (d.markets.includes('US30'))
     lines.push(
-      `US30 sizing: in the US, a $10,000 account would trade Micro Dow futures ($0.50 a point, whole contracts), not a 20:1 CFD. Rounded down to whole contracts, the test months come to about ${delta(mymNet(d))} (risk per trade about 1% instead of 2%).`,
+      `US30 sizing: in the US, a $10,000 account would trade Micro Dow futures ($0.50 a point, whole contracts), not a 20:1 CFD. Rounded down to whole contracts, the test months come to about ${delta(mymNet(d))} instead of ${delta(d.oos.net)} (smaller trades lose part of their size to the rounding).`,
     )
   if (live) lines.push(`Live race: **${live.name}**, ${LAB_MAX_DAYS[live.style]}. ${live.why}`)
   return { title: `${i != null ? `${i}. ` : ''}${label(d)}`, lines }
@@ -598,7 +598,7 @@ function toHtml(blocks: Block[]): string {
           (_, i) => i > 0 && t.rows.every((r) => /^[\u2212+$\d]/.test(r[i] ?? '')),
         )
         const cls = (i: number) => (isNum[i] ? ' class="n"' : '')
-        return `<table${t.narrow ? ' class="narrow"' : ''}><thead><tr>${t.head.map((h, i) => `<th${cls(i)}>${inline(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.map((r) => `<tr>${r.map((c, i) => `<td${cls(i)}>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+        return `<div class="tw"><table${t.narrow ? ' class="narrow"' : ''}><thead><tr>${t.head.map((h, i) => `<th${cls(i)}>${inline(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.map((r) => `<tr>${r.map((c, i) => `<td${cls(i)}>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
       }
       return b.cards
         .map(
@@ -634,14 +634,15 @@ code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .card h3 { margin: 0 0 6px; font-size: 15px; }
 .card p { margin: 6px 0; font-size: 14.5px; }
 .card .what { color: var(--muted); }
-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; table-layout: fixed; }
+.tw { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 500; font-size: 12.5px; }
 td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
-th:first-child, td:first-child { width: 40%; }
-table.narrow th:first-child, table.narrow td:first-child { width: 2em; }
-table.narrow th:nth-child(2), table.narrow td:nth-child(2) { width: 52%; }
-td.n, .nw { white-space: nowrap; }
+td:first-child { min-width: 9em; }
+table.narrow td:first-child { min-width: 0; }
+table.narrow td:nth-child(2) { min-width: 9em; }
+td.n, th.n, .nw { white-space: nowrap; }
 @media (max-width: 420px) { body { font-size: 15px; } table { font-size: 12.5px; } th, td { padding: 6px 4px; } }
 </style>
 </head>
