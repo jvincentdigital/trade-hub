@@ -218,6 +218,69 @@ pound/dollar rule, and `checkPicks` applies the same check in Claude's order
 pick as `REJECT`. Its prompt now gives the account's real balance instead of
 "$1,000".
 
+## Funded test account and the Lab (John, 2026-11-11)
+
+John: "instead of every account having $10,000, it would be a total account of
+$10,000... we're gonna limit our trades". He chose one funded-style account fed
+by every strategy's signals, with the 11 strategy accounts kept running as a
+quiet **Lab**, and 2% risk per trade. Code: `src/lib/race/funded.ts` (pure,
+tested in `funded.test.ts`), stored as `funded` in `race.json`. Today shows it
+as the main card (`docs/dashboard.md`); the Race tab shows it above the Lab.
+
+The limits copy FTMO's 2-Step challenge, the best documented fit for John's
+markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
+
+| Rule                 | Value                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Start                | $10,000, play money                                                                                                |
+| Risk per trade       | 2% of the current balance ($200 at the start), size from the fill-to-stop distance like the Lab                    |
+| Open trades          | at most 2, one per market                                                                                          |
+| New trades a day     | at most 3 per FTMO day                                                                                             |
+| Rules for new trades | the Lab's: Bitcoin only among crypto, one pound/dollar bet, at most 2 the same way on the dollar (`newTradeBlock`) |
+| Markets              | not USD/JPY, NZD/USD or GBP/JPY (`FUNDED_SKIP`): they are priced from a once-a-day ECB rate, not live              |
+| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down 4% of its start balance                            |
+| Daily loss           | **failed** when the day's loss reaches 5% of the day-start balance, closed and open trades together                |
+| Max loss             | **failed** when the balance or the money (with open P&L) is under $9,000 (10% of the start, static)                |
+| Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                            |
+| Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)        |
+
+- **Signal order.** Each check collects every strategy's signal in a fixed
+  order: the built-in rules in the order of `BUILT_IN_RULES`
+  (`src/lib/rules/presets.ts`: MM Confluence v2, EMA 50 pullback, RSI range
+  reversal, MM stop hunt reversal, MM three-day exhaustion, MFX level 3 peak
+  reversal, MFX EMA 12/36 pullback, MFX second leg at the day high/low, MFX
+  EMA 800 pin), then London breakout, then Claude's picks; inside one
+  strategy, its markets in its own order. The first signal that passes every
+  rule opens. A later one on a market that is already open is logged as
+  `PASS ... already open (from <strategy>)`. Claude's picks reach it from
+  `scripts/claude-picks.ts`.
+- **Money** = balance plus open P&L at the race's prices, minus the entry fees
+  open trades still owe (the same as the Lab). The day-start balance is the
+  start money plus every trade closed before that day's Prague midnight.
+- **A trading day** is an FTMO day on which the account opened a trade.
+- **Checked at each race check**, not tick by tick like a real firm: a quick
+  dip between two checks that recovers is not seen. Stops and targets are
+  still found on the candles in between.
+- **Failed or passed** is final: no new trades after it, open trades run to
+  their stop, target or the 12:45 close, and the card says which rule broke
+  or that it passed. To run a fresh one: `make funded-reset` (backs up
+  race.json first, then the next tick starts a new $10,000 account).
+- **Start.** The first tick that runs this code starts it with $10,000. Every
+  signal already out there at that moment is marked as used, so it only
+  trades signals that come after.
+- Not built: no check that a new trade's stop would fit under the 5% day
+  limit (only the 4% buffer), no consistency rule (FTMO 2-Step has none), no
+  news freeze (FTMO's challenge has none).
+
+The tick log shows its lines with the name `Funded test`, for example:
+
+```
+  OPEN  Funded test GBP-USD long at 1.3123 (signal from london-breakout): 0.15 lots ...
+  PASS  Funded test EUR-USD (ema50-pullback): 2 trades already open
+  PASS  Funded test USD-JPY (rsi-range-reversal): priced from a once-a-day rate, not live
+  Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss -$0.00 of -$509.21, 2 of 4 days
+```
+
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)
 
 John: "after the New York session ends, close all the trades and take the

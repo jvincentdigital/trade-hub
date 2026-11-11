@@ -70,6 +70,31 @@ export const raceStrategySchema = z.object({
 })
 export type RaceStrategy = z.infer<typeof raceStrategySchema>
 
+/** A funded test trade (./funded.ts): a race trade plus the strategy whose signal opened it. */
+export const fundedTradeSchema = liveTradeSchema.extend({ strategy: z.string() })
+export type FundedTrade = z.infer<typeof fundedTradeSchema>
+export const closedFundedTradeSchema = closedLiveTradeSchema.extend({ strategy: z.string() })
+export type ClosedFundedTrade = z.infer<typeof closedFundedTradeSchema>
+
+/** The funded test account (John, 2026-11-11): one $10,000 account, FTMO-style limits. */
+export const fundedSchema = z.object({
+  startMoney: z.number().positive(),
+  /** Milliseconds. */
+  startedAt: z.number(),
+  /** Start money plus every closed trade's net P&L. */
+  balance: z.number(),
+  open: z.array(fundedTradeSchema),
+  closed: z.array(closedFundedTradeSchema),
+  /** Newest signal acted on, per "<strategy>:<market>", so one signal makes one trade. */
+  lastSignal: z.record(z.string(), z.number()),
+  status: z.enum(['active', 'passed', 'failed']),
+  /** Which rule broke, or how it passed, in plain words. */
+  statusNote: z.string().optional(),
+  /** Unix seconds of the check that failed or passed it. */
+  statusAt: z.number().optional(),
+})
+export type FundedState = z.infer<typeof fundedSchema>
+
 export const tickLogSchema = z.object({
   at: z.number(),
   checked: z.number(),
@@ -95,6 +120,8 @@ export const raceStateSchema = z.object({
   /** Latest price per market seen by the last tick, for open P&L. */
   prices: z.record(z.string(), z.number()),
   strategies: z.record(z.string(), raceStrategySchema),
+  /** The funded test account; started by the first tick that runs this code. */
+  funded: fundedSchema.optional(),
   /** Unix seconds of the check that did the last 12:45 AST daily close (./session.ts). */
   dailyCloseAt: z.number().optional(),
 })
@@ -317,7 +344,7 @@ export const tradeRisk = (t: LiveTrade) => t.units * Math.abs(t.entry - t.stop) 
  * before the entry (a market whose path moved to smaller candles, like
  * forex from daily to 15m on 2026-11-10, must not look before its entry).
  */
-function exitOf(t: LiveTrade, path: OHLCCandle[]) {
+export function exitOf(t: LiveTrade, path: OHLCCandle[]) {
   const long = t.direction === 'long'
   for (const c of path) {
     if (c.time <= t.entryBucket || c.time < t.entryTime) continue
@@ -451,27 +478,35 @@ export function closeAll(
 ): { state: RaceState; closed: (ClosedLiveTrade & { strategy: string })[]; missing: string[] } {
   const closed: (ClosedLiveTrade & { strategy: string })[] = []
   const missing = new Set<string>()
+  /** One account's open trades closed; the ones with no price stay open. */
+  const closeAccount = <T extends LiveTrade>(account: string, trades: T[], balance: number) => {
+    const open: T[] = []
+    const done: ReturnType<typeof bookClose<T>>[] = []
+    for (const t of trades) {
+      const exit = exitPrices[t.market]
+      if (!(exit > 0)) {
+        missing.add(t.market)
+        open.push(t)
+        continue
+      }
+      const c = bookClose(t, exit, timeSec, reason, feeRate(t.market))
+      balance += c.pnl
+      done.push(c)
+      closed.push({ ...c, strategy: account })
+    }
+    return { balance, open, done }
+  }
   const strategies = Object.fromEntries(
     Object.entries(state.strategies).map(([id, s]) => {
-      let balance = s.balance
-      const open: LiveTrade[] = []
-      const done: ClosedLiveTrade[] = []
-      for (const t of s.open) {
-        const exit = exitPrices[t.market]
-        if (!(exit > 0)) {
-          missing.add(t.market)
-          open.push(t)
-          continue
-        }
-        const c = bookClose(t, exit, timeSec, reason, feeRate(t.market))
-        balance += c.pnl
-        done.push(c)
-        closed.push({ ...c, strategy: s.name })
-      }
-      return [id, { ...s, balance, open, closed: [...s.closed, ...done] }]
+      const r = closeAccount(s.name, s.open, s.balance)
+      return [id, { ...s, balance: r.balance, open: r.open, closed: [...s.closed, ...r.done] }]
     }),
   )
-  return { state: { ...state, strategies }, closed, missing: [...missing] }
+  const f = state.funded
+  const fr = f && closeAccount('Funded test', f.open, f.balance)
+  const funded =
+    f && fr ? { ...f, balance: fr.balance, open: fr.open, closed: [...f.closed, ...fr.done] } : f
+  return { state: { ...state, strategies, funded }, closed, missing: [...missing] }
 }
 
 /**
