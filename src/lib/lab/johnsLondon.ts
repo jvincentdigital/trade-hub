@@ -2579,6 +2579,8 @@ export interface FreezeRecord {
   /** Section 4 steps 5 and 7: false means "the design year did not qualify" goes on every report. */
   designYearQualified?: { v1: boolean; ny: boolean }
   window: { from: string; to: string }
+  /** The results.json of every earlier clean-year scoring. Non-empty means the report says "seen twice". */
+  cleanYearScoredBefore?: string[]
 }
 
 /** What the runner found on disk and in git just before it would read a candle. */
@@ -2633,4 +2635,19 @@ export function freezeProblems(rec: FreezeRecord, facts: FreezeFacts): string[] 
     out.push('the window must be 2024-11-11 to 2025-11-10')
   if (!facts.copyMatches) out.push('holdout-run/FROZEN.txt is not the committed freeze record')
   return out
+}
+
+/**
+ * Which year counts, on every report (section 5). The design year chose the settings and the rules
+ * (about 40 versions and more than 20 rule choices), so a strategy with no edge could look as good
+ * there. It is never evidence, and its numbers are never added to the clean year's.
+ * `seenBefore` is how many times the clean year was scored before this run.
+ */
+export function evidenceNote(year: 'design' | 'clean', seenBefore = 0): string {
+  if (year === 'design')
+    return "Not evidence: the settings and rules were chosen on this year, from about 40 versions, so a strategy with no edge could look this good here. Never add these numbers to the clean year's."
+  const only =
+    'Only the clean year is evidence. The design year chose the settings, so its numbers are not added to these.'
+  if (seenBefore < 1) return only
+  return `${seenBefore === 1 ? 'Seen twice' : `Seen ${seenBefore + 1} times`}: the clean year was scored ${seenBefore === 1 ? 'once' : `${seenBefore} times`} before this run. This run can take a pass away. It can never turn a fail or a no verdict into a pass. ${only}`
 }

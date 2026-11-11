@@ -14,6 +14,7 @@ import {
   CLEAN_END,
   CLEAN_START,
   cleanYear,
+  evidenceNote,
   FREEZE_FILE,
   freezeProblems,
   parseFreezeRecord,
@@ -1832,6 +1833,25 @@ describe('10 clean loader and the freeze record (section 5)', () => {
     expect(
       freezeProblems({ ...rec, window: { from: '2024-11-01', to: '2025-11-10' } }, ok()),
     ).toHaveLength(1)
+  })
+  it('says the design year is not evidence and is never added to the clean year', () => {
+    const d = evidenceNote('design')
+    expect(d).toMatch(/^Not evidence/)
+    expect(d).toMatch(/Never add these numbers to the clean year/)
+    const c = evidenceNote('clean')
+    expect(c).toMatch(/^Only the clean year is evidence/)
+    expect(c).not.toMatch(/seen/i)
+  })
+  it('labels a second clean scoring "seen twice", with the section 5 rule', () => {
+    const md = `\`\`\`json\n${JSON.stringify({ ...rec, cleanYearScoredBefore: ['/x/holdout-run/results.json'] })}\n\`\`\``
+    const seen = parseFreezeRecord(md).cleanYearScoredBefore ?? []
+    expect(seen).toHaveLength(1)
+    expect(freezeProblems(parseFreezeRecord(md), ok())).toEqual([])
+    const t = evidenceNote('clean', seen.length)
+    expect(t).toMatch(/^Seen twice: the clean year was scored once before this run\./)
+    expect(t).toMatch(/never turn a fail or a no verdict into a pass/)
+    expect(t).toMatch(/Only the clean year is evidence/)
+    expect(evidenceNote('clean', 2)).toMatch(/^Seen 3 times/)
   })
 })
 

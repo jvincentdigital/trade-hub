@@ -43,6 +43,7 @@ import {
   cleanYear,
   coinRun,
   DESIGN_START,
+  evidenceNote,
   FLIP_GRID,
   flipBeatsPlain,
   FREEZE_FILE,
@@ -141,6 +142,8 @@ function checkFreeze(): { rec: FreezeRecord; head: string } {
     if (!rec.files[p]) problems.push(`${p} is not in the freeze record`)
   if (existsSync(join(OUT, 'results.json')))
     problems.push(`the clean year was already scored: ${join(OUT, 'results.json')} exists`)
+  for (const p of rec.cleanYearScoredBefore ?? [])
+    if (!existsSync(p)) problems.push(`the earlier clean scoring ${p} is missing`)
   if (problems.length) throw new Error(`clean run refused:\n- ${problems.join('\n- ')}`)
   return { rec, head: git('rev-parse', 'HEAD') }
 }
@@ -784,8 +787,12 @@ async function main() {
     endedByTheFlatRule: x.raceExits,
   }))
 
+  const seenBefore = frozen?.rec.cleanYearScoredBefore ?? []
+  const evidence = evidenceNote(CLEAN ? 'clean' : 'design', seenBefore.length)
   const json = {
     strategy: "John's London Strategy v1, v1-flip, v1-NY and thirds",
+    evidence,
+    cleanYearScoredBefore: CLEAN ? seenBefore : undefined,
     spec: '~/jvd-outputs/2026-11-11/london-strategy/SPEC.md',
     data: {
       history: HISTORY,
@@ -888,8 +895,10 @@ async function main() {
   L.push(`# John's London strategies: ${CLEAN ? 'clean year' : 'design year'} results`, '')
   L.push(
     CLEAN
-      ? `Clean year, ${arg('from')} to ${arg('to')} (UTC), scored once with the settings of the freeze record (${FREEZE_FILE}, code ${frozen!.rec.codeCommit}, run from ${frozen!.head}). GBP/USD and gold, one $10,000 play account per run, 2% risk a trade. Only the frozen runs count. The other pre-registered runs are context and change nothing.`
+      ? `Clean year, ${arg('from')} to ${arg('to')} (UTC), scored ${seenBefore.length ? 'again' : 'once'} with the settings of the freeze record (${FREEZE_FILE}, code ${frozen!.rec.codeCommit}, run from ${frozen!.head}). GBP/USD and gold, one $10,000 play account per run, 2% risk a trade. Only the frozen runs count. The other pre-registered runs are context and change nothing.`
       : `Design data only, ${arg('from')} to ${arg('to')} (UTC). GBP/USD and gold, one $10,000 play account per run, 2% risk a trade. Not the verdict: the clean year is scored later, once.`,
+    '',
+    `**${evidence}**`,
     '',
   )
   if (frozen) {
