@@ -139,7 +139,7 @@ export function HowSheet(props: {
             ],
             [
               'Fees.',
-              'Paid going in and coming out: 0.1% a side on crypto, about 0.007% on forex, 0.02% on gold. Open P&L on this page is before fees; closed trades are after fees.',
+              'Paid going in and coming out: 0.1% a side on crypto, about 0.007% on forex, 0.02% on gold. The result at the top counts every fee except the exit fee of trades still open; open P&L is before fees; closed trades are after fees.',
             ],
           ].map(([title, text], i) => (
             <li key={title} style={{ display: 'flex', gap: 12 }}>

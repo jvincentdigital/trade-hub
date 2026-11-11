@@ -140,9 +140,9 @@ tick saves a copy first as `race.json.bak-<date-time>-split`; `/api/race` only
 converts it for display. Old trades keep their old small size; new trades use
 2%.
 
-## Two rules for new trades (John, 2026-11-11)
+## Three rules for new trades (John, 2026-11-11)
 
-John asked for both on 2026-11-11, about 09:55 AST. They are checked in one
+John asked for the first two on 2026-11-11, about 09:55 AST, and the third about 12:05. They are checked in one
 place, `newTradeBlock` in `src/lib/race/account.ts`, which `stepStrategy`
 (`live.ts`) runs before sizing every new trade. Every account goes through it:
 the built-in rules and London breakout (from the tick) and Claude's picks
@@ -186,6 +186,17 @@ A short is the other side. A new trade in the group is refused when:
   that stays frozen all day (`docs/london-open.md`), so the two were the same
   trade twice: on 2026-11-11 one rule opened both and lost $212 on each.
 
+**3. At most 2 bets the same way on the dollar per account.** Added the
+same day (about 12:05 AST) on John's yes, after the 12:00 tick: RSI range
+reversal held 4 open trades and MFX level 3 held 3, each all the same bet that
+the dollar falls (buy EUR/USD, buy GBP/USD, sell USD/CHF, sell USD/CAD). Each
+trade gets a dollar side (`DOLLAR`): a long on EUR/USD, GBP/USD, GBP/JPY,
+AUD/USD, NZD/USD or gold is + (dollar down), a long on USD/JPY, USD/CHF or
+USD/CAD is - (dollar up), a short is the other side. GBP/JPY counts because
+here it moves with GBP/USD (see above). EUR/GBP and crypto have no dollar side.
+A new trade is refused when the account already has 2 open trades on its
+dollar side (`MAX_DOLLAR`). Opposite dollar bets are allowed: they offset.
+
 Different accounts may still disagree: one strategy can be long GBP/USD while
 another is short gold. Trades already open on both sides stay open until they
 close.
@@ -198,6 +209,7 @@ lines. For example:
   PASS  RSI range reversal pax-gold: against the open GBP-USD long (one pound/dollar bet per account)
   PASS  EMA 50 pullback GBP-JPY: GBP-JPY is a copy of the open GBP-USD trade (one pound/dollar bet per account)
   PASS  London breakout pax-gold: 2 pound/dollar trades already open the same way
+  PASS  MFX level 3 peak reversal GBP-USD: 2 trades already bet the dollar falls
 ```
 
 Claude's picks only trades GBP/USD and gold (no crypto). Its prompt states the

@@ -224,6 +224,19 @@ export function closedTrades(
   return [...race, ...demo].sort((a, b) => b.closedAt - a.closedAt)
 }
 
+/**
+ * Money already settled in the race accounts: every closed trade (after fees)
+ * minus the entry fees open trades still owe. Plus the open P&L, this is the
+ * result the Race tab shows (`summarize` in race/live.ts). 0 without a race.
+ */
+export function settledSoFar(state: RaceState | null | undefined): number {
+  if (!state) return 0
+  return Object.values(state.strategies).reduce(
+    (a, s) => a + s.balance - state.startMoney - s.open.reduce((f, t) => f + t.entryFee, 0),
+    0,
+  )
+}
+
 export interface Tally {
   wins: number
   losses: number

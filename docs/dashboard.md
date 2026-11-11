@@ -19,17 +19,26 @@ column sits on the left and stays in view while the trades scroll on the right.
 1. **Header**: "Today", the date, "Play money only", and the **How trades are
    placed** button.
 2. **Summary card**:
-   - **Open P&L**, big, with a small line of the open P&L since the first open
-     trade ("Since 4:59 PM"; at most 7 days back). The line prices each open
-     trade at every closed candle since its entry and ends at the live number
-     (`pnlSeries` in `today.ts`). It shows only once it has 4 points over 2 hours
-     or more; before that it would be a straight ramp.
+   - **Result since the race started** ("Result since 12:51 AM"), big: every
+     closed trade after fees, plus the open P&L, minus the entry fees open
+     trades still owe. The same money the Race tab shows (`settledSoFar` in
+     `positions.ts` + the open rows). Under it, in whole dollars: "+$966 open, -$1,128
+     closed and fees". Changed 2026-11-11 on John's yes: the big number
+     used to be the open P&L only, which looked green (+$966) while 6 closed
+     trades had lost $1,083 (real result -$162). Demo trades count only while
+     open.
+   - A small line of the open P&L since the first open trade ("Open trades,
+     since 4:59 PM"; at most 7 days back). The line prices each open trade at every
+     closed candle since its entry and ends at the live number (`pnlSeries` in
+     `today.ts`). It shows only once it has 4 points over 2 hours or more;
+     before that it would be a straight ramp.
    - "8 open trades from 2 of 9 strategies" (demo trades counted apart).
-   - **Where today could end**: a bar from every stop hit (left, red) to every
-     target hit (right, green), with $0 marked and a "Now" marker at the open
-     P&L. Sums from entry, before fees (`ifAllHit` in `positions.ts`), ends
-     rounded to whole dollars. Trades without a stop, a target or a dollar rate
-     are left out, with a note that names the reason (`notCountedLine`).
+   - **Where the result could end**: a bar from every stop hit (left, red) to
+     every target hit (right, green), with $0 marked and a "Now" marker at the
+     result. Each end is the settled money plus the open trades' sums from
+     entry, before exit fees (`ifAllHit` in `positions.ts`), rounded to whole
+     dollars. Trades without a stop, a target or a dollar rate are left out,
+     with a note that names the reason (`notCountedLine`).
    - **One plain line** instead of status counts: "Nothing needs a look.
      Closest: Gold buy, 43% to target." or "2 trades need a look: AVAX sell
      near stop, Gold buy near target." (`lookLine`).

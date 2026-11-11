@@ -17,7 +17,12 @@ interface Props {
   /** Open trades right now. */
   count: number
   countLine: string
+  /** Open P&L: the open trades now, before fees. */
   pnl: number
+  /** Closed trades (after fees) minus entry fees still owed, all race accounts (settledSoFar). */
+  settled: number
+  /** When the race started ("12:51 AM"), or null without a race. */
+  since: string | null
   series: { t: number; pnl: number }[]
   sinceText: string | null
   hit: { stop: number; target: number }
@@ -30,12 +35,20 @@ interface Props {
   riskPct: number
 }
 
-/** The cockpit: open P&L, its path since the first entry, where today could end, one plain line. */
+/**
+ * The cockpit: the result (closed trades + open P&L - fees, like the Race tab),
+ * the open P&L's path since the first entry, where the result could end, one plain line.
+ */
 export function Summary(p: Props) {
-  const bar = goalBar(p.hit, p.pnl)
+  // John, 2026-11-11: the big number showed only open trades (+$966, green)
+  // while closed trades had lost $1,083. It now counts both.
+  const result = p.settled + p.pnl
+  const ends = { stop: p.settled + p.hit.stop, target: p.settled + p.hit.target }
+  const bar = goalBar(ends, result)
   // Whole dollars at the bar's ends; cents only on the Now tag.
-  const stopEnd = signedShort(Math.round(p.hit.stop))
-  const targetEnd = signedShort(Math.round(p.hit.target))
+  const stopEnd = signedShort(Math.round(ends.stop))
+  const targetEnd = signedShort(Math.round(ends.target))
+  const shown = p.count > 0 || p.settled !== 0
   return (
     <section aria-label="Summary" style={{ ...card, padding: '16px 18px' }}>
       <div
@@ -47,7 +60,9 @@ export function Summary(p: Props) {
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>Open P&amp;L</p>
+          <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>
+            Result{p.since ? ` since ${p.since}` : ''}
+          </p>
           {!p.failed && (
             <p
               style={{
@@ -56,10 +71,19 @@ export function Summary(p: Props) {
                 fontWeight: 700,
                 lineHeight: 1.1,
                 letterSpacing: '-0.03em',
-                color: p.count ? tone(p.pnl) : 'var(--text-secondary)',
+                color: shown ? tone(result) : 'var(--text-secondary)',
               }}
             >
-              {pnlText(p.count ? p.pnl : 0)}
+              {pnlText(shown ? result : 0)}
+            </p>
+          )}
+          {!p.failed && p.settled !== 0 && (
+            <p style={{ ...secondary, fontSize: FS.sm, marginTop: 4 }} data-testid="result-parts">
+              <span style={{ whiteSpace: 'nowrap' }}>{signedShort(Math.round(p.pnl))} open</span>
+              {', '}
+              <span style={{ whiteSpace: 'nowrap' }}>
+                {signedShort(Math.round(p.settled))} closed and fees
+              </span>
             </p>
           )}
           <p
@@ -86,11 +110,11 @@ export function Summary(p: Props) {
       {bar && (
         <div style={{ marginTop: 18 }}>
           <p style={{ fontSize: FS.sm, fontWeight: 600, marginBottom: 40 }}>
-            Where today could end
+            Where the result could end
           </p>
           <div
             role="img"
-            aria-label={`Now ${pnlText(p.pnl)}, between ${stopEnd} if every trade hits its stop and ${targetEnd} if every one hits its target`}
+            aria-label={`Now ${pnlText(result)}, between ${stopEnd} if every trade hits its stop and ${targetEnd} if every one hits its target`}
             style={{
               position: 'relative',
               height: 10,
@@ -122,7 +146,7 @@ export function Summary(p: Props) {
                 left: `${Math.min(bar.zero, bar.now)}%`,
                 width: `${Math.abs(bar.now - bar.zero)}%`,
                 borderRadius: 999,
-                background: tone(p.pnl),
+                background: tone(result),
               }}
             />
             <span
@@ -167,7 +191,7 @@ export function Summary(p: Props) {
                 whiteSpace: 'nowrap',
               }}
             >
-              Now <span style={{ color: tone(p.pnl) }}>{pnlText(p.pnl)}</span>
+              Now <span style={{ color: tone(result) }}>{pnlText(result)}</span>
             </span>
           </div>
           <div
@@ -275,7 +299,7 @@ function Spark({
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`Open P&L ${caption.toLowerCase()}, now ${pnlText(pnl)}`}
+        aria-label={`Open trades ${caption.toLowerCase()}, now ${pnlText(pnl)}`}
         style={{ display: 'block', width: '100%', height: 'auto' }}
       >
         <line
@@ -301,7 +325,11 @@ function Spark({
         />
         <circle cx={x(t1)} cy={y(pnl)} r={3.5} fill={color} />
       </svg>
-      <figcaption style={{ ...secondary, fontSize: FS.xs, marginTop: 2 }}>{caption}</figcaption>
+      <figcaption style={{ ...secondary, fontSize: FS.xs, marginTop: 2 }}>
+        Open trades
+        <br />
+        {caption}
+      </figcaption>
     </figure>
   )
 }

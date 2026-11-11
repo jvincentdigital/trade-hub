@@ -187,7 +187,8 @@ describe('live forward test step', () => {
   })
 
   it('every market shares one balance; the 6th signal waits for a free spot', () => {
-    const ids = ['EUR-USD', 'GBP-USD', 'AUD-USD', 'NZD-USD', 'USD-CAD', 'USD-CHF']
+    // mixed so the dollar rule (at most 2 the same way) lets all 6 through
+    const ids = ['EUR-USD', 'AUD-USD', 'USD-CAD', 'EUR-GBP', 'bitcoin', 'USD-CHF']
     const r = stepStrategy(
       fresh(),
       ids.map((market) => tick({ market, signal: sig(), leverage: 30, feeRate: 0 })),
@@ -361,6 +362,30 @@ describe('rules for new trades (John, 2026-11-11)', () => {
     const mixed = holding(['GBP-USD', 'long'], ['pax-gold', 'short'], ['GBP-JPY', 'long'])
     const kept = step(mixed, [tick({ market: 'GBP-USD' }), tick({ market: 'pax-gold' })])
     expect(kept.strategy.open).toEqual(mixed.open)
+  })
+
+  it('at most 2 bets the same way on the dollar', () => {
+    // the 2026-11-11 12:00 case: EUR/USD long and USD/CHF short open, GBP/USD long next
+    const r = step(holding(['EUR-USD', 'long'], ['USD-CHF', 'short']), [fx('GBP-USD')])
+    expect(r.opened).toHaveLength(0)
+    expect(r.passed).toEqual([
+      { market: 'GBP-USD', reason: '2 trades already bet the dollar falls' },
+    ])
+    // the other way: EMA 50's short EUR/USD + long USD/JPY, then gold short
+    expect(
+      step(holding(['EUR-USD', 'short'], ['USD-JPY', 'long']), [fx('pax-gold', 'short')]).passed[0]
+        .reason,
+    ).toBe('2 trades already bet the dollar rises')
+    // inside one tick: the third dollar-down signal waits
+    const one = step(fresh(), [fx('EUR-USD'), fx('AUD-USD'), fx('USD-CAD', 'short')])
+    expect(one.opened.map((t) => t.market)).toEqual(['EUR-USD', 'AUD-USD'])
+    // opposite dollar bets are fine, and so are markets without the dollar
+    expect(
+      step(holding(['EUR-USD', 'long'], ['AUD-USD', 'long']), [fx('USD-CHF')]).opened,
+    ).toHaveLength(1)
+    expect(
+      step(holding(['EUR-USD', 'long'], ['AUD-USD', 'long']), [fx('EUR-GBP')]).opened,
+    ).toHaveLength(1)
   })
 
   it('newTradeBlock on its own', () => {

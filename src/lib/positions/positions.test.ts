@@ -5,12 +5,13 @@ import {
   measure,
   periodStarts,
   racePositions,
+  settledSoFar,
   sortPositions,
   tally,
   type OpenPosition,
 } from './positions'
 import { createAccount } from '../paper/engine'
-import { createRaceState } from '../race/live'
+import { createRaceState, summarize } from '../race/live'
 
 const long: OpenPosition = {
   key: 'a',
@@ -141,5 +142,44 @@ describe('periodStarts', () => {
     const { today, week } = periodStarts(now)
     expect(new Date(today).getHours()).toBe(0)
     expect(today - week).toBe(6 * 86_400_000)
+  })
+})
+
+describe('settledSoFar', () => {
+  it('closed trades and owed entry fees: plus open P&L it is the Race tab result', () => {
+    // 2026-11-11 12:01: open trades +$966 looked green while 6 closed trades had lost $1,083
+    const st = createRaceState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      10_000,
+      0,
+    )
+    st.strategies.a.balance = 10_000 - 212.27 - 212.27
+    st.strategies.b.balance = 10_000
+    st.strategies.b.open = [
+      {
+        market: 'EUR-USD',
+        direction: 'short',
+        signalTime: 1,
+        entryTime: 2,
+        entryBucket: 2,
+        entry: 1.11633,
+        stop: 1.12712976,
+        takeProfit: 1.09413048,
+        units: 18518.93,
+        usdPerQuote: 1,
+        margin: 689.11,
+        entryFee: 1.45,
+      },
+    ]
+    st.prices = { 'EUR-USD': 1.10948 }
+    expect(settledSoFar(st)).toBeCloseTo(-424.54 - 1.45)
+    const open = measure(racePositions(st)[0], 1.10948).pnl ?? 0
+    expect(open).toBeCloseTo(126.85, 1)
+    const raceTab = summarize(st).reduce((a, s) => a + s.pnl, 0)
+    expect(settledSoFar(st) + open).toBeCloseTo(raceTab)
+    expect(settledSoFar(null)).toBe(0)
   })
 })
