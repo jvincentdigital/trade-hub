@@ -15,6 +15,7 @@ import {
   ifAllHit,
   measure,
   racePositions,
+  settledSoFar,
   sortPositions,
   type OpenPosition,
   type PositionMetrics,
@@ -250,6 +251,8 @@ function Today() {
               strategyCount || BUILT_IN_RULES.length,
             )}
             pnl={openPnl}
+            settled={settledSoFar(state)}
+            since={state ? clock(state.startedAt, now) : null}
             series={series}
             sinceText={series.length > 1 ? `Since ${clock(series[0].t, now)}` : null}
             hit={ifAllHit(rows.map((r) => r.m))}

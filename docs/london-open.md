@@ -111,7 +111,7 @@ the same way. Different accounts may still disagree. John: "most of the time
 when you start doing a pair with Great British Pound, most of the time they go
 the same way... when it comes to pound and dollar, what goes is as much as the
 same as the gold with the dollar." Details and log lines:
-`docs/strategy-race.md`, "Two rules for new trades". The same day John also
+`docs/strategy-race.md`, "Three rules for new trades". The same day John also
 stopped new crypto trades except Bitcoin; London breakout and Claude's picks
 never traded crypto. On `/forex/GBP-JPY` the chart is the ECB's daily close; a line
 under the header says the race and Today use the computed price, so the two
