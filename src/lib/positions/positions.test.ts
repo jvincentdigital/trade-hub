@@ -4,14 +4,15 @@ import {
   ifAllHit,
   measure,
   periodStarts,
-  racePositions,
+  fundedPositions,
   settledSoFar,
   sortPositions,
   tally,
   type OpenPosition,
 } from './positions'
 import { createAccount } from '../paper/engine'
-import { createRaceState, summarize } from '../race/live'
+import { createRaceState } from '../race/live'
+import { createFunded, fundedMoney } from '../race/funded'
 
 const long: OpenPosition = {
   key: 'a',
@@ -61,9 +62,10 @@ describe('measure', () => {
   })
 })
 
-describe('race and demo rows', () => {
+describe('funded test and demo rows', () => {
   const state = createRaceState([{ id: 'r1', name: 'Rule one' }], 1000, 0)
   const open = {
+    strategy: 'r1',
     market: 'bitcoin',
     direction: 'long' as const,
     signalTime: 1,
@@ -77,11 +79,14 @@ describe('race and demo rows', () => {
     margin: 10,
     entryFee: 0.01,
   }
-  state.strategies.r1.open = [open]
+  state.funded = { ...createFunded(0), open: [open] }
 
-  it('race trades keep their units and quote rate, so P&L matches openPnl', () => {
-    const [p] = racePositions(state)
+  it('funded trades keep their units and quote rate, so P&L matches openPnl', () => {
+    const [p] = fundedPositions(state)
+    // named after the strategy whose signal opened it, with its Close now id
     expect(p.by).toBe('Rule one')
+    expect(p.ruleId).toBe('r1')
+    expect(p.closeId).toBe('funded|bitcoin|100')
     expect(p.openedAt).toBe(100_000)
     expect(p.units).toBe(0.2)
     expect(measure(p, 55).pnl).toBeCloseTo(1) // 0.2 x $5
@@ -98,7 +103,7 @@ describe('race and demo rows', () => {
   })
 
   it('closed trades merge, newest first, and tally wins and losses', () => {
-    state.strategies.r1.closed.push({
+    state.funded!.closed.push({
       ...open,
       exitTime: 200,
       exit: 45,
@@ -122,7 +127,7 @@ describe('race and demo rows', () => {
       reason: 'manual',
     })
     const rows = closedTrades(state, acct)
-    expect(rows.map((r) => r.by)).toEqual(['Demo', 'Rule one'])
+    expect(rows.map((r) => r.by)).toEqual(['Demo', 'Funded test'])
     expect(tally(rows)).toEqual({ wins: 1, losses: 1, won: 2, lost: -1.2, net: 0.8 })
   })
 
@@ -146,40 +151,37 @@ describe('periodStarts', () => {
 })
 
 describe('settledSoFar', () => {
-  it('closed trades and owed entry fees: plus open P&L it is the Race tab result', () => {
-    // 2026-11-11 12:01: open trades +$966 looked green while 6 closed trades had lost $1,083
-    const st = createRaceState(
-      [
-        { id: 'a', name: 'A' },
-        { id: 'b', name: 'B' },
+  it('closed trades and owed entry fees: plus open P&L it is the funded result', () => {
+    // 2026-11-11 12:01: open trades +$966 looked green while closed trades had lost $1,083
+    const st = createRaceState([{ id: 'b', name: 'B' }], 10_000, 0)
+    st.funded = {
+      ...createFunded(0),
+      balance: 10_000 - 212.27 - 212.27,
+      open: [
+        {
+          strategy: 'b',
+          market: 'EUR-USD',
+          direction: 'short',
+          signalTime: 1,
+          entryTime: 2,
+          entryBucket: 2,
+          entry: 1.11633,
+          stop: 1.12712976,
+          takeProfit: 1.09413048,
+          units: 18518.93,
+          usdPerQuote: 1,
+          margin: 689.11,
+          entryFee: 1.45,
+        },
       ],
-      10_000,
-      0,
-    )
-    st.strategies.a.balance = 10_000 - 212.27 - 212.27
-    st.strategies.b.balance = 10_000
-    st.strategies.b.open = [
-      {
-        market: 'EUR-USD',
-        direction: 'short',
-        signalTime: 1,
-        entryTime: 2,
-        entryBucket: 2,
-        entry: 1.11633,
-        stop: 1.12712976,
-        takeProfit: 1.09413048,
-        units: 18518.93,
-        usdPerQuote: 1,
-        margin: 689.11,
-        entryFee: 1.45,
-      },
-    ]
+    }
     st.prices = { 'EUR-USD': 1.10948 }
     expect(settledSoFar(st)).toBeCloseTo(-424.54 - 1.45)
-    const open = measure(racePositions(st)[0], 1.10948).pnl ?? 0
+    const open = measure(fundedPositions(st)[0], 1.10948).pnl ?? 0
     expect(open).toBeCloseTo(126.85, 1)
-    const raceTab = summarize(st).reduce((a, s) => a + s.pnl, 0)
-    expect(settledSoFar(st) + open).toBeCloseTo(raceTab)
+    expect(settledSoFar(st) + open).toBeCloseTo(fundedMoney(st.funded, st.prices) - 10_000)
     expect(settledSoFar(null)).toBe(0)
+    // a race from before the funded test: nothing to show
+    expect(settledSoFar(createRaceState([], 10_000, 0))).toBe(0)
   })
 })

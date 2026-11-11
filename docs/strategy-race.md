@@ -53,7 +53,12 @@ until 2026-11-10 night, see "Real candles" below.
   after 5 s, then it is skipped with a note.
 - Only the built-in rules race (9 since the course rules landed). Own copies from `/strategies` are not in it.
 
-### 2. Live from today (forward test)
+### 2. Live from today (forward test): the funded test and the Lab
+
+Since 2026-11-11 the live part is two things: the **funded test** (one
+account fed by every strategy's signals, the account Today follows) and the
+**Lab** (every strategy's own account, below). The Race tab shows the funded
+test first, then the Lab list.
 
 `make race-tick` (= `npx tsx scripts/race-tick.ts`) runs one tick:
 
@@ -342,6 +347,12 @@ closes every open trade in every account:
 - It takes the race lock and stops without saving when a trade touched its
   stop or target between the last check and the fill minute (that close would
   have come first). `DRY=1` prints without saving.
+- Since 2026-11-11 it closes the funded test's open trades too.
+
+John can also close one trade from Today: **Close now** (2026-11-11). The tap
+is stored in the relay worker and the next race check books it at the open of
+the 1-minute candle of the tap, with the same stop-or-target-first rule and the
+same fallback prices (`src/lib/race/closeRequests.ts`, `docs/live.md`).
 
 The past-results leaderboard (part 1) does not use these rules: it still
 backtests every market, crypto included, to rank the rules.
@@ -438,22 +449,27 @@ hourly job is not installed yet".
 
 ## Files
 
-| File                          | Role                                                                    |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `src/app/race/page.tsx`       | The page (leaderboard + live table)                                     |
-| `src/app/api/race/route.ts`   | Reads the local race file, reports whether the job is installed         |
-| `src/lib/race/account.ts`     | Pure: sizing (`sizeRaceTrade`), new-trade rules (`newTradeBlock`)       |
-| `src/lib/race/leaderboard.ts` | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`      |
-| `src/lib/race/live.ts`        | Pure: state schema, old-file move, `stepStrategy`, `summarize`          |
-| `src/lib/sizing/sizing.ts`    | Pure: units, lots, $ per pip or per $1, risk, goal, R:R, text           |
-| `scripts/race-reset`          | Back up race.json, fresh race, first tick, push                         |
-| `src/lib/race/candles.ts`     | `closedOnly` (drop the forming candle)                                  |
-| `src/lib/kraken.ts`           | Kraken OHLC: pairs, parser, spaced + cached fetch                       |
-| `src/lib/race/feeds.ts`       | Direct Frankfurter fetch for the script                                 |
-| `src/lib/frankfurter.ts`      | Daily forex candles, shared with `/api/forex/ohlc/[pair]`               |
-| `scripts/race-tick.ts`        | One live tick                                                           |
-| `scripts/launchd/*`           | Hourly job (installed)                                                  |
-| `src/lib/race/race.test.ts`   | Tests: sizing limits, open/close, fees, one account, old files, ranking |
+| File                            | Role                                                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `src/app/race/page.tsx`         | The page (leaderboard + live table)                                                                          |
+| `src/app/api/race/route.ts`     | Reads the local race file, reports whether the job is installed                                              |
+| `src/lib/race/account.ts`       | Pure: sizing (`sizeRaceTrade`), new-trade rules (`newTradeBlock`)                                            |
+| `src/lib/race/leaderboard.ts`   | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`                                           |
+| `src/lib/race/live.ts`          | Pure: state schema, old-file move, `stepStrategy`, `summarize`, `closeAll`, `applyDailyClose`, `entryLevels` |
+| `src/lib/race/funded.ts`        | Pure: the funded test (limits, `stepFunded`, `checkFunded`, `fundedView`)                                    |
+| `src/lib/race/session.ts`       | Pure: entry window, 12:45 AST close, FTMO's Prague day                                                       |
+| `src/lib/race/closeRequests.ts` | Pure: Close now ids and booking (`bookCloseRequests`)                                                        |
+| `src/lib/race/store.ts`         | Server: reads the race and close requests (worker or local files)                                            |
+| `src/lib/sizing/sizing.ts`      | Pure: units, lots, $ per pip or per $1, risk, goal, R:R, text                                                |
+| `scripts/race-reset`            | Back up race.json, fresh race, first tick, push                                                              |
+| `src/lib/race/candles.ts`       | `closedOnly` (drop the forming candle)                                                                       |
+| `src/lib/kraken.ts`             | Kraken OHLC: pairs, parser, spaced + cached fetch                                                            |
+| `src/lib/race/feeds.ts`         | Direct Frankfurter fetch for the script                                                                      |
+| `src/lib/frankfurter.ts`        | Daily forex candles, shared with `/api/forex/ohlc/[pair]`                                                    |
+| `scripts/race-tick.ts`          | One live tick                                                                                                |
+| `scripts/launchd/*`             | Hourly job (installed)                                                                                       |
+| `src/lib/race/race.test.ts`     | Tests: sizing limits, open/close, fees, one account, old files, ranking                                      |
+| `src/lib/race/*.test.ts`        | Tests: funded limits, session clock, Close now and the relay worker                                          |
 
 ## Reading the results
 
