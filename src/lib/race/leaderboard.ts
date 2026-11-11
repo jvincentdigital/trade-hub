@@ -25,6 +25,8 @@ export interface Candidate extends BacktestTrade {
   market: string
   /** USD per unit of the quote currency at entry (only changes the units shown, not the dollars). */
   usdPerQuote: number
+  /** USD per unit of the quote currency at the exit, when known (USD/JPY, EUR/GBP in the lab): the P&L converts at it. */
+  usdPerQuoteExit?: number
   feeRate: number
   leverage: number
   /** Length of the candles it trades on, in seconds. Its exit only counts at the end of the exit candle (no look-ahead across candle sizes). */
@@ -85,8 +87,9 @@ export function portfolioBacktest(
       .sort((a, b) => closeAt(a) - closeAt(b))
     open = open.filter((o) => !due.includes(o))
     for (const o of due) {
-      const gross = o.units * (o.direction === 'long' ? 1 : -1) * (o.exit - o.entry) * o.usdPerQuote
-      const exitFee = o.units * o.exit * o.usdPerQuote * o.feeRate
+      const qx = o.usdPerQuoteExit ?? o.usdPerQuote
+      const gross = o.units * (o.direction === 'long' ? 1 : -1) * (o.exit - o.entry) * qx
+      const exitFee = o.units * o.exit * qx * o.feeRate
       const pnl = gross - o.entryFee - exitFee
       balance += pnl
       curve.push(balance)

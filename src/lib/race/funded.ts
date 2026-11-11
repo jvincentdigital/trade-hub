@@ -1,10 +1,9 @@
 import type { Signal } from '../rules/engine'
 import { newTradeBlock, sizeRaceTrade, type RaceSizing } from './account'
 import {
-  bookClose,
   entryLevels,
-  exitOf,
   openPnl,
+  tradeExits,
   tradeRisk,
   type ClosedFundedTrade,
   type FundedState,
@@ -221,14 +220,17 @@ export function stepFunded(
   const closed: ClosedFundedTrade[] = []
   for (const t of f.open) {
     const m = byMarket.get(t.market)
-    const hit = m ? exitOf(t, m.path) : null
-    if (!m || !hit) {
+    if (!m) {
       open.push(t)
       continue
     }
-    const c = bookClose(t, hit.exit, hit.time, hit.reason, m.feeRate)
-    balance += c.pnl
-    closed.push(c)
+    // The same exits as the Lab accounts (tradeExits in ./live.ts).
+    const r = tradeExits(t, m, nowSec)
+    for (const c of r.closed) {
+      balance += c.pnl
+      closed.push(c)
+    }
+    if (r.open) open.push(r.open)
   }
   const acc = checkFunded({ ...f, balance, open, closed: [...f.closed, ...closed] }, prices, nowSec)
 

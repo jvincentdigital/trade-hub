@@ -10,6 +10,7 @@ import { getInstrument, INSTRUMENTS, type PriceMap } from '@/lib/paper/instrumen
 import { backtest } from '@/lib/rules/engine'
 import { ruleInstrumentIds } from '@/lib/rules/data'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
+import { RACE_ONLY_MARKETS } from '@/lib/race/labBots'
 import { RACE_SIZING } from '@/lib/race/account'
 import {
   rankEntries,
@@ -20,7 +21,13 @@ import {
   WINDOW_DAYS,
   windowStart,
 } from '@/lib/race/leaderboard'
-import { openPnl, REASON_TEXT, summarize, type RaceState } from '@/lib/race/live'
+import {
+  openPnl,
+  REASON_TEXT,
+  summarize,
+  type ClosedLiveTrade,
+  type RaceState,
+} from '@/lib/race/live'
 import { FUNDED, fundedView } from '@/lib/race/funded'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
@@ -32,7 +39,8 @@ const RULES = BUILT_IN_RULES.map((rule) => ({
   markets: ruleInstrumentIds(rule, INSTRUMENTS),
 }))
 const NAME = new Map(BUILT_IN_RULES.map((r) => [r.id, r.name]))
-const sym = (id: string) => getInstrument(id)?.label ?? getInstrument(id)?.symbol ?? id
+const sym = (id: string) =>
+  getInstrument(id)?.label ?? getInstrument(id)?.symbol ?? RACE_ONLY_MARKETS[id]?.label ?? id
 const TF = new Map(BUILT_IN_RULES.map((r) => [r.id, r.timeframe]))
 const isForex = (id: string) => getInstrument(id)?.market === 'forex'
 /** Forex loads two years so a one-year window still has a year to warm up the 200 EMA. */
@@ -86,8 +94,9 @@ const when = (sec: number) =>
 const CANDLE_SEC = { '1h': 3_600, '4h': 14_400, '1d': 86_400 } as const
 
 export default function RacePage() {
-  const [start, setStart] = useState(1000)
-  const safeStart = start > 0 ? start : 1000
+  // The race accounts start at $10,000 (John, 2026-11-11); the box rescales the dollars.
+  const [start, setStart] = useState(10_000)
+  const safeStart = start > 0 ? start : 10_000
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -494,6 +503,10 @@ function BacktestDetail({ entry }: { entry: RaceEntry }) {
   )
 }
 
+/** Why a live race trade closed, in plain words. */
+const liveHow = (t: Pick<ClosedLiveTrade, 'reason' | 'part1Of'>) =>
+  t.part1Of ? `first target, ${Math.round(t.part1Of * 100)}% closed` : REASON_TEXT[t.reason]
+
 const reasonText = (t: TradeMoney) =>
   t.reason === 'target' ? 'hit target' : t.reason === 'stop' ? 'hit stop' : 'still open at the end'
 
@@ -759,11 +772,11 @@ function Live({ start }: { start: number }) {
                     <TradeList
                       title={`Closed trades (${r.closed.length}), fees included`}
                       trades={[...r.closed].reverse().map((t) => ({
-                        key: `${t.market}-${t.entryTime}`,
+                        key: `${t.market}-${t.entryTime}${t.part1Of ? '-part' : ''}`,
                         market: t.market,
                         direction: t.direction,
                         time: t.exitTime,
-                        how: REASON_TEXT[t.reason],
+                        how: liveHow(t),
                         pnl: t.pnl * scale,
                         size: sizeOf(t, scale),
                       }))}

@@ -199,7 +199,8 @@ export interface ClosedRow {
   pnl: number
   /** Milliseconds. */
   closedAt: number
-  reason: 'stop' | 'target' | 'manual' | 'session'
+  /** time and news: lab bots in the race (deadline passed, closed before red news). */
+  reason: 'stop' | 'target' | 'manual' | 'session' | 'time' | 'news'
 }
 
 export function closedTrades(
@@ -207,7 +208,7 @@ export function closedTrades(
   account: PaperAccount,
 ): ClosedRow[] {
   const race: ClosedRow[] = (state?.funded?.closed ?? []).map((t) => ({
-    key: `funded:${t.market}:${t.exitTime}`,
+    key: `funded:${t.market}:${t.exitTime}${t.part1Of ? ':part' : ''}`,
     by: FUNDED.name,
     market: t.market,
     side: t.direction,

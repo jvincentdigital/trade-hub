@@ -431,6 +431,29 @@ other slots. Since the one-account sizing there are no slots: a new market
 just starts trading from the shared balance, and `syncRaceState` only adds a
 new built-in strategy with fresh money. See `docs/gold.md`.
 
+## Lab bots joining (2026-11-11)
+
+The strategy lab's top 5 (`src/lib/race/labBots.ts`) join the same way: the
+first tick after the merge adds five accounts named "Lab: ..." at the race's
+start money ($10,000) and touches nothing else. Checked on a copy of
+`race.json`: all 11 existing accounts, their 9 open trades and $110,000 of
+balances came out identical. They bring a few things the older accounts do
+not use: a first target (half closes there), a deadline, a red-news filter
+from Forex Factory's weekly feed, and US30 from Yahoo's public chart feed.
+Closed trades can now say `time` or `news`. See `docs/strategy-lab.md`,
+"Top 5 in the live race".
+
+The race's own rules from 2026-11-11 bind them like every account (merged
+from main the same evening): new trades only from 02:00 to 12:30 AST on
+weekdays, every open trade (a half-closed one too) closes at the first check
+at or after 12:45 AST, no new trades on USD/JPY, GBP/JPY or NZD/USD, Bitcoin
+only among crypto, the pound/dollar and dollar-bet limits (`newTradeBlock`),
+and the rule bots re-anchor to the fill like the built-in rules (the Fib
+bots keep their Fib levels). So the 5-day and 10-day deadlines are a cap the
+12:45 close always comes before. Lab bots do not feed the funded test: it
+opens plain stop-and-target trades only. Every account, the funded test too,
+checks its open trades with one function, `tradeExits` in `live.ts`.
+
 ## Hourly job (installed by John, 2026-11-10)
 
 `com.jvd.trade-hub-race` runs on the Mac Mini. Files:

@@ -6,6 +6,16 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**Strategy lab (2026-11-11, night), branch `feat/strategy-lab`.** John asked to throw a lot of bots at years of history: his Fibonacci, a consolidation scalper, the London breakout, the 9 race rules, combinations, scalp/day/swing, with and without the red-news filter, $10,000 each, 2% risk. `make lab` runs 861 bots (walk-forward: settings chosen on the first 70%, scored on the last 30%, real spread, slippage and commission) in about 10 seconds. Result: only RSI range reversal on 1h US30 and USD/JPY made money in both halves and beat a coin-flip control; John's Fib loses on 5m-1h after costs, about flat on 4h. Report: `~/jvd-outputs/2026-11-11/strategy-lab/REPORT.html`. See `docs/strategy-lab.md`.
+
+**Second run (2026-11-11 morning), same branch.** Four reviewers found 24 problems in the first run (picking the shortlist on the test months, a luck line set too low, fixed-UTC sessions, weekend and rollover fills at normal spreads, no swap, UTC 4h/daily candles, too few trades, John's Fib only checked for arithmetic, and more). All fixed or answered (`~/jvd-outputs/2026-11-11/strategy-lab/fixes.md`). Results got worse: as a group the bots pick the side no better than a coin, and the first run's USD/JPY pick was luck. The top 5 by the lab's rule join the live race as "Lab: ..." accounts at $10,000 (`src/lib/race/labBots.ts`; US30 from Yahoo, news filter from Forex Factory's weekly feed). See `docs/strategy-lab.md`.
+
+- [ ] @john: read the report (`REPORT.html`); merge PR #8 if the five lab accounts should run live. Order: merge, wait for the Vercel production deploy, then pull on the Mac Mini (the site must know the new `time`/`news` exits before the tick writes them).
+- [ ] @john: your Fib "1": the swing high, the last bullish candle before the drop, or the first candle of the drop? Your sell example (163.738) is the 07-30 high, the first candle of the drop (`docs/strategy-lab.md`, John's Fib).
+- [ ] @john: which broker would you use? US retail cannot trade US30 or gold CFDs at 20:1; the Dow would be Micro Dow futures ($0.50 a point).
+- [ ] Finish the older 1h history where Dukascopy throttled (USD/JPY, EUR/GBP, gaps), then `make lab` again for their holdout lines.
+- [ ] Finish the 5-30 minute history for EUR/USD, USD/JPY, US30, EUR/GBP (`~/jvd-outputs/trading/history/README.md`, polite run, about 6 hours), then `make lab` again.
+
 **London open (2026-11-10, late night), branch `feat/london-open`.** John asked the race to trade the London open hard on the pound and gold, same 2% rules. Real 15m/1h/4h forex candles from Kraken (GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF, AUD/USD), GBP/JPY computed from GBP/USD and the ECB's USD/JPY (Kraken's yen book is too thin), a new "London breakout" account (Asian range, first 15m close outside it, 06:00-10:00 UTC), a new "Claude's picks" account (locked-down `claude -p` on the subscription at 03:47 AST, every trade checked in code), a 15-minute tick 02:00-07:00 AST on weekdays, a race lock, and on Today a "London open" line plus a "Pound & gold" tab. See `docs/london-open.md`.
 
 - [ ] @john: merge the PR, then on the Mac Mini pull and install the two new launchd jobs and reload the hourly one (now pinned to minute 07), before 02:00 AST (`docs/london-open.md`, "Install").
