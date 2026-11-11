@@ -1,15 +1,16 @@
 /**
  * Claude's picks: one more $1,000 race account where Claude chooses the trades.
  *
- *   npx tsx scripts/claude-picks.ts            (weekdays 03:45 AST via launchd, docs/london-open.md)
+ *   npx tsx scripts/claude-picks.ts            (weekdays 03:47 AST via launchd, docs/london-open.md)
  *   npx tsx scripts/claude-picks.ts --dry-run  (print the brief and the decision, save nothing)
  *   npx tsx scripts/claude-picks.ts --no-push  (save to RACE_FILE but do not send to the live site)
  *
- * 1. Builds a short brief per market (GBP/USD, GBP/JPY, gold): the last 12h
- *    of 15m candles, the Asian range, 1h EMA50/EMA200 trend, RSI14, ATR14 on
- *    15m and 1h, nearest swing highs/lows, the price now and open race trades.
+ * 1. Builds a short brief per market (GBP/USD, gold): the last 12h of 15m
+ *    candles, the Asian range, 1h EMA50/EMA200 trend, RSI14, ATR14 on 15m and
+ *    1h, the stop distances allowed, nearest swing highs/lows, the price now
+ *    and open race trades.
  * 2. Asks a locked-down `claude -p` (John's subscription, never the API; no
- *    tools, no MCP, no settings, an empty temp folder, 5 minutes max) for JSON:
+ *    tools, no MCP, no settings, an empty folder, 5 minutes max) for JSON:
  *    up to 2 trades with stop, target and a short reason, or none.
  * 3. Checks every trade hard in code (src/lib/race/claudePicks.ts) and opens
  *    the ones that pass at the current price, 2% risk, same limits as the race.
@@ -18,22 +19,25 @@
  * Play money only: nothing here talks to a broker.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { mkdirSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { getInstrument, type PriceMap } from '../src/lib/paper/instruments'
 import { FEE_RATE, LEVERAGE } from '../src/lib/paper/engine'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '../src/lib/sizing/sizing'
 import { londonBreakout } from '../src/lib/race/londonBreakout'
 import {
-  atr15,
+  atr1h,
   CLAUDE_PICKS,
   checkPicks,
   marketBrief,
   parsePicks,
   picksPrompt,
+  stopBand,
   type MarketData,
 } from '../src/lib/race/claudePicks'
+import { minStopForFullRisk, RACE_SIZING } from '../src/lib/race/account'
+import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { stepStrategy, syncRaceState, type MarketTick } from '../src/lib/race/live'
 import { clearKrakenCache } from '../src/lib/kraken'
 import { fetchMarket, FILE, load, push, save, waitLock } from './race-io'
@@ -42,9 +46,15 @@ const args = process.argv.slice(2)
 const DRY = args.includes('--dry-run')
 const stamp = () => new Date().toISOString()
 
+// One fixed folder, emptied before each run: claude keeps a ~/.claude/projects
+// entry per working folder, so a new temp folder each day would leave one each.
+const CWD = join(homedir(), '.local/share/trade-hub/claude-picks-cwd')
+
 /** Locked-down claude: no tools, no MCP, no settings or slash commands, bare env, empty folder. */
 function askClaude(prompt: string): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'claude-picks-')))
+  const dir = CWD
+  rmSync(dir, { recursive: true, force: true })
+  mkdirSync(dir, { recursive: true })
   try {
     const env: Record<string, string> = {
       PATH: process.env.PATH ?? '',
@@ -90,24 +100,35 @@ function askClaude(prompt: string): string {
 
 async function main() {
   const nowSec = Math.floor(Date.now() / 1000)
+  if (londonOnSummerTime(nowSec * 1000)) console.log(`${stamp()} ${BST_NOTE}`)
   const before = load()
   if (!before && !DRY) throw new Error(`no race file at ${FILE}; run a race tick first`)
+  const riskPct = before?.sizing.riskPct ?? RACE_SIZING.riskPct
+  /** Stop distances allowed at this price (1h ATR band, margin floor). */
+  const bandAt = (id: string, price: number, a1h: number) =>
+    stopBand(a1h, minStopForFullRisk(price, LEVERAGE[getInstrument(id)!.market], riskPct))
 
   // ── Data and brief (no lock needed: nothing is written yet) ──
   const markets: MarketData[] = []
   const prices: PriceMap = { ...(before?.prices ?? {}) }
   const atr: Record<string, number> = {}
+  const band: Record<string, { min: number; max: number }> = {}
   for (const id of CLAUDE_PICKS.markets) {
     try {
       const m15 = await fetchMarket(id, '15m')
       const h1 = await fetchMarket(id, '1h')
       const price = m15.at(-1)!.close
       prices[id] = price
-      atr[id] = atr15(m15)
+      atr[id] = atr1h(h1)
+      band[id] = bandAt(id, price, atr[id])
       const open = Object.values(before?.strategies ?? {}).flatMap((s) =>
         s.open.filter((t) => t.market === id).map((trade) => ({ by: s.name, trade })),
       )
-      markets.push({ market: id, m15, h1, price, london: londonBreakout(m15, h1, nowSec), open })
+      const london = londonBreakout(m15, h1, nowSec, {
+        price,
+        minDist: minStopForFullRisk(price, LEVERAGE[getInstrument(id)!.market], riskPct),
+      })
+      markets.push({ market: id, m15, h1, price, london, open, band: band[id] })
     } catch (e) {
       console.log(`${stamp()} ${id} left out: ${(e as Error).message}`)
     }
@@ -136,7 +157,7 @@ async function main() {
 
   const ctx = (open = before?.strategies[CLAUDE_PICKS.id]?.open ?? []) => ({
     prices,
-    atr15: atr,
+    band,
     open,
   })
   const first = checkPicks(parsed.raw, ctx())
@@ -174,7 +195,7 @@ async function main() {
         m.m15 = await fetchMarket(m.market, '15m')
         m.price = m.m15.at(-1)!.close
         prices[m.market] = m.price
-        atr[m.market] = atr15(m.m15)
+        band[m.market] = bandAt(m.market, m.price, atr[m.market])
       } catch (e) {
         console.log(`  ${m.market}: no fresh price (${(e as Error).message}), using the brief's`)
       }

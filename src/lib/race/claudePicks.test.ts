@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { checkPick, checkPicks, parsePicks, swings, type PickContext } from './claudePicks'
+import {
+  checkPick,
+  checkPicks,
+  parsePicks,
+  stopBand,
+  swings,
+  type PickContext,
+} from './claudePicks'
 import type { LiveTrade } from './live'
 
-// GBP/USD at 1.3000 with a 15m ATR of 0.0010 (10 pips).
+// GBP/USD at 1.3000 with a 1h ATR of 0.0010 (10 pips): stops 5 to 30 pips away.
 const ctx: PickContext = {
-  prices: { 'GBP-USD': 1.3, 'GBP-JPY': 205, 'pax-gold': 4000 },
-  atr15: { 'GBP-USD': 0.001, 'GBP-JPY': 0.2, 'pax-gold': 5 },
+  prices: { 'GBP-USD': 1.3, 'pax-gold': 4000 },
+  band: { 'GBP-USD': { min: 0.0005, max: 0.003 }, 'pax-gold': { min: 2.5, max: 15 } },
   open: [],
 }
 const good = {
@@ -60,8 +67,13 @@ describe("Claude's picks: checking each trade", () => {
 
   it('only the allowed markets and directions', () => {
     expect(reason({ ...good, market: 'EUR-USD' })).toMatch(/not one of/)
+    expect(reason({ ...good, market: 'GBP-JPY' })).toMatch(/not one of/) // a copy of GBP/USD
     expect(reason({ ...good, direction: 'buy' })).toMatch(/long or short/)
-    expect(reason({ ...good, stop: 'low' })).toMatch(/must be prices/)
+    expect(reason({ ...good, stop: 'low' })).toMatch(/must be numbers/)
+    // No quiet conversions: a string or a list is not a price.
+    expect(reason({ ...good, stop: '1.299' })).toMatch(/must be numbers/)
+    expect(reason({ ...good, target: [1.302] })).toMatch(/must be numbers/)
+    expect(reason({ ...good, stop: -1 })).toMatch(/must be prices/)
   })
 
   it('stop and target on the correct side of the current price', () => {
@@ -73,11 +85,19 @@ describe("Claude's picks: checking each trade", () => {
     expect(reason({ market: 'GBP-USD', direction: 'short', stop: 1.301, target: 1.298 })).toBe('ok')
   })
 
-  it('stop between 0.5x and 3x the 15m ATR', () => {
-    expect(reason({ ...good, stop: 1.2996, target: 1.302 })).toMatch(/0.40x the 15m ATR/)
-    expect(reason({ ...good, stop: 1.2965, target: 1.31 })).toMatch(/3.50x the 15m ATR/)
-    expect(reason({ ...good, stop: 1.2995, target: 1.30075 })).toBe('ok') // exactly 0.5x, 1.5R
-    expect(reason({ ...good, stop: 1.297, target: 1.3045 })).toBe('ok') // exactly 3x, 1.5R
+  it('stop inside the allowed range', () => {
+    expect(reason({ ...good, stop: 1.2996, target: 1.302 })).toMatch(/stop is .+ away \(allowed/)
+    expect(reason({ ...good, stop: 1.2965, target: 1.31 })).toMatch(/stop is .+ away \(allowed/)
+    expect(reason({ ...good, stop: 1.2995, target: 1.30075 })).toBe('ok') // exactly the minimum, 1.5R
+    expect(reason({ ...good, stop: 1.297, target: 1.3045 })).toBe('ok') // exactly the maximum, 1.5R
+  })
+
+  it('stopBand: 0.5x to 3x the 1h ATR, never under the margin floor', () => {
+    expect(stopBand(0.001, 0.0002)).toEqual({ min: 0.0005, max: 0.003 })
+    const floored = stopBand(0.001, 0.0009) // GBP/USD: a full 2% trade needs 8.9 pips
+    expect(floored.min).toBeCloseTo(0.0009, 12)
+    expect(floored.max).toBeCloseTo(0.003, 12)
+    expect(stopBand(0.0002, 0.0009)).toEqual({ min: 0.0009, max: 0.0009 })
   })
 
   it('reward at least 1.5x the risk', () => {
@@ -95,12 +115,10 @@ describe("Claude's picks: checking each trade", () => {
 
   it('keeps at most 2 picks, one per market', () => {
     const gold = { ...good, market: 'pax-gold', stop: 3995, target: 4010 }
-    const yen = { ...good, market: 'GBP-JPY', stop: 204.8, target: 205.4 }
-    const r = checkPicks([good, { ...good, target: 1.303 }, gold, yen, { market: 'BTC' }], ctx)
+    const r = checkPicks([good, { ...good, target: 1.303 }, gold, { market: 'BTC' }], ctx)
     expect(r.accepted.map((p) => p.market)).toEqual(['GBP-USD', 'pax-gold'])
     expect(r.rejected.map((x) => x.reason)).toEqual([
       'one pick per market (GBP-USD)',
-      'only 2 picks a day',
       'only 2 picks a day',
     ])
   })

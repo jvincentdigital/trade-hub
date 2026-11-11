@@ -4,7 +4,7 @@ import type { Signal } from '../rules/engine'
 import { closedOnly } from './candles'
 import { backtest } from '../rules/engine'
 import { BUILT_IN_RULES } from '../rules/presets'
-import { RACE_SIZING, sizeRaceTrade } from './account'
+import { minStopForFullRisk, RACE_SIZING, sizeRaceTrade } from './account'
 import {
   portfolioBacktest,
   rankEntries,
@@ -70,6 +70,19 @@ describe('sizing a new trade (one real account)', () => {
       ok: false,
       reason: 'no free margin',
     })
+  })
+
+  it('minStopForFullRisk: the closest stop that still risks the full 2% within the margin cap', () => {
+    // GBP/USD at 1.334, 30:1: 8.9 pips. A 3.6-pip stop gets cut to about 0.8% risk.
+    const d = minStopForFullRisk(1.334, 30, 2)
+    expect(d).toBeCloseTo(0.000889, 6)
+    const gbp = { ...base, entry: 1.334, leverage: 30 }
+    const full = sizeRaceTrade({ ...gbp, stop: 1.334 - d })
+    expect(full.ok && full.riskUsd).toBeCloseTo(20, 6)
+    const tight = sizeRaceTrade({ ...gbp, stop: 1.334 - 0.00036 })
+    expect(tight.ok && tight.capped).toBe(true)
+    expect(tight.ok && tight.riskUsd).toBeCloseTo(8.1, 1)
+    expect(minStopForFullRisk(4000, 20, 2)).toBeCloseTo(4, 10) // gold: $4.00
   })
 
   it('at most 5 open, and total open risk at most 10% of the balance', () => {

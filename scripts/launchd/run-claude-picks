@@ -1,6 +1,6 @@
 #!/bin/zsh
 # launchd wrapper for Trade Hub "Claude's picks" (com.jvd.trade-hub-claude-picks,
-# weekdays 03:45 AST). Play money only. Install steps: docs/london-open.md.
+# weekdays 03:47 AST). Play money only. Install steps: docs/london-open.md.
 set -u
 source ~/.zprofile >/dev/null 2>&1   # PATH (Homebrew node, ~/.local/bin) and CLAUDE_CODE_OAUTH_TOKEN
 cd ~/dev/trade-hub || exit 1

@@ -8,6 +8,7 @@ import { TradingViewChart } from '@/components/market/TradingViewChart'
 import { RuleSignals } from '@/components/market/RuleSignals'
 import { fetchForexIntraday, fetchForexOHLC, type ForexDays, type ForexIntraday } from '@/lib/data'
 import { detectAll } from '@/lib/patterns/detector'
+import { CROSSES } from '@/lib/feeds'
 
 type Timeframe =
   | { label: string; kind: 'intraday'; interval: ForexIntraday }
@@ -28,6 +29,7 @@ const TIMEFRAMES: Timeframe[] = [
 export default function ForexDetailPage({ params }: { params: Promise<{ pair: string }> }) {
   const { pair } = use(params)
   const display = pair.replace('-', '/')
+  const cross = CROSSES[pair]
   const [tf, setTf] = useState<Timeframe>(() => TIMEFRAMES[5]) // default 30D
   const [tvPick, setTv] = useState(false)
 
@@ -87,6 +89,12 @@ export default function ForexDetailPage({ params }: { params: Promise<{ pair: st
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 600 }}>{display}</h1>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Forex · daily ECB close</p>
+          {cross && (
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: 4 }}>
+              The race and Today use a price {cross.label}. This chart is the ECB&apos;s daily
+              close, so the two can differ.
+            </p>
+          )}
           {last && (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '6px' }}>
               <span style={{ fontSize: '26px', fontWeight: 700 }}>{last.close.toFixed(5)}</span>

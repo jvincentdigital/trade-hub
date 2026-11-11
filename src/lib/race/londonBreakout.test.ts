@@ -58,6 +58,45 @@ describe('London breakout', () => {
     expect(r.note).toMatch(/broke above/)
   })
 
+  it('opens at the price now, with stop and target the same distance from it (R:R stays 2)', () => {
+    const m15 = [
+      ...asia(WED),
+      win(WED, 0, P, P + 0.0009, P - 0.0009, P + 0.0005),
+      win(WED, 1, P + 0.0005, P + 0.0016, P - 0.0005, P + 0.0015),
+    ]
+    // Planned from the break close P+0.0015: 0.0015 to the middle. The price drifted 3 pips up.
+    const r = londonBreakout(m15, hourly(WED), after(WED, 1), { price: P + 0.0018 })
+    expect(r.signal?.entry).toBeCloseTo(P + 0.0018, 10)
+    expect(r.signal?.stop).toBeCloseTo(P + 0.0003, 10)
+    expect(r.signal?.takeProfit).toBeCloseTo(P + 0.0048, 10)
+  })
+
+  it('does not chase a price that ran on, or one back inside the range', () => {
+    const m15 = [
+      ...asia(WED),
+      win(WED, 0, P, P + 0.0009, P - 0.0009, P + 0.0005),
+      win(WED, 1, P + 0.0005, P + 0.0016, P - 0.0005, P + 0.0015),
+    ]
+    // The review's case: a 2R plan opened 0.67x the stop further on would risk far more than it can make.
+    const ran = londonBreakout(m15, hourly(WED), after(WED, 1), { price: P + 0.0025 })
+    expect(ran.signal).toBeNull()
+    expect(ran.note).toMatch(/ran 0.7x the stop past it: no chase/)
+    const back = londonBreakout(m15, hourly(WED), after(WED, 1), { price: P + 0.0009 })
+    expect(back.signal).toBeNull()
+    expect(back.note).toMatch(/back inside the range/)
+  })
+
+  it('never puts the stop closer than minDist (what a full 2% trade needs within the margin cap)', () => {
+    const m15 = [
+      ...asia(WED),
+      win(WED, 0, P, P + 0.0009, P - 0.0009, P + 0.0005),
+      win(WED, 1, P + 0.0005, P + 0.0016, P - 0.0005, P + 0.0015),
+    ]
+    const r = londonBreakout(m15, hourly(WED), after(WED, 1), { minDist: 0.003 })
+    expect(r.signal!.entry - r.signal!.stop).toBeCloseTo(0.003, 10)
+    expect(r.signal!.takeProfit - r.signal!.entry).toBeCloseTo(0.006, 10)
+  })
+
   it('sells the first close below the range', () => {
     const m15 = [...asia(WED), win(WED, 0, P, P + 0.0005, P - 0.0016, P - 0.0015)]
     const r = londonBreakout(m15, hourly(WED), after(WED, 0))

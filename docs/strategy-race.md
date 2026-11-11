@@ -199,8 +199,10 @@ new built-in strategy with fresh money. See `docs/gold.md`.
 
 `com.jvd.trade-hub-race` runs on the Mac Mini. Files:
 
-- `scripts/launchd/com.jvd.trade-hub-race.plist`: hourly (`StartInterval`
-  3600), logs to `~/Library/Logs/trade-hub/race.log`.
+- `scripts/launchd/com.jvd.trade-hub-race.plist`: hourly at minute 07
+  (`StartCalendarInterval`; it was `StartInterval 3600`, which drifted about
+  40 s an hour, see `docs/london-open.md`), logs to
+  `~/Library/Logs/trade-hub/race.log`.
 - `scripts/launchd/run-race-tick`: wrapper that sources `~/.zprofile` for PATH
   (like `~/.local/bin/run-idea-inbox`) and runs the tick from `~/dev/trade-hub`.
 

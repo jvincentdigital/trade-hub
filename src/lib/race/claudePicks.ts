@@ -5,21 +5,33 @@ import { atrSeries, type LondonCheck } from './londonBreakout'
 import type { LiveTrade } from './live'
 
 // "Claude's picks": one more $1,000 race account. Once a weekday before the
-// London open (scripts/claude-picks.ts) Claude reads a short brief per market
+// London open (scripts/claude-picks.ts, 03:47 AST) Claude reads a short brief per market
 // and may suggest up to 2 trades; this file builds the brief and checks every
 // suggestion hard before anything opens. Pure, tested. Play money only.
 
 export const CLAUDE_PICKS = {
   id: 'claude-picks',
   name: "Claude's picks",
-  markets: ['GBP-USD', 'GBP-JPY', 'pax-gold'],
+  // Not GBP/JPY: it is GBP/USD times a daily yen rate (src/lib/feeds.ts), so a
+  // pick there is the same pound bet twice.
+  markets: ['GBP-USD', 'pax-gold'],
   maxPicks: 2,
   minRR: 1.5,
-  /** Stop distance from the current price, in 15m ATRs. */
+  /** Stop distance from the current price, in 1h ATRs (never under the margin floor). */
   minStopAtr: 0.5,
   maxStopAtr: 3,
-  why: 'Stop and target chosen by Claude, then checked by code: stop 0.5 to 3 times the 15-minute ATR away, target at least 1.5 times the risk.',
+  why: 'Stop and target chosen by Claude, then checked by code: stop 0.5 to 3 times the 1-hour ATR away and never closer than a full 2% trade needs within the margin cap, target at least 1.5 times the risk.',
 } as const
+
+/**
+ * The stop distances Claude may use on one market: 0.5x to 3x the 1h ATR, and
+ * never under `floor` (minStopForFullRisk: closer stops get cut below 2% risk
+ * by the margin cap, which a 15m ATR stop on GBP/USD always did).
+ */
+export function stopBand(atr1h: number, floor: number): { min: number; max: number } {
+  const min = Math.max(CLAUDE_PICKS.minStopAtr * atr1h, floor)
+  return { min, max: Math.max(CLAUDE_PICKS.maxStopAtr * atr1h, min) }
+}
 
 // ── The brief ────────────────────────────────────────────────────────────
 
@@ -57,10 +69,12 @@ export interface MarketData {
   london: LondonCheck
   /** Every open race trade on this market, any strategy. */
   open: { by: string; trade: LiveTrade }[]
+  /** Stop distances the validator allows (stopBand). */
+  band: { min: number; max: number }
 }
 
-/** 15m ATR(14) on closed candles, the yardstick the validator uses. */
-export const atr15 = (m15: OHLCCandle[]) => atrSeries(m15.slice(0, -1)).at(-1) ?? NaN
+/** 1h ATR(14) on closed candles, the yardstick the validator uses. */
+export const atr1h = (h1: OHLCCandle[]) => atrSeries(h1.slice(0, -1)).at(-1) ?? NaN
 
 /** A compact text brief for one market. */
 export function marketBrief(d: MarketData, nowSec: number): string {
@@ -103,9 +117,8 @@ export function marketBrief(d: MarketData, nowSec: number): string {
         )
         .join('\n')
     : '  none'
-  const label = d.market === 'GBP-JPY' ? ' (computed from GBP/USD and the daily USD/JPY rate)' : ''
   return [
-    `## ${d.market} (${inst?.label ?? inst?.symbol ?? d.market})${label}`,
+    `## ${d.market} (${inst?.label ?? inst?.symbol ?? d.market})`,
     `Price now: ${q(d.price)}`,
     `Last 12h of 15m candles, in 3h blocks:`,
     ...blocks,
@@ -114,6 +127,7 @@ export function marketBrief(d: MarketData, nowSec: number): string {
     `1h trend: ${trend}; EMA50 ${q(e50)}, EMA200 ${q(e200)}`,
     `RSI14: 1h ${rsi1h.toFixed(1)}, 15m ${rsi15.toFixed(1)}`,
     `ATR14: 15m ${q(a15)}, 1h ${q(a1h)}`,
+    `Stop distance allowed: ${q(d.band.min)} to ${q(d.band.max)} from the price now`,
     `Nearest 1h swing highs above: ${sw.above.map(q).join(', ') || 'none in 72h'}; swing lows below: ${sw.below.map(q).join(', ') || 'none in 72h'}`,
     `Open race trades here:`,
     opens,
@@ -130,7 +144,7 @@ Rules, checked by code (a trade that breaks one is thrown away):
 - At most ${CLAUDE_PICKS.maxPicks} trades, at most one per market. No trade at all is a fine answer when nothing is clear.
 - The trade opens at the current price shown below.
 - direction is "long" or "short". A long's stop is below the price and its target above; a short the other way.
-- Stop distance from the current price: between ${CLAUDE_PICKS.minStopAtr}x and ${CLAUDE_PICKS.maxStopAtr}x the 15m ATR shown.
+- Stop distance from the current price: inside the "Stop distance allowed" range shown for that market (${CLAUDE_PICKS.minStopAtr}x to ${CLAUDE_PICKS.maxStopAtr}x the 1h ATR, and never so close that the margin cap would shrink the trade below 2% risk).
 - Target distance at least ${CLAUDE_PICKS.minRR}x the stop distance.
 - Never against a "Claude's picks" trade already open on that market.
 
@@ -157,8 +171,8 @@ export interface Pick {
 export interface PickContext {
   /** Current price per market. */
   prices: Record<string, number>
-  /** 15m ATR(14) per market. */
-  atr15: Record<string, number>
+  /** Allowed stop distance per market (stopBand). */
+  band: Record<string, { min: number; max: number }>
   /** Claude's picks trades already open. */
   open: LiveTrade[]
 }
@@ -204,25 +218,33 @@ export function checkPick(
   const direction = r.direction
   if (direction !== 'long' && direction !== 'short')
     return { ok: false, reason: 'direction must be long or short' }
-  const stop = Number(r.stop)
-  const target = Number(r.target)
+  if (
+    typeof r.stop !== 'number' ||
+    typeof r.target !== 'number' ||
+    !Number.isFinite(r.stop) ||
+    !Number.isFinite(r.target)
+  )
+    return { ok: false, reason: 'stop and target must be numbers' }
+  const { stop, target } = r as { stop: number; target: number }
   if (!(stop > 0) || !(target > 0)) return { ok: false, reason: 'stop and target must be prices' }
   const price = ctx.prices[market]
-  const atr = ctx.atr15[market]
-  if (!(price > 0) || !(atr > 0)) return { ok: false, reason: `no price or ATR for ${market}` }
+  const band = ctx.band[market]
+  if (!(price > 0) || !(band?.min > 0))
+    return { ok: false, reason: `no price or stop range for ${market}` }
   const long = direction === 'long'
   if (long ? stop >= price : stop <= price)
     return { ok: false, reason: `stop is on the wrong side of the price (${price})` }
   if (long ? target <= price : target >= price)
     return { ok: false, reason: `target is on the wrong side of the price (${price})` }
   const risk = Math.abs(price - stop)
-  const x = risk / atr
-  const EPS = 1e-9 // so exactly 0.5x, 3x or 1.5R passes despite float rounding
-  if (x < CLAUDE_PICKS.minStopAtr - EPS || x > CLAUDE_PICKS.maxStopAtr + EPS)
+  const EPS = 1e-9 // so a stop exactly on the edge, or exactly 1.5R, passes despite float rounding
+  if (risk < band.min * (1 - EPS) || risk > band.max * (1 + EPS)) {
+    const q = (n: number) => formatQuote(n, getInstrument(market))
     return {
       ok: false,
-      reason: `stop is ${x.toFixed(2)}x the 15m ATR (allowed ${CLAUDE_PICKS.minStopAtr}-${CLAUDE_PICKS.maxStopAtr})`,
+      reason: `stop is ${q(risk)} away (allowed ${q(band.min)} to ${q(band.max)})`,
     }
+  }
   const rr = Math.abs(target - price) / risk
   if (rr < CLAUDE_PICKS.minRR - EPS)
     return {

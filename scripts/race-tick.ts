@@ -9,9 +9,11 @@
  *
  * Fetches fresh candles per market (Kraken's free public OHLC for crypto,
  * gold and the forex pairs it trades well, one call per candle size in use,
- * about 1 a second; GBP/JPY computed from GBP/USD and the ECB's USD/JPY;
- * Frankfurter for the other forex; no keys), asks every strategy for its
- * latest signal on closed candles, and opens/closes trades in that strategy's
+ * about 1 a second, forex spike wicks capped; GBP/JPY computed from GBP/USD
+ * and the ECB's USD/JPY; Frankfurter for the other forex; no keys; forex
+ * candles from the weekend close are left out), asks every strategy for its
+ * latest signal on closed candles (none on forex while that market is shut),
+ * and opens/closes trades in that strategy's
  * own play-money account: one balance across all its markets, every trade
  * risking 2% of it (src/lib/race/account.ts). State: ~/.local/share/trade-hub/race.json
  * (override with RACE_FILE). Play money only: nothing here talks to a broker.
@@ -19,7 +21,8 @@
  * Strategies: the built-in rules, London breakout (src/lib/race/londonBreakout.ts)
  * and Claude's picks (opened by scripts/claude-picks.ts; a tick only checks
  * their stops and targets). A lock (race.json.lock) keeps two runs from
- * writing at once: a tick that finds it taken prints one line and stops.
+ * writing at once: a tick that finds it taken waits up to 3 minutes, then
+ * prints one line and stops.
  *
  * After saving, the state is PUT to the race relay worker (docs/live.md) when
  * ~/.local/share/trade-hub/race.env exists (RACE_PUT_URL + RACE_WRITE_KEY).
@@ -32,7 +35,9 @@ import type { Rule, RuleTimeframe } from '../src/lib/rules/schema'
 import { getInstrument, INSTRUMENTS, type PriceMap } from '../src/lib/paper/instruments'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '../src/lib/sizing/sizing'
 import { FEE_RATE, LEVERAGE } from '../src/lib/paper/engine'
-import { closedOnly, TF_HOURS } from '../src/lib/race/candles'
+import { closedOnly, forexClosed, TF_HOURS } from '../src/lib/race/candles'
+import { minStopForFullRisk } from '../src/lib/race/account'
+import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { feedOf } from '../src/lib/feeds'
 import type { CandleTf } from '../src/lib/kraken'
 import { LONDON_BREAKOUT, londonBreakout } from '../src/lib/race/londonBreakout'
@@ -46,7 +51,7 @@ import {
   type MarketTick,
 } from '../src/lib/race/live'
 import type { OHLCCandle } from '../src/lib/types/market'
-import { fetchMarket, FILE, load, money, push, save, tryLock } from './race-io'
+import { fetchMarket, FILE, load, money, push, save, waitLock } from './race-io'
 
 const args = process.argv.slice(2)
 const startArg = args.includes('--start') ? Number(args[args.indexOf('--start') + 1]) : 1000
@@ -97,8 +102,9 @@ async function main() {
     return
   }
   // One writer at a time: the hourly job, the London 15-minute job and
-  // Claude's picks share race.json. A tick that finds the lock taken stops.
-  const release = tryLock()
+  // Claude's picks share race.json. A tick that finds the lock taken waits a
+  // little (a London tick must not be lost to an overlapping run), then stops.
+  const release = await waitLock(3 * 60_000)
   if (!release) {
     console.log(`${new Date().toISOString()} another race run is still going; skipping this tick`)
     return
@@ -111,6 +117,9 @@ async function main() {
 }
 
 async function tick() {
+  // Before any fetch: a candle counts as closed only if it closed before it was fetched.
+  const nowSec = Math.floor(Date.now() / 1000)
+  if (londonOnSummerTime(nowSec * 1000)) console.log(`  ${BST_NOTE}`)
   let state = args.includes('--reset') ? null : load()
   if (!state) {
     if (!(startArg > 0)) throw new Error('--start must be a positive number')
@@ -162,14 +171,23 @@ async function tick() {
   }
   state.prices = { ...state.prices, ...prices }
 
-  const nowSec = Math.floor(Date.now() / 1000)
+  const shut = forexClosed(nowSec)
+  if (shut)
+    console.log('  Forex market closed (Friday 17:00 to Sunday 17:00 New York): no forex signals')
   const signalFor = (p: Plan, id: string): Signal | null => {
     if (p.kind === 'picks') return null
+    const inst = getInstrument(id)
+    if (shut && inst?.market === 'forex') return null
     if (p.kind === 'london') {
       const m15 = data.get(key(id, '15m'))
       const h1 = data.get(key(id, '1h'))
-      if (!m15?.length || !h1?.length) return null
-      const r = londonBreakout(m15, h1, nowSec)
+      if (!m15?.length || !h1?.length || !inst || !(prices[id] > 0)) return null
+      // Levels around the price the trade would open at; the stop never so
+      // close that the margin cap would cut the trade below the race's risk.
+      const r = londonBreakout(m15, h1, nowSec, {
+        price: prices[id],
+        minDist: minStopForFullRisk(prices[id], LEVERAGE[inst.market], state.sizing.riskPct),
+      })
       console.log(`  LONDON ${id}: ${r.note}`)
       return r.signal
     }

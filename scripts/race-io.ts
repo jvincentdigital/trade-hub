@@ -8,19 +8,22 @@ import {
   closeSync,
   copyFileSync,
   existsSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
-  writeSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { parseRaceState, type RaceState } from '../src/lib/race/live'
 import { feedOf } from '../src/lib/feeds'
 import { fetchMarketCandles } from '../src/lib/race/feeds'
+import { dropClosedForex } from '../src/lib/race/candles'
+import { getInstrument } from '../src/lib/paper/instruments'
 import type { CandleTf } from '../src/lib/kraken'
 import type { OHLCCandle } from '../src/lib/types/market'
 
@@ -80,49 +83,119 @@ export async function push(state: RaceState) {
 
 // ── Lock: one writer at a time ───────────────────────────────────────────
 // race.json.lock holds "<pid> <ms>". A lock whose process is gone, or older
-// than 20 minutes, is stale and taken over.
+// than 20 minutes (a hung run), is stale and taken over. Taking over is
+// guarded by a second file (race.json.lock.takeover, created exclusively), so
+// two runs that both see the same stale lock cannot both end up holding it.
 
 const LOCK = `${FILE}.lock`
+const TAKEOVER = `${LOCK}.takeover`
 const STALE_MS = 20 * 60_000
+const code = (e: unknown) => (e as NodeJS.ErrnoException).code
 
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0)
     return true
   } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM'
+    return code(e) === 'EPERM'
+  }
+}
+
+const readLock = (): string | null => {
+  try {
+    return readFileSync(LOCK, 'utf8')
+  } catch (e) {
+    if (code(e) === 'ENOENT') return null
+    throw e
+  }
+}
+
+function isStale(content: string): boolean {
+  const [pid, at] = content.split(' ').map(Number)
+  return !(pid > 0 && at > 0 && alive(pid) && Date.now() - at < STALE_MS)
+}
+
+/** Remove the lock if it is (still) the stale one. True when the way is clear. */
+function clearStale(): boolean {
+  const seen = readLock()
+  if (seen === null) return true // let go meanwhile: try again
+  if (!isStale(seen)) return false
+  let fd: number
+  try {
+    fd = openSync(TAKEOVER, 'wx')
+  } catch (e) {
+    if (code(e) !== 'EEXIST') throw e
+    // Another run is taking it over. A takeover file left by a killed run
+    // (older than a minute) is removed; this run still counts as busy.
+    try {
+      if (Date.now() - statSync(TAKEOVER).mtimeMs > 60_000) unlinkSync(TAKEOVER)
+    } catch {
+      // gone already
+    }
+    return false
+  }
+  try {
+    const now = readLock()
+    if (now !== seen) return now === null // someone else took it: busy
+    try {
+      unlinkSync(LOCK)
+    } catch (e) {
+      if (code(e) !== 'ENOENT') throw e
+    }
+    return true
+  } finally {
+    closeSync(fd)
+    try {
+      unlinkSync(TAKEOVER)
+    } catch {
+      // gone already
+    }
   }
 }
 
 /** Take the lock, or null when another run holds it. The returned function lets it go. */
 export function tryLock(): (() => void) | null {
   mkdirSync(dirname(LOCK), { recursive: true })
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const fd = openSync(LOCK, 'wx')
-      const mine = `${process.pid} ${Date.now()}`
-      writeSync(fd, mine)
-      closeSync(fd)
-      let done = false
-      const release = () => {
-        if (done) return
-        done = true
-        try {
-          if (readFileSync(LOCK, 'utf8') === mine) unlinkSync(LOCK)
-        } catch {
-          // already gone
-        }
+  const mine = `${process.pid} ${Date.now()}`
+  // Written first, then hard-linked into place: the lock never exists empty.
+  const tmp = `${LOCK}.${process.pid}`
+  writeFileSync(tmp, mine)
+  let got = false
+  try {
+    for (let attempt = 0; attempt < 2 && !got; attempt++) {
+      try {
+        linkSync(tmp, LOCK)
+        got = true
+      } catch (e) {
+        if (code(e) !== 'EEXIST') throw e
+        if (!clearStale()) return null
       }
-      process.once('exit', release)
-      return release
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
-      const [pid, at] = readFileSync(LOCK, 'utf8').split(' ').map(Number)
-      if (alive(pid) && Date.now() - at < STALE_MS) return null
-      unlinkSync(LOCK) // stale: its run died or hung; take it over
+    }
+  } finally {
+    unlinkSync(tmp)
+  }
+  if (!got) return null
+  let done = false
+  const release = () => {
+    if (done) return
+    done = true
+    try {
+      if (readLock() === mine) unlinkSync(LOCK)
+    } catch {
+      // already gone
     }
   }
-  return null
+  process.once('exit', release)
+  // Ctrl-C on make race-tick, or launchd stopping a job, must not leave a lock behind.
+  for (const [sig, n] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)
+    process.once(sig, () => {
+      release()
+      process.exit(n)
+    })
+  return release
 }
 
 /** Wait up to `ms` for the lock (Claude's picks waits for a running tick). */
@@ -137,13 +210,20 @@ export async function waitLock(ms: number): Promise<(() => void) | null> {
 
 // ── Candles ──────────────────────────────────────────────────────────────
 
-/** Any market, any size (ECB-only forex is always daily). ECB gets one polite retry; Kraken retries itself. */
+/**
+ * Any market, any size (ECB-only forex is always daily). ECB gets one polite
+ * retry; Kraken retries itself. Forex candles that start while the real market
+ * is shut (Friday 17:00 to Sunday 17:00 New York) are left out: Kraken prints
+ * them, but no broker would fill there.
+ */
 export async function fetchMarket(id: string, tf: CandleTf): Promise<OHLCCandle[]> {
-  if (feedOf(id) !== 'ecb') return fetchMarketCandles(id, tf)
+  const forex = getInstrument(id)?.market === 'forex'
+  const get = () => fetchMarketCandles(id, tf).then((c) => (forex ? dropClosedForex(c) : c))
+  if (feedOf(id) !== 'ecb') return get()
   try {
-    return await fetchMarketCandles(id, tf)
+    return await get()
   } catch {
     await sleep(30_000)
-    return fetchMarketCandles(id, tf)
+    return get()
   }
 }
