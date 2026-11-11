@@ -6,6 +6,11 @@ Status markers: `[ ]` open · `[~]` in progress · `[x]` done.
 
 ## Where we left off (2026-11-10 night)
 
+**Strategy lab (2026-11-11, night), branch `feat/strategy-lab`.** John asked to throw a lot of bots at years of history: his Fibonacci, a consolidation scalper, the London breakout, the 9 race rules, combinations, scalp/day/swing, with and without the red-news filter, $10,000 each, 2% risk. `make lab` runs 861 bots (walk-forward: settings chosen on the first 70%, scored on the last 30%, real spread, slippage and commission) in about 10 seconds. Result: only RSI range reversal on 1h US30 and USD/JPY made money in both halves and beat a coin-flip control; John's Fib loses on 5m-1h after costs, about flat on 4h. Report: `~/jvd-outputs/2026-11-11/strategy-lab/REPORT.html`. See `docs/strategy-lab.md`.
+
+- [ ] @john: read the report; say whether RSI range reversal on US30 + USD/JPY (1h) should join the live race as its own $10,000 account (needs a free US30 feed).
+- [ ] Finish the 5-30 minute history for EUR/USD, USD/JPY, US30, EUR/GBP (`~/jvd-outputs/trading/history/README.md`, polite run, about 6 hours), then `make lab` again.
+
 **London open (2026-11-10, late night), branch `feat/london-open`.** John asked the race to trade the London open hard on the pound and gold, same 2% rules. Real 15m/1h/4h forex candles from Kraken (GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF, AUD/USD), GBP/JPY computed from GBP/USD and the ECB's USD/JPY (Kraken's yen book is too thin), a new "London breakout" account (Asian range, first 15m close outside it, 06:00-10:00 UTC), a new "Claude's picks" account (locked-down `claude -p` on the subscription at 03:47 AST, every trade checked in code), a 15-minute tick 02:00-07:00 AST on weekdays, a race lock, and on Today a "London open" line plus a "Pound & gold" tab. See `docs/london-open.md`.
 
 - [ ] @john: merge the PR, then on the Mac Mini pull and install the two new launchd jobs and reload the hourly one (now pinned to minute 07), before 02:00 AST (`docs/london-open.md`, "Install").

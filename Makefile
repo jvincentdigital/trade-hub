@@ -8,7 +8,7 @@
 # Convention: keep targets simple. If a target needs more than a few lines of
 # shell, put the logic in scripts/ and call it from here.
 
-.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset claude-picks
+.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset claude-picks lab lab-report
 
 PROJECT_NAME := trade-hub
 
@@ -82,6 +82,13 @@ race-reset: ## Strategy race: back up race.json, start over at 2% risk per trade
 
 claude-picks: ## Claude's picks: brief, ask claude -p, open the trades that pass the checks (usage: make claude-picks [DRY=1] to only print)
 	npx tsx scripts/claude-picks.ts $(if $(DRY),--dry-run,)
+
+lab: ## Strategy lab: every bot, walk-forward on the history files, then the report (usage: make lab [OUT=dir]; docs/strategy-lab.md)
+	npx tsx scripts/lab/run.ts $(if $(OUT),--out $(OUT),)
+	npx tsx scripts/lab/report.ts $(if $(OUT),--dir $(OUT),)
+
+lab-report: ## Strategy lab: rebuild REPORT.md and REPORT.html from results.json (usage: make lab-report [OUT=dir])
+	npx tsx scripts/lab/report.ts $(if $(OUT),--dir $(OUT),)
 
 # ── Help ──────────────────────────────────────────────────
 

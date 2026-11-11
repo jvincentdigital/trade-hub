@@ -68,6 +68,7 @@ src/
     hooks/              # useMarketData, usePaperAccount, useRules, useTradePlans, useWatchlist
     paper/              # Demo account engine: orders, fills, fees, stats, plan checks (pure, tested)
     rules/              # Strategy rules: schema, signals, backtest, built-in + course rules (pure, tested)
+    lab/                # Strategy lab: John's Fib, scalper, London breakout, race rules, walk-forward on years of history (docs/strategy-lab.md)
     patterns/           # 21 candlestick detectors + orchestrator (detectPatterns)
     scanner/            # MM Confluence v2: ema, rsi, detectMWFormation, scoreSetup
     types/              # market.ts, strategy.ts
