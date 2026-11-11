@@ -218,6 +218,23 @@ pound/dollar rule, and `checkPicks` applies the same check in Claude's order
 pick as `REJECT`. Its prompt now gives the account's real balance instead of
 "$1,000".
 
+## Closing every trade by hand (John, 2026-11-11)
+
+At 13:04 AST John asked to "close all the trades and take the profit" after
+the New York session. `make race-close-all AT=<ISO time> [DRY=1]`
+(`scripts/race-close-all.ts`, pure part `closeAll` in `src/lib/race/live.ts`)
+closes every open trade in every account:
+
+- Price: the open of the first 1-minute Kraken candle at or after the time he
+  asked (13:05 AST for 13:04:31), so nothing is chosen with hindsight. USD/JPY
+  and NZD/USD have no 1-minute candles here and close at the race's own last
+  price (the daily ECB rate); GBP/JPY at GBP/USD times the race's USD/JPY leg.
+- Both fees are booked like any close; the reason is `manual`, shown as
+  "closed by you" on the Race page.
+- It takes the race lock and stops without saving when a trade touched its
+  stop or target between the last check and the fill minute (that close would
+  have come first). `DRY=1` prints without saving.
+
 The past-results leaderboard (part 1) does not use these rules: it still
 backtests every market, crypto included, to rank the rules.
 

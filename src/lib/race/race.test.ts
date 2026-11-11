@@ -608,3 +608,59 @@ describe('backtest windows', () => {
     expect(e.perMonth).toBeCloseTo(e.profit)
   })
 })
+
+describe('closeAll (John closes every trade by hand)', () => {
+  it('books each trade at its market price with both fees, reason manual', async () => {
+    const { closeAll } = await import('./live')
+    const st = createRaceState(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      10_000,
+      0,
+    )
+    const t = {
+      signalTime: 1,
+      entryTime: 2,
+      entryBucket: 2,
+      units: 10_000,
+      usdPerQuote: 1,
+      margin: 400,
+      entryFee: 0.8,
+    }
+    st.strategies.a.open = [
+      { ...t, market: 'GBP-USD', direction: 'long', entry: 1.3, stop: 1.29, takeProfit: 1.32 },
+      {
+        ...t,
+        market: 'USD-JPY',
+        direction: 'short',
+        entry: 150,
+        stop: 151,
+        takeProfit: 148,
+        usdPerQuote: 1 / 150,
+      },
+    ]
+    st.strategies.b.open = [
+      { ...t, market: 'EUR-USD', direction: 'short', entry: 1.1, stop: 1.11, takeProfit: 1.08 },
+    ]
+    const r = closeAll(st, { 'GBP-USD': 1.305, 'EUR-USD': 1.102 }, 500, () => 0.0001)
+    // GBP/USD long +50 pips on 10k = +$50, minus 0.8 entry and 1.305 exit fee
+    expect(r.closed.find((c) => c.market === 'GBP-USD')).toMatchObject({
+      reason: 'manual',
+      exitTime: 500,
+      exit: 1.305,
+      strategy: 'A',
+    })
+    expect(r.closed.find((c) => c.market === 'GBP-USD')!.pnl).toBeCloseTo(50 - 0.8 - 1.305)
+    expect(r.closed.find((c) => c.market === 'EUR-USD')!.pnl).toBeCloseTo(-20 - 0.8 - 1.102)
+    // no price: stays open, named in missing, balance untouched by it
+    expect(r.missing).toEqual(['USD-JPY'])
+    expect(r.state.strategies.a.open.map((x) => x.market)).toEqual(['USD-JPY'])
+    expect(r.state.strategies.a.balance).toBeCloseTo(10_000 + 50 - 0.8 - 1.305)
+    expect(r.state.strategies.b.closed).toHaveLength(1)
+    expect(raceStateSchema.safeParse(r.state).success).toBe(true)
+    // the input state is not changed
+    expect(st.strategies.a.open).toHaveLength(2)
+  })
+})

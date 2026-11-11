@@ -41,7 +41,7 @@ export type LiveTrade = z.infer<typeof liveTradeSchema>
 export const closedLiveTradeSchema = liveTradeSchema.extend({
   exitTime: z.number(),
   exit: z.number(),
-  reason: z.enum(['stop', 'target']),
+  reason: z.enum(['stop', 'target', 'manual']),
   /** Net dollars, both fees included. */
   pnl: z.number(),
   fees: z.number(),
@@ -156,7 +156,7 @@ const legacyStateSchema = z.object({
         legacyTradeSchema.extend({
           exitTime: z.number(),
           exit: z.number(),
-          reason: z.enum(['stop', 'target']),
+          reason: z.enum(['stop', 'target', 'manual']),
           pnl: z.number(),
           fees: z.number(),
         }),
@@ -374,6 +374,51 @@ export function stepStrategy(
     closed,
     passed,
   }
+}
+
+/**
+ * Close every open trade by hand (John, 2026-11-11), reason 'manual', at the
+ * given price per market, with both fees booked like a stop or target close.
+ * Trades on a market with no price stay open and are listed in `missing`. Pure.
+ */
+export function closeAll(
+  state: RaceState,
+  exitPrices: Record<string, number>,
+  timeSec: number,
+  feeRate: (market: string) => number,
+): { state: RaceState; closed: (ClosedLiveTrade & { strategy: string })[]; missing: string[] } {
+  const closed: (ClosedLiveTrade & { strategy: string })[] = []
+  const missing = new Set<string>()
+  const strategies = Object.fromEntries(
+    Object.entries(state.strategies).map(([id, s]) => {
+      let balance = s.balance
+      const open: LiveTrade[] = []
+      const done: ClosedLiveTrade[] = []
+      for (const t of s.open) {
+        const exit = exitPrices[t.market]
+        if (!(exit > 0)) {
+          missing.add(t.market)
+          open.push(t)
+          continue
+        }
+        const gross = t.units * dir(t.direction) * (exit - t.entry) * t.usdPerQuote
+        const exitFee = t.units * exit * t.usdPerQuote * feeRate(t.market)
+        const c: ClosedLiveTrade = {
+          ...t,
+          exitTime: timeSec,
+          exit,
+          reason: 'manual',
+          pnl: gross - t.entryFee - exitFee,
+          fees: t.entryFee + exitFee,
+        }
+        balance += c.pnl
+        done.push(c)
+        closed.push({ ...c, strategy: s.name })
+      }
+      return [id, { ...s, balance, open, closed: [...s.closed, ...done] }]
+    }),
+  )
+  return { state: { ...state, strategies }, closed, missing: [...missing] }
 }
 
 /** Unrealized dollars on an open trade (before fees). */
