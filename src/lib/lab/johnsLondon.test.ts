@@ -10,9 +10,13 @@ import { seeded } from './control'
 import {
   assertDesignCandles,
   assertDesignFile,
+  breakLines,
+  chartOf,
   coinDraw,
+  coinDrawNY,
   coinRun,
   daySignals,
+  dollarSide,
   DESIGN_START,
   entryFill,
   entryMinute,
@@ -28,23 +32,41 @@ import {
   mirrorTest,
   p95,
   passLines,
+  inRaceHours,
+  londonLines,
+  nyBreak,
+  nyLevels,
+  nySessionFor,
+  pickFlip,
+  pickNY,
   pickPair,
-  pickQ,
   planFrom,
+  prepareBreak,
   prepareMarket,
+  prepareRide,
   prepareV1,
+  RACE,
   rescoreCosts,
+  rescoreThirds,
+  resample,
   resample15,
+  rideSignals,
+  rideSize,
   riskPerUnit,
   roundTrip,
   runLondon,
+  runNY,
   sessionFor,
   stopFill,
   stopHit,
   summarize,
   targetHit,
+  thirdsBeats,
+  trackDay,
+  turnCandle,
   V1,
   walkExits,
+  walkParts,
   type Fill,
   type LondonData,
   type LondonSignal,
@@ -121,12 +143,32 @@ function flipDay(after?: Bar[]): Bar[] {
   return [...bars, ...quiet(bars[bars.length - 1][3], 96 - bars.length)]
 }
 
+/**
+ * The ride day (SELL, 1 = B + 0.0010): bar 31 arms the setup (0 = B - 0.0020,
+ * too small for a ride), bar 32 moves 0 to B - 0.0040 (the g = 1.5 ride),
+ * bar 33 moves it to B - 0.0050 (the g = 2.5 ride). Bar 35 reaches 0.786
+ * (B - 0.000284) without reaching the g = 1.5 ride's stop: the Fib signal.
+ * Default after: bar 36 runs through both Fib targets.
+ */
+function rideDay(after?: Bar[], pullback?: Bar): Bar[] {
+  const b = B
+  const bars: Bar[] = [...quiet(b, 30)]
+  bars.push([b, b + 0.001, b - 0.0002, b + 0.0008]) // 30: the last up candle: 1
+  bars.push([b + 0.0008, b + 0.0009, b - 0.002, b - 0.0018]) // 31: arms
+  bars.push([b - 0.0018, b - 0.0017, b - 0.004, b - 0.0039]) // 32: moves 0, closes down
+  bars.push([b - 0.0039, b - 0.0038, b - 0.005, b - 0.0049]) // 33: moves 0, closes down
+  bars.push([b - 0.0049, b - 0.001, b - 0.0049, b - 0.0015]) // 34: the pullback
+  bars.push(pullback ?? [b - 0.0015, b - 0.0002, b - 0.0016, b - 0.0003]) // 35: the Fib signal
+  bars.push(...(after ?? [[b - 0.0003, b - 0.0002, b - 0.008, b - 0.0078]]))
+  return [...bars, ...quiet(bars[bars.length - 1][3], 96 - bars.length)]
+}
+
 function dataOf(bars: Bar[], news: NewsEvent[] = [], day = DAY0): LondonData {
   return prepareMarket('GBPUSD', minutesOf(bars, day), news)
 }
 
-const runDay = (d: LondonData, flip: boolean, q = 0.5) =>
-  runLondon([d], { k: 2, b: 0.5, flip, q }, DAY0, DAY0 + 86_400)
+const runDay = (d: LondonData, mode: 'v1' | 'flip' | 'thirds' = 'v1', ext = 0.272, g = 1.5) =>
+  runLondon([d], { k: 2, b: 0.5, mode, ext, g }, DAY0, DAY0 + 86_400)
 
 /** A hand-made SELL signal on bar `i` of the data (1 and 0 given). */
 function sellSignal(
@@ -148,6 +190,7 @@ function sellSignal(
     armedIdx: i - 4,
     level: zero + 0.786 * (one - zero),
     atr,
+    setup: 0,
   }
 }
 
@@ -440,26 +483,21 @@ describe('look-ahead guards', () => {
     expect(r2.E).toBe(r.E)
     expect(r2.plan).toEqual(r.plan)
   })
-  it('the reverse trade is checked from the next minute, never in the minute it opens', () => {
-    const run = runDay(d, true)
-    const rev = run.trades.find((t) => t.leg === 'reverse')!
-    expect(rev.fills.every((f) => f.time > rev.entryTime)).toBe(true)
-  })
-  it('the re-entry extreme reads candles only through its trigger candle', () => {
-    const run = runDay(d, true)
-    const re = run.trades.find((t) => t.leg === 'reentry')!
-    const atr38 = d.atr[38]
-    expect(re.rawStop).toBeCloseTo(B + 0.0036 + 0.5 * atr38, 10) // bar 39 (after the trigger) goes nowhere near it
-  })
-  it('a whole run gives the same trades on data cut right after they close', () => {
-    const run = runDay(d, true)
-    const last = Math.max(...run.trades.map((t) => t.exitTime))
-    const cut = { ...dataOf(bars) }
-    cut.m1 = cut.m1.filter((x) => x.time <= last + 60)
-    cut.c15 = resample15(cut.m1)
-    cut.atr = atrSeries(cut.c15, 14)
-    cut.byTime = new Map(cut.c15.map((c, i) => [c.time, i]))
-    expect(runDay(cut, true).trades).toEqual(run.trades)
+  it('a whole run gives the same trades on data cut right after they close (v1 and v1-flip)', () => {
+    for (const [mode, bs] of [
+      ['v1', bars],
+      ['flip', rideDay()],
+    ] as const) {
+      const run = runDay(dataOf(bs), mode)
+      expect(run.trades.length).toBeGreaterThan(0)
+      const last = Math.max(...run.trades.map((t) => t.exitTime))
+      const cut = { ...dataOf(bs) }
+      cut.m1 = cut.m1.filter((x) => x.time <= last + 60)
+      cut.c15 = resample15(cut.m1)
+      cut.atr = atrSeries(cut.c15, 14)
+      cut.byTime = new Map(cut.c15.map((c, i) => [c.time, i]))
+      expect(runDay(cut, mode).trades).toEqual(run.trades)
+    }
   })
 })
 
@@ -558,7 +596,7 @@ describe('2.4 entry', () => {
   })
   it('check 1: no trade while one is open in the market', () => {
     const d = dataOf(flipDay([[B + 0.0026, B + 0.0027, B + 0.002, B + 0.0021]]))
-    const run = runDay(d, false)
+    const run = runDay(d)
     expect(run.trades.length).toBeGreaterThan(0)
     for (const o of run.outcomes.filter((x) => x.result === 'trade open'))
       expect(run.trades.some((t) => t.entryTime <= o.T && t.exitTime >= o.T)).toBe(true)
@@ -730,7 +768,7 @@ describe('2.8 size and limits', () => {
   })
   it('units = 2% of the balance / risk per unit, and a plain stop-out is -1.00R = -2%', () => {
     const d = dataOf(flipDay())
-    const run = runDay(d, false)
+    const run = runDay(d)
     const t = run.trades[0]
     expect(t.why).toBe('stop')
     expect(t.units * t.rpu).toBeCloseTo(200, 6)
@@ -757,47 +795,67 @@ describe('2.8 size and limits', () => {
     expect(a.tryOpen(req({ market: 'GBPUSD', long: true }))).toEqual({
       why: 'account: 2 trades already on USD-',
     })
-    expect(
-      'units' in a.tryOpen(req({ market: 'XAUUSD', long: false, E: 4000, rpu: 16, leverage: 20 })),
-    ).toBe(true)
-    // So with two markets the 5-open cap can never bind: 4 trades already use up every currency move.
-    expect('units' in a.tryOpen(req({ market: 'GBPUSD', long: false }))).toBe(true)
-    expect(a.openCount()).toBe(4)
-    expect('why' in a.tryOpen(req({ market: 'GBPUSD', long: false }))).toBe(true)
-    expect(
-      'why' in a.tryOpen(req({ market: 'XAUUSD', long: true, E: 4000, rpu: 16, leverage: 20 })),
-    ).toBe(true)
+    expect(a.openCount()).toBe(2)
+  })
+  it('one dollar bet: a trade on the other dollar side is skipped while one is open (2.8)', () => {
+    expect(dollarSide('GBPUSD', true)).toBe('USD-')
+    expect(dollarSide('XAUUSD', true)).toBe('USD-')
+    expect(dollarSide('GBPUSD', false)).toBe('USD+')
+    expect(dollarSide('XAUUSD', false)).toBe('USD+')
+    const bet = { why: 'account: dollar bet (a trade on the other dollar side is open)' }
+    const gold = { market: 'XAUUSD' as const, E: 4000, rpu: 16, leverage: 20 }
+    // GBP/USD long (USD down) open: a gold short (USD up) is blocked, a gold long is fine.
+    const a = new LondonAccount()
+    expect('units' in a.tryOpen(req({ market: 'GBPUSD', long: true }))).toBe(true)
+    expect(a.tryOpen(req({ ...gold, long: false }))).toEqual(bet)
+    expect('units' in a.tryOpen(req({ ...gold, long: true }))).toBe(true)
+    // Gold short open: a GBP/USD long is blocked.
+    const b2 = new LondonAccount()
+    expect('units' in b2.tryOpen(req({ ...gold, long: false }))).toBe(true)
+    expect(b2.tryOpen(req({ market: 'GBPUSD', long: true }))).toEqual(bet)
+    // Closed in an earlier minute: no longer open, so the other side may trade.
+    const c = new LondonAccount()
+    c.tryOpen(req({ market: 'GBPUSD', long: true, fills: [fill(1500, 1, 1.3)] }))
+    expect('units' in c.tryOpen(req({ ...gold, long: false, key: eventKey(1560, 1) }))).toBe(true)
+    // Reaching its stop later inside the same minute still counts as open.
+    const d2 = new LondonAccount()
+    d2.tryOpen(req({ market: 'GBPUSD', long: true, fills: [fill(1560, 1, 1.3)] }))
+    expect(d2.tryOpen(req({ ...gold, long: false, key: eventKey(1560, 1) }))).toEqual(bet)
+    // A forced close at the open of that minute is closed first.
+    const e = new LondonAccount()
+    e.tryOpen(
+      req({ market: 'GBPUSD', long: true, fills: [{ ...fill(1560, 1, 1.3), atOpen: true }] }),
+    )
+    expect('units' in e.tryOpen(req({ ...gold, long: false, key: eventKey(1560, 1) }))).toBe(true)
   })
   it('total open risk at most 10% of the balance', () => {
     const a = new LondonAccount()
-    // Three open trades at $200 each, then a $5,000 loss closes: $600 open on $5,000 is 12%.
-    for (const long of [true, true, false]) a.tryOpen(req({ long, fills: [fill(9000, 1, 1.3)] }))
+    // GBP/USD long open ($200 at risk); a gold long loses $8,500 and closes: $230 open on $1,500 is over 10%.
+    a.tryOpen(req({ market: 'GBPUSD', long: true, fills: [fill(9000, 1, 1.3)] }))
     a.tryOpen(
       req({
         market: 'XAUUSD',
-        long: false,
+        long: true,
         E: 4000,
         rpu: 40,
         leverage: 20,
-        fills: [fill(1500, 1, 5000)],
+        fills: [fill(1500, 1, 2300)],
       }),
     )
     a.book(eventKey(1600, 1))
-    expect(a.balance).toBeCloseTo(5000, 6)
+    expect(a.balance).toBeCloseTo(1500, 6)
     expect(
       a.tryOpen(
         req({
           market: 'XAUUSD',
-          long: false,
+          long: true,
           E: 4000,
           rpu: 16,
           leverage: 20,
           key: eventKey(1600, 1),
         }),
       ),
-    ).toEqual({
-      why: 'account: open risk over 10%',
-    })
+    ).toEqual({ why: 'account: open risk over 10%' })
   })
   it('a half closed at TP1 counts in the balance when it closes, and the open risk halves', () => {
     const a = new LondonAccount()
@@ -823,99 +881,648 @@ describe('2.8 size and limits', () => {
     expect(a.maxDrawdown).toBeCloseTo(1050 / 10500, 9)
   })
   it('stop and size follow the real fill, not the signal close', () => {
-    const run = runDay(dataOf(flipDay()), false)
+    const run = runDay(dataOf(flipDay()))
     const t = run.trades[0]
     expect(t.stop).toBeCloseTo(t.E + t.dist, 12)
     expect(t.E).toBeCloseTo(entryFill(GBP, false, t.p), 12)
   })
 })
 
-// ── 3 v1-flip ─────────────────────────────────────────────────────────────
+// ── 2.8 race hours (John's live rules, a backstop) ────────────────────────
 
-describe('3 v1-flip', () => {
-  it('plain v1 on the flip day: one trade, stopped', () => {
-    const run = runDay(dataOf(flipDay()), false)
-    expect(run.trades.map((t) => [t.leg, t.side, t.why])).toEqual([['v1', 'SELL', 'stop']])
+describe("John's race hours: entries 02:00 to 12:30 AST, flat at 12:45 AST", () => {
+  it('in UTC: entries 06:00 to 16:30, flat at 16:45 (AST = UTC - 4)', () => {
+    expect(RACE).toEqual({ entryFrom: 6 * 3600, entryTo: 16.5 * 3600, flat: 16.75 * 3600 })
+    expect(inRaceHours(S0, DAY0 + 6 * 3600 - 60)).toBe(false)
+    expect(inRaceHours(S0, DAY0 + 6 * 3600)).toBe(true)
+    expect(inRaceHours(S0, DAY0 + 16.5 * 3600)).toBe(true)
+    expect(inRaceHours(S0, DAY0 + 16.5 * 3600 + 60)).toBe(false)
   })
-  it('F2 and F3: reverse at the stop fill, quick target, then the re-entry at a better price', () => {
-    const d = dataOf(flipDay())
-    const run = runDay(d, true, 0.5)
-    expect(run.trades.map((t) => [t.leg, t.side, t.why])).toEqual([
-      ['v1', 'SELL', 'stop'],
-      ['reverse', 'BUY', 'target'],
-      ['reentry', 'SELL', 'tp2'],
+  it('an entry outside them is refused, and a session running past 12:45 AST is closed then', () => {
+    const d = dataOf(flatBars(1.303))
+    const late: typeof S0 = {
+      ...S0,
+      start: DAY0 + 4 * 3600,
+      lastEntry: DAY0 + 18 * 3600,
+      timeExit: DAY0 + 20 * 3600,
+    }
+    // A signal closing at 05:45 UTC (01:45 AST) fills before 02:00 AST.
+    expect(prepareV1(d, late, sellSignal(d, 22, 1.305, 1.295), 0.5)).toEqual({
+      why: 'outside race hours',
+    })
+    expect(forcedCloseAt(d, late, DAY0 + 10 * 3600)).toEqual({
+      at: DAY0 + 16.75 * 3600,
+      why: 'race',
+    })
+    const r = prepareV1(d, late, sellSignal(d, 39, 1.305, 1.295), 0.5)
+    if ('why' in r) throw new Error(r.why)
+    expect(r.walk.why).toBe('race')
+    expect(r.walk.exitTime).toBe(DAY0 + 16.75 * 3600)
+  })
+  it('every v1 and v1-NY moment of a year sits inside them, so they never change a backtest trade', () => {
+    for (let day = DESIGN_START; day < DESIGN_START + 366 * 86_400; day += 86_400) {
+      if (!isTradingDay(day)) continue
+      for (const s of [sessionFor(day), nySessionFor(day)]) {
+        expect(inRaceHours(s, s.start + M15)).toBe(true)
+        expect(inRaceHours(s, s.lastEntry + 5 * 60)).toBe(true)
+        expect(s.timeExit).toBeLessThanOrEqual(day + RACE.flat)
+      }
+    }
+  })
+})
+
+// ── 3 v1-flip: the ride ───────────────────────────────────────────────────
+
+describe('3 v1-flip: the ride, then the Fib entry', () => {
+  const d = dataOf(rideDay())
+  const tr = trackDay(d.c15, d.atr, S0, 2)
+
+  it('M1: the tracker reports move candles: the arming candle and each candle that moved 0 and kept the setup', () => {
+    const st = tr.setups.find((x) => !x.long && x.armedIdx === 31)!
+    expect(st.moves.map((m) => m.j)).toEqual([31, 32, 33])
+    expect(st.moves.map((m) => +m.zero.toFixed(4))).toEqual([
+      +(B - 0.002).toFixed(4),
+      +(B - 0.004).toFixed(4),
+      +(B - 0.005).toFixed(4),
     ])
-    const [orig, rev, re] = run.trades
-    // F2: same minute, the original's stop fill, the loss booked before sizing.
-    expect(rev.entryTime).toBe(orig.exitTime)
-    expect(rev.E).toBe(orig.fills[0].price)
-    expect(rev.balanceAtEntry).toBeCloseTo(10000 + orig.usd, 6)
-    expect(rev.units * rev.rpu).toBeCloseTo(0.02 * rev.balanceAtEntry, 6)
-    expect(rev.dist).toBe(orig.dist)
-    expect(rev.stop).toBeCloseTo(rev.E - orig.dist, 12)
-    expect(rev.tp1).toBeCloseTo(rev.E + 0.5 * orig.dist, 12)
-    expect(rev.stop).toBeCloseTo(orig.E + GBP.slippage, 9) // about at the original's entry
-    // F3: original's way, at a better price, the original's targets, next candle's open.
-    expect(re.E).toBeGreaterThan(orig.E)
-    expect(re.tp1).toBe(orig.tp1)
-    expect(re.tp2).toBe(orig.tp2)
-    expect(re.entryTime).toBe(DAY0 + 39 * M15)
-    expect(re.planRR).toBeGreaterThanOrEqual(1.5)
+    expect(st.signalIdx).toBe(35)
+    expect(tr.signals.map((s) => [s.i, s.setup])).toEqual([[35, st.id]])
   })
-  it('F2: a reverse that hits its stop ends the flip, with no re-entry', () => {
-    const run = runDay(dataOf(flipDay()), true, 1)
-    expect(run.trades.map((t) => [t.leg, t.why])).toEqual([
-      ['v1', 'stop'],
-      ['reverse', 'stop'],
+  it('M1: the size test is v1 at a fill exactly at 0.786, cost floor, before the 2.5R cap', () => {
+    const at = (j: number) => {
+      const mv = tr.setups[0].moves.find((m) => m.j === j)!
+      return rideSize(d.market, false, mv.one, mv.zero, mv.atr, 0.5)
+    }
+    expect(at(31).size).toBeLessThan(1.5)
+    expect(at(32).size).toBeGreaterThanOrEqual(1.5)
+    expect(at(32).size).toBeLessThan(2.5)
+    expect(at(33).size).toBeGreaterThanOrEqual(2.5) // above the cap: the cap is not applied
+    // By hand at bar 32: L = 0 + 0.786 x 0.005, the stop at the cost floor.
+    const L = B - 0.004 + 0.786 * 0.005
+    const floor = 10 * roundTrip(d.market, L)
+    const reward = 0.5 * (L - (B - 0.004)) + 0.5 * (L - (B - 0.004 - 0.272 * 0.005))
+    expect(at(32).L).toBeCloseTo(L, 12)
+    expect(at(32).size).toBeCloseTo(reward / floor, 9)
+  })
+  it('M1: g = 1.5 rides the first big move candle (bar 32), g = 2.5 the first bigger one (bar 33); one per setup', () => {
+    // Setup 0 (armed on bar 31). Bar 36's drop arms a new setup, with its own ride.
+    const of0 = (g: number) =>
+      rideSignals(d.market, d.c15, tr.setups, 0.5, g).filter((r) => r.setup === 0)
+    expect(of0(1.5).map((r) => r.i)).toEqual([32])
+    expect(of0(2.5).map((r) => r.i)).toEqual([33])
+    expect(rideSignals(d.market, d.c15, tr.setups, 0.5, 1.5).map((r) => [r.i, r.setup])).toEqual([
+      [32, 0],
+      [36, 1],
     ])
   })
-  it('F2: the reverse has a 120-minute limit', () => {
-    // After the stop, price sits still: the q = 1 reverse runs out of time 120 minutes after it opened.
-    const run = runDay(dataOf(flipDay([[B + 0.0026, B + 0.003, B + 0.0022, B + 0.0026]])), true, 1)
-    const rev = run.trades.find((t) => t.leg === 'reverse')!
-    expect(rev.why).toBe('limit')
-    expect(rev.exitTime).toBe(rev.entryTime + 120 * 60)
-  })
-  it('F1: no flip with under 30 minutes to the forced close', () => {
-    const bars: Bar[] = [...quiet(B, 54), ...sellSetup(B), ...quiet(B - 0.0002, 4)]
-    bars.push([B - 0.0002, B + 0.0025, B + 0.0015, B + 0.002]) // 16:00: stop at 16:03
-    bars.push([B + 0.002, B + 0.0035, B + 0.0018, B + 0.0034])
-    const run = runDay(dataOf([...bars, ...quiet(B + 0.0034, 96 - bars.length - 2)]), true)
-    expect(run.trades.map((t) => [t.leg, t.why])).toEqual([['v1', 'stop']])
+  it('M1: the move candle must close with the move', () => {
+    const up = dataOf(rideDay()).c15
+    // Bar 32 still makes the new low, but closes up: g = 1.5 waits for bar 33.
+    const bars = rideDay()
+    bars[32] = [B - 0.0045, B - 0.0017, B - 0.004, B - 0.0039]
+    const d2 = dataOf(bars)
+    const t2 = trackDay(d2.c15, d2.atr, S0, 2)
+    expect(turnCandle(d2.c15[32], false)).toBe(false)
     expect(
-      run.outcomes.some((o) => o.result === 'no flip: under 30 minutes to the forced close'),
+      rideSignals(d2.market, d2.c15, t2.setups, 0.5, 1.5)
+        .filter((r) => r.setup === 0)
+        .map((r) => r.i),
+    ).toEqual([33])
+    expect(up.length).toBe(96)
+  })
+  it('M2: market order at the close, filled at the next 1-minute open; stop fixed at L with the cost floor; one target at 0 - ext x (1 - 0)', () => {
+    const [r] = rideSignals(d.market, d.c15, tr.setups, 0.5, 1.5)
+    const x = prepareRide(d, S0, r, 0.272, null)
+    if ('why' in x) throw new Error(x.why)
+    expect(x.entryTime).toBe(r.T)
+    expect(x.p).toBe(d.m1[entryMinute(d.m1, r.T)].open)
+    expect(x.E).toBeCloseTo(entryFill(GBP, false, x.p), 12)
+    expect(x.plan.stop).toBeCloseTo(Math.max(r.level, x.E + 10 * roundTrip(GBP, x.p)), 12)
+    expect(x.plan.tp1).toBeCloseTo(r.zero - 0.272 * (r.one - r.zero), 12)
+    expect(x.plan.rr).toBeGreaterThan(0.3)
+    expect(x.plan.rr).toBeLessThan(0.75)
+    const y = prepareRide(d, S0, r, 0.702, null)
+    if ('why' in y) throw new Error(y.why)
+    expect(y.plan.tp1).toBeCloseTo(r.zero - 0.702 * (r.one - r.zero), 12)
+    expect(y.plan.stop).toBe(x.plan.stop)
+    // Its 120-minute limit, when no other close comes first.
+    expect(x.deadline).toEqual({ at: x.entryTime + 120 * 60, why: 'limit' })
+  })
+  it('M2: the cost floor widens a stop closer than 10 round trips', () => {
+    const [r] = rideSignals(d.market, d.c15, tr.setups, 0.5, 1.5)
+    const near = { ...r, level: r.zero + 0.001 } // pretend L sits 1 pip-ish above the fill
+    const x = prepareRide(
+      d,
+      S0,
+      { ...near, level: d.m1[entryMinute(d.m1, r.T)].open + 0.0001 },
+      0.272,
+      null,
+    )
+    if ('why' in x) throw new Error(x.why)
+    expect(x.plan.dist).toBeCloseTo(10 * roundTrip(GBP, x.p), 12)
+    expect(x.plan.floored).toBe(true)
+  })
+  it('M3 and M4: the ride closes at the open of the minute the Fib entry fills; the Fib entry is sized after it', () => {
+    const run = runDay(d, 'flip', 0.272, 1.5)
+    expect(run.trades.map((t) => [t.kind, t.side, t.why])).toEqual([
+      ['ride', 'SELL', 'fib'],
+      ['fib', 'SELL', 'tp2'],
+    ])
+    const [ride, fib] = run.trades
+    expect(ride.exitTime).toBe(fib.entryTime)
+    expect(ride.fills[0].atOpen).toBe(true)
+    expect(ride.fills[0].price).toBeCloseTo(
+      forcedFill(GBP, false, d.m1[entryMinute(d.m1, fib.T)].open),
+      12,
+    )
+    expect(fib.balanceAtEntry).toBeCloseTo(10000 + ride.usd, 6)
+    expect(fib.units * fib.rpu).toBeCloseTo(0.02 * fib.balanceAtEntry, 6)
+    expect(ride.units * ride.rpu).toBeCloseTo(200, 6)
+    // The Fib entry is v1's own trade: plain v1 opens the same one.
+    const plain = runDay(d, 'v1')
+    expect(plain.trades).toHaveLength(1)
+    expect(plain.trades[0].E).toBe(fib.E)
+    expect(plain.trades[0].stop).toBe(fib.stop)
+    expect(plain.trades[0].r).toBeCloseTo(fib.r, 12)
+  })
+  it('M3: the stop counts first, and the Fib entry is taken after a losing ride (g = 2.5: stop at the higher 0.786)', () => {
+    const run = runDay(d, 'flip', 0.272, 2.5)
+    expect(run.trades.map((t) => [t.kind, t.why])).toEqual([
+      ['ride', 'stop'],
+      ['fib', 'tp2'],
+    ])
+    expect(run.trades[0].r).toBeCloseTo(-1, 2)
+  })
+  it('M3: the 120-minute limit, and the quick target', () => {
+    // No pullback: price sits under the move, above the target.
+    const flat = dataOf([
+      ...rideDay([], [B - 0.0045, B - 0.004, B - 0.005, B - 0.0045]).slice(0, 36),
+      ...quiet(B - 0.0045, 60),
+    ])
+    const a = runDay(flat, 'flip', 0.272, 1.5)
+    expect(a.trades.map((t) => [t.kind, t.why])).toEqual([['ride', 'limit']])
+    expect(a.trades[0].exitTime).toBe(a.trades[0].entryTime + 120 * 60)
+    // A drop through the target right after the entry.
+    const bars = rideDay()
+    bars[33] = [B - 0.0039, B - 0.0038, B - 0.0062, B - 0.006]
+    const b2 = runDay(dataOf(bars), 'flip', 0.272, 1.5)
+    expect(b2.trades[0].kind).toBe('ride')
+    expect(b2.trades[0].why).toBe('target')
+    expect(b2.trades[0].r).toBeGreaterThan(0.3)
+  })
+  it("M5: a ride is only a market's first trade of the day, and counts as one of its 2", () => {
+    // Setup 1 moves on candles that close against the move: no ride, a Fib entry that wins.
+    const b = B
+    const bars: Bar[] = [...quiet(b, 30)]
+    bars.push([b, b + 0.001, b - 0.0002, b + 0.0008]) // 30
+    bars.push([b - 0.0049, b - 0.004, b - 0.005, b - 0.0045]) // 31: arms, closes up
+    bars.push([b - 0.0045, b - 0.0035, b - 0.0048, b - 0.004]) // 32
+    bars.push([b - 0.004, b - 0.0002, b - 0.0041, b - 0.0003]) // 33: the Fib signal
+    bars.push([b - 0.0003, b - 0.0002, b - 0.008, b - 0.0078]) // 34: both targets
+    const B2 = b - 0.0078
+    bars.push(...quiet(B2, 11)) // 35-45
+    bars.push([B2, B2 + 0.001, B2 - 0.0002, B2 + 0.0008]) // 46
+    bars.push([B2 + 0.0008, B2 + 0.0009, B2 - 0.002, B2 - 0.0018]) // 47
+    bars.push([B2 - 0.0018, B2 - 0.0017, B2 - 0.004, B2 - 0.0039]) // 48: a big move candle
+    bars.push([B2 - 0.0039, B2 - 0.0038, B2 - 0.005, B2 - 0.0049]) // 49
+    const dd = dataOf([...bars, ...quiet(B2 - 0.0049, 96 - bars.length)])
+    const run = runDay(dd, 'flip', 0.272, 1.5)
+    expect(run.trades.map((t) => [t.kind, t.why])).toEqual([['fib', 'tp2']])
+    expect(run.rideSignals).toBeGreaterThan(0)
+    expect(
+      run.outcomes.some(
+        (o) => o.kind === 'ride' && o.result === "not the market's first trade of the day",
+      ),
     ).toBe(true)
   })
-  it("F1: only after the market's first trade of the day", () => {
-    // A BUY that wins, then a SELL that is stopped: the SELL was the second trade, so no flip.
-    const bars: Bar[] = [...quiet(B, 30), ...sellSetup(B).map((x) => mirrorBar(x, B))]
-    bars.push([B + 0.0002, B + 0.007, B + 0.0001, B + 0.0068]) // 36: both BUY targets
-    const B2 = B + 0.0068
-    bars.push(...quiet(B2, 52 - bars.length), ...sellSetup(B2))
-    bars.push([B2 - 0.0002, B2 + 0.0025, B2 + 0.0015, B2 + 0.002]) // the SELL's stop
-    bars.push([B2 + 0.002, B2 + 0.0035, B2 + 0.0018, B2 + 0.0034])
-    const run = runDay(dataOf([...bars, ...quiet(B2 + 0.0034, 96 - bars.length)]), true)
-    expect(run.trades.map((t) => [t.leg, t.side, t.why])).toEqual([
-      ['v1', 'BUY', 'tp2'],
-      ['v1', 'SELL', 'stop'],
-    ])
-  })
-  it('F4: no loops; a re-entry that is stopped starts nothing; at most 3 trades and 2 full losses a day', () => {
-    const run = runDay(dataOf(flipDay([[B + 0.0026, B + 0.008, B + 0.0025, B + 0.0078]])), true)
-    expect(run.trades.map((t) => [t.leg, t.why])).toEqual([
-      ['v1', 'stop'],
-      ['reverse', 'target'],
-      ['reentry', 'stop'],
+  it('M5: no loops: a stopped ride and a stopped Fib entry end the day (at most 2 trades, 2 full losses)', () => {
+    // After the Fib signal, price runs up through every stop, then a new SELL setup forms later.
+    const after: Bar[] = [[B - 0.0003, B + 0.004, B - 0.0004, B + 0.0038]]
+    const B3 = B + 0.0038
+    after.push(
+      ...quiet(B3, 11),
+      [B3, B3 + 0.001, B3 - 0.0002, B3 + 0.0008],
+      [B3 + 0.0008, B3 + 0.0009, B3 - 0.002, B3 - 0.0018],
+      [B3 - 0.0018, B3 - 0.0017, B3 - 0.004, B3 - 0.0039],
+      [B3 - 0.0039, B3 - 0.0038, B3 - 0.005, B3 - 0.0049],
+      [B3 - 0.0049, B3 - 0.001, B3 - 0.0049, B3 - 0.0015],
+      [B3 - 0.0015, B3 - 0.0002, B3 - 0.0016, B3 - 0.0003],
+    )
+    const run = runDay(dataOf(rideDay(after)), 'flip', 0.272, 2.5)
+    expect(run.trades.map((t) => [t.kind, t.why])).toEqual([
+      ['ride', 'stop'],
+      ['fib', 'stop'],
     ])
     expect(run.trades.filter((t) => t.r < -0.9)).toHaveLength(2)
+    expect(run.outcomes.some((o) => o.result === '2 trades today')).toBe(true)
   })
-  it('F4: legs come one after another, so risk is never doubled and stays under the caps', () => {
-    const run = runDay(dataOf(flipDay()), true)
+  it('M5: the ride and the Fib entry come one after the other, inside the caps', () => {
+    const run = runDay(d, 'flip', 0.272, 1.5)
     expect(run.maxOpenSeen).toBe(1)
     expect(run.maxOpenRiskSeen).toBeLessThanOrEqual(0.02 + 1e-9)
-    const [a, b2, c] = run.trades
-    expect(b2.entryTime).toBeGreaterThanOrEqual(a.exitTime)
-    expect(c.entryTime).toBeGreaterThan(b2.exitTime)
+    for (const t of run.trades)
+      expect(t.riskUsd).toBeLessThanOrEqual(0.02 * t.balanceAtEntry + 1e-6)
+  })
+  it('M5: a v1 signal and a ride signal on one candle: the v1 signal goes first', () => {
+    // A BUY setup with a long climb; its pullback candle (bar 44) reaches the BUY 0.786 and is also
+    // a big SELL move candle that arms a SELL setup and passes the ride's size test.
+    const b = B
+    const bars: Bar[] = [...quiet(b, 30)]
+    bars.push([b, b + 0.0002, b - 0.001, b - 0.0008]) // 30: BUY 1 = b - 0.0010
+    bars.push([b - 0.0008, b + 0.002, b - 0.0009, b + 0.0018]) // 31: arms the BUY
+    for (let n = 0; n < 12; n++) {
+      const o = b + 0.0018 + n * 0.0004
+      // 32-43: the climb; 0 follows it, but its candles close down, so there is no BUY ride.
+      // Bar 42 is an up candle under the high: the 1 of the SELL setup.
+      bars.push(
+        n === 10
+          ? [o, o + 0.0001, o - 0.0004, o + 0.00005]
+          : [o, o + 0.0006, o - 0.0001, o - 0.00005],
+      )
+    }
+    bars.push([b + 0.0062, b + 0.0063, b + 0.0005, b + 0.0007]) // 44: the pullback
+    const dd = dataOf([...bars, ...quiet(b + 0.0007, 96 - bars.length)])
+    const t2 = trackDay(dd.c15, dd.atr, S0, 2)
+    expect(t2.signals.map((s) => [s.i, s.long])).toEqual([[44, true]])
+    expect(rideSignals(dd.market, dd.c15, t2.setups, 0.5, 1.5).map((r) => [r.i, r.long])).toEqual([
+      [44, false],
+    ])
+    const run = runDay(dd, 'flip', 0.272, 1.5)
+    expect(run.trades.map((t) => [t.kind, t.side])).toEqual([['fib', 'BUY']])
+    expect(run.outcomes.find((o) => o.kind === 'ride')?.result).toBe('trade open')
+  })
+})
+
+describe('look-ahead guards: the ride', () => {
+  const bars = rideDay()
+  const d = dataOf(bars)
+  it("the ride's decision at candle i does not change when later candles change or are cut off", () => {
+    const tr = trackDay(d.c15, d.atr, S0, 2)
+    const full = rideSignals(d.market, d.c15, tr.setups, 0.5, 1.5)
+    for (let cut = 31; cut < 60; cut++) {
+      const c = d.c15.slice(0, cut + 1)
+      const a = atrSeries(c, 14)
+      const t2 = trackDay(c, a, S0, 2)
+      expect(rideSignals(d.market, c, t2.setups, 0.5, 1.5)).toEqual(full.filter((r) => r.i <= cut))
+      const noisy = d.c15.map((x, i) =>
+        i > cut ? { ...x, high: x.high + 0.01, low: x.low - 0.01, close: x.open + 0.003 } : x,
+      )
+      const na = atrSeries(noisy, 14)
+      const t3 = trackDay(noisy, na, S0, 2)
+      expect(rideSignals(d.market, noisy, t3.setups, 0.5, 1.5).filter((r) => r.i <= cut)).toEqual(
+        full.filter((r) => r.i <= cut),
+      )
+    }
+  })
+  it('the ride fills from the 1-minute open after the signal close; the last minute of the signal candle does not move it', () => {
+    const tr = trackDay(d.c15, d.atr, S0, 2)
+    const [r] = rideSignals(d.market, d.c15, tr.setups, 0.5, 1.5)
+    const a = prepareRide(d, S0, r, 0.272, null)
+    const m1 = d.m1.map((x) =>
+      x.time === r.T - 60 ? { ...x, close: x.close - 0.0003, low: x.low - 0.0003 } : x,
+    )
+    const b2 = prepareRide({ ...d, m1 }, S0, r, 0.272, null)
+    if ('why' in a || 'why' in b2) throw new Error('no ride')
+    expect(b2.E).toBe(a.E)
+    expect(b2.plan).toEqual(a.plan)
+  })
+  it('nothing reads the Fib entry fill before it happens: the ride closes at that open, and later minutes change nothing', () => {
+    const run = runDay(d, 'flip', 0.272, 1.5)
+    const ride = run.trades[0]
+    const changed = bars.map(
+      (x, n): Bar => (n >= 36 ? [x[0], x[1] + 0.003, x[2] - 0.003, x[3]] : x),
+    )
+    const run2 = runDay(dataOf(changed), 'flip', 0.272, 1.5)
+    expect(run2.trades[0]).toEqual(ride)
+    // And the ride's close is the forced close at the Fib minute's open, not a price from inside it.
+    expect(ride.fills).toHaveLength(1)
+    expect(ride.fills[0].atOpen).toBe(true)
+  })
+})
+
+// ── 3A v1-NY ──────────────────────────────────────────────────────────────
+
+describe('3A v1-NY', () => {
+  // DAY0 is in US winter: New York opens 13:00 UTC (bar 52), the range ends 13:30, last entry 15:00, time exit 16:30.
+  const S = nySessionFor(DAY0)
+  /** London high bumped to B + 0.0020 at 09:00; bar 54 pokes over it and closes inside; bar 55 closes past it. */
+  const nyBars = (): Bar[] => {
+    const bars = quiet(B, 96)
+    bars[36] = [B, B + 0.002, B - 0.0005, B + 0.0002]
+    bars[54] = [B, B + 0.0025, B - 0.0003, B + 0.001]
+    bars[55] = [B + 0.001, B + 0.0028, B + 0.0009, B + 0.0026]
+    for (let n = 56; n < 96; n++)
+      bars[n] =
+        n % 2
+          ? [B + 0.0026, B + 0.0031, B + 0.0021, B + 0.0026]
+          : [B + 0.0026, B + 0.0031, B + 0.0021, B + 0.0026]
+    return bars
+  }
+  const d = dataOf(nyBars())
+  const ch = chartOf(d, M15)
+
+  it('N1: the New York clock, US winter and summer', () => {
+    expect(S.summer).toBe(false)
+    expect([S.start, S.rangeEnd, S.lastEntry, S.timeExit].map((t) => (t - DAY0) / 3600)).toEqual([
+      13, 13.5, 15, 16.5,
+    ])
+    expect(S.londonStart - DAY0).toBe(7 * 3600)
+    const jul = nySessionFor(Date.UTC(2026, 6, 15) / 1000)
+    expect(jul.summer).toBe(true)
+    expect((jul.start - jul.day) / 3600).toBe(12)
+    expect((jul.timeExit - jul.day) / 3600).toBe(15.5)
+    // The weeks between the US and UK changes: New York on summer time, London not.
+    const mar = nySessionFor(Date.UTC(2026, 2, 16) / 1000)
+    expect(mar.summer).toBe(true)
+    expect(mar.londonStart - mar.day).toBe(7 * 3600)
+  })
+  it('N2: 5-minute candles are built from the 1-minute ones, with their own ATR', () => {
+    const c5 = chartOf(d, 300)
+    expect(c5.sec).toBe(300)
+    expect(c5.c).toEqual(resample(d.m1, 300))
+    expect(c5.c.length).toBe(96 * 3)
+    expect(chartOf(d, 300)).toBe(c5) // built once
+    expect(c5.atr).toEqual(atrSeries(c5.c, 14))
+  })
+  it('N3: the levels: London 07:00 London to 08:00 New York, the range 08:00 to 08:30 New York', () => {
+    expect(nyLevels(d.m1, S)).toMatchObject({
+      LH: B + 0.002,
+      LL: B - 0.0005,
+      RH: B + 0.0005,
+      RL: B - 0.0005,
+      rangeMinutes: 30,
+    })
+    // 20 of the 30 range minutes are needed.
+    const cut = (n: number) => d.m1.filter((x) => !(x.time >= S.start && x.time < S.start + n * 60))
+    expect(nyLevels(cut(10), S)).not.toBeNull()
+    expect(nyLevels(cut(11), S)).toBeNull()
+  })
+  it('N3 look-ahead: the range is only known after its window closes; nothing at or after 08:30 New York changes it', () => {
+    const lv = nyLevels(d.m1, S)
+    const later = d.m1.map((x) =>
+      x.time >= S.rangeEnd ? { ...x, high: x.high + 0.01, low: x.low - 0.01 } : x,
+    )
+    expect(nyLevels(later, S)).toEqual(lv)
+    const inside = d.m1.map((x) => (x.time === S.rangeEnd - 60 ? { ...x, high: x.high + 0.01 } : x))
+    expect(nyLevels(inside, S)!.RH).toBeGreaterThan(lv!.RH + 0.009)
+    // The break is read only from candles that start at or after 08:30 New York.
+    const early = nyBars()
+    early[52] = [B, B + 0.003, B - 0.0005, B + 0.0029] // a range candle closes high: it is part of the range, not a break
+    const d2 = dataOf(early)
+    const lv2 = nyLevels(d2.m1, S)!
+    // Bar 52 lifts the range high to B + 0.003; its own close is no break, and nothing later closes above it.
+    expect(lv2.RH).toBeCloseTo(B + 0.003, 9)
+    expect(nyBreak(chartOf(d2, M15), S, lv2, false)).toBeNull()
+  })
+  it('N4: w = off breaks the opening range; w = on must close past London too; a poke that closes back inside is a rejection', () => {
+    const lv = nyLevels(d.m1, S)!
+    expect(breakLines(lv, false)).toEqual({ BH: B + 0.0005, BL: B - 0.0005 })
+    expect(breakLines(lv, true)).toEqual({ BH: B + 0.002, BL: B - 0.0005 })
+    expect(nyBreak(ch, S, lv, false)).toMatchObject({ i: 54, long: true })
+    expect(nyBreak(ch, S, lv, true)).toMatchObject({ i: 55, long: true })
+    expect(londonLines(ch, S, lv)).toEqual({ high: 'rejection', low: 'untouched' })
+  })
+  it('N5: the break trade: stop past the far side of the range by b ATRs, cost floor, one target at 1.5 x the stop', () => {
+    const lv = nyLevels(d.m1, S)!
+    const brk = nyBreak(ch, S, lv, false)!
+    const r = prepareBreak(d, S, ch, brk, lv, 0.5)
+    if ('why' in r) throw new Error(r.why)
+    expect(r.entryTime).toBe(brk.T)
+    expect(r.plan.rawStop).toBeCloseTo(lv.RL - 0.5 * ch.atr[54], 12)
+    expect(r.plan.dist).toBeCloseTo(Math.max(r.E - r.plan.rawStop, 10 * roundTrip(GBP, r.p)), 12)
+    expect(r.plan.tp1).toBeCloseTo(r.E + 1.5 * r.plan.dist, 12)
+    expect(r.plan.rr).toBe(1.5)
+    expect(r.deadline).toEqual({ at: S.timeExit, why: 'time' })
+  })
+  it('N5: the fill may be at most 0.1 x the stop distance worse than the break close', () => {
+    const lv = nyLevels(d.m1, S)!
+    const brk = nyBreak(ch, S, lv, false)!
+    const m1 = d.m1.map((x) =>
+      x.time === brk.T
+        ? { ...x, open: x.open + 0.0004, high: Math.max(x.high, x.open + 0.0004) }
+        : x,
+    )
+    expect(prepareBreak({ ...d, m1 }, S, ch, brk, lv, 0.5)).toEqual({ why: 'no chase' })
+  })
+  it('N7: a break candle that closes inside the 08:30 data block uses up the day: no break trade', () => {
+    const dn = dataOf(nyBars(), [{ time: DAY0 + 13.5 * 3600, currency: 'USD', event: 'CPI' }])
+    const run = runNY([dn], { k: 2, b: 0.5, c: 15, w: false }, DAY0, DAY0 + 86_400)
+    expect(run.trades).toHaveLength(0)
+    expect(run.outcomes.find((o) => o.kind === 'break')?.result).toBe('news block')
+    // w = on: its break candle closes at 14:00, when the block is over: it trades.
+    const on = runNY([dn], { k: 2, b: 0.5, c: 15, w: true }, DAY0, DAY0 + 86_400)
+    expect(on.trades.map((t) => [t.kind, t.entryTime - DAY0])).toEqual([['break', 14 * 3600]])
+  })
+  it("N6: the Fib entry comes only on the break's side, after the break candle, once the break trade is closed", () => {
+    // Range bar 53 is the BUY setup's 1; bar 54 breaks up and arms it; bar 56 runs to the break target; bar 58 is the Fib signal.
+    const bars = quiet(B, 96)
+    bars[53] = [B, B + 0.0002, B - 0.001, B - 0.0008]
+    bars[54] = [B - 0.0008, B + 0.002, B - 0.0009, B + 0.0018]
+    bars[55] = [B + 0.0018, B + 0.004, B + 0.0017, B + 0.0039]
+    bars[56] = [B + 0.0039, B + 0.0075, B + 0.0038, B + 0.0049]
+    bars[57] = [B + 0.0049, B + 0.0049, B + 0.001, B + 0.0015]
+    bars[58] = [B + 0.0015, B + 0.0016, B + 0.0001, B + 0.0002]
+    for (let n = 59; n < 96; n++) bars[n] = [B + 0.0002, B + 0.0004, B, B + 0.0002]
+    const dd = dataOf(bars)
+    const run = runNY([dd], { k: 2, b: 0.5, c: 15, w: false }, DAY0, DAY0 + 86_400)
+    expect(run.trades.map((t) => [t.kind, t.side, t.why])).toEqual([
+      ['break', 'BUY', 'target'],
+      ['fib', 'BUY', expect.any(String)],
+    ])
+    expect(run.trades[1].T).toBe(DAY0 + 14.75 * 3600) // bar 58 closes at 14:45
+    expect(run.trades[1].strategy).toBe('ny')
+    // A SELL break the same day would make this BUY signal the wrong side.
+    expect(run.trades.every((t) => t.entryTime >= S.rangeEnd && t.exitTime <= S.timeExit)).toBe(
+      true,
+    )
+  })
+  it('N8: one trade per market at a time, at most 2 a day, and the coin draws stay in the New York window', () => {
+    const rnd = seeded(3)
+    for (let n = 0; n < 500; n++) {
+      for (const sec of [300, 900]) {
+        const { T } = coinDrawNY(rnd, S, sec)
+        expect(T).toBeGreaterThanOrEqual(S.rangeEnd + sec)
+        expect(T).toBeLessThanOrEqual(S.lastEntry)
+        expect((T - S.rangeEnd) % sec).toBe(0)
+      }
+    }
+  })
+})
+
+// ── 3B thirds ─────────────────────────────────────────────────────────────
+
+describe('3B thirds', () => {
+  // The ride day's SELL signal on bar 35 (an up candle: not confident). Rung 2 on bar 36, rung 3 on bar 37, the turn on bar 38.
+  const after: Bar[] = [
+    [B - 0.0003, B + 0.0003, B - 0.0004, B + 0.0001],
+    [B + 0.0001, B + 0.0006, B, B + 0.0005],
+    [B + 0.0005, B + 0.0007, B - 0.0005, B - 0.0004],
+    [B - 0.0004, B - 0.0003, B - 0.008, B - 0.0078],
+  ]
+  const d = dataOf(rideDay(after))
+  const L = [0.786, 0.836, 0.886].map((f) => B - 0.005 + f * 0.006)
+
+  it('T1: a turn candle closes our way', () => {
+    const x = { time: 0, open: 1, high: 1.1, low: 0.9, close: 0.95 }
+    expect(turnCandle(x, false)).toBe(true)
+    expect(turnCandle(x, true)).toBe(false)
+  })
+  it('T2: a signal candle that already closed our way goes in at once, exactly as v1', () => {
+    const conf = dataOf(rideDay(undefined, [B - 0.001, B - 0.0002, B - 0.0016, B - 0.0014]))
+    const run = runDay(conf, 'thirds')
+    const plain = runDay(conf, 'v1')
+    expect(run.trades.map((t) => [t.kind, t.confident])).toEqual([['fib', true]])
+    expect(run.trades[0].E).toBe(plain.trades[0].E)
+    expect(run.trades[0].r).toBeCloseTo(plain.trades[0].r, 12)
+    expect(run.thirds).toMatchObject({ taken: 1, confident: 1, ladders: 0 })
+  })
+  it('T3 and T4: rungs at 0.786, 0.836 and 0.886; one stop from the last rung; a third at the close of the first candle that reaches each', () => {
+    const run = runDay(d, 'thirds')
+    const [t] = run.trades
+    expect(t.kind).toBe('thirds')
+    const parts = t.parts!
+    expect(parts.map((p) => [p.rung, (p.candle - DAY0) / M15])).toEqual([
+      [1, 35],
+      [2, 36],
+      [3, 37],
+      [4, 38],
+    ])
+    for (const p of parts) expect(p.entryTime).toBe(p.candle + M15)
+    // The ladder stop: v1's rule 2.5 for a fill exactly at the last rung.
+    const sig = daySignals(d.c15, d.atr, S0, 2)[0]
+    const last = planFrom(
+      GBP,
+      false,
+      L[2],
+      L[2],
+      sig.one + 0.5 * sig.atr,
+      sig.zero,
+      sig.zero - 0.272 * 0.006,
+    )
+    if ('why' in last) throw new Error(last.why)
+    expect(parts[0].stopAtEntry).toBeCloseTo(last.stop, 12)
+    expect(parts[0].riskUsd).toBeCloseTo(200 / 3, 6)
+    expect(sig.level).toBeCloseTo(L[0], 12)
+  })
+  it('T5: the add at the first turn candle: stop behind the pullback, never further than the ladder stop, to the full 2%', () => {
+    const run = runDay(d, 'thirds')
+    const [t] = run.trades
+    const add = t.parts![3]
+    expect(t.stopMove).not.toBeNull()
+    expect(t.stopMove!.to).toBeLessThan(t.stopMove!.from) // a SELL: the new stop is closer
+    expect(t.stop).toBe(t.stopMove!.to)
+    // P = the highest high of bars 35 to 38; raw stop P + b x ATR[38], then the floor and the cap.
+    const P = B + 0.0007
+    const raw = P + 0.5 * d.atr[38]
+    const reward = 0.5 * (add.E - (B - 0.005)) + 0.5 * (add.E - (B - 0.005 - 0.272 * 0.006))
+    let dd = Math.max(raw - add.E, 10 * roundTrip(GBP, add.p))
+    if (reward / dd > 2.5) dd = reward / 2.5
+    expect(t.stopMove!.to).toBeCloseTo(Math.min(t.stopMove!.from, add.E + dd), 12)
+    expect(reward / (t.stopMove!.to - add.E)).toBeGreaterThanOrEqual(1.5)
+    expect(add.tradeRiskAfter).toBeCloseTo(0.02 * add.balanceAtEntry, 6)
+    expect(run.thirds).toMatchObject({
+      ladders: 1,
+      ladderTrades: 1,
+      thirdsOpened: [1, 1, 1],
+      addsTried: 1,
+      addsOpened: 1,
+    })
+  })
+  it("thirds' total risk is never above 2%: every third, and the add, inside the cap", () => {
+    const run = runDay(d, 'thirds')
+    const [t] = run.trades
+    for (const p of t.parts!)
+      expect(p.tradeRiskAfter).toBeLessThanOrEqual(0.02 * p.balanceAtEntry + 1e-6)
+    expect(t.parts!.slice(0, 3).map((p) => +p.tradeRiskAfter.toFixed(6))).toEqual(
+      [200 / 3, 400 / 3, 200].map((x) => +x.toFixed(6)),
+    )
+    expect(run.maxOpenRiskSeen).toBeLessThanOrEqual(0.02 + 1e-9)
+  })
+  it('T7: exits on the whole trade (TP1 halves every part, TP2 the rest); R = net $ / 2% of the balance at the first entry', () => {
+    const run = runDay(d, 'thirds')
+    const [t] = run.trades
+    expect(t.why).toBe('tp2')
+    for (const p of t.parts!)
+      expect(p.fills.map((f) => [f.why, f.share])).toEqual([
+        ['tp1', 0.5],
+        ['tp2', 0.5],
+      ])
+    expect(t.riskUsd).toBeCloseTo(200, 6)
+    expect(t.r).toBeCloseTo(t.usd / 200, 12)
+    expect(run.endBalance).toBeCloseTo(10000 + t.usd, 6)
+    expect(rescoreThirds(t, d, 1)).toBeCloseTo(t.r, 9)
+    expect(rescoreCosts(t, d, 2)).toBeLessThan(rescoreCosts(t, d, 0.5))
+  })
+  it('T5: an add that plans under 1.5R does not open, and the stop stays', () => {
+    // The turn candle closes almost at 0: the add would plan far under 1.5R.
+    const near0: Bar[] = [
+      after[0],
+      after[1],
+      [B + 0.0005, B + 0.0007, B - 0.0048, B - 0.0047],
+      ...quiet(B - 0.0047, 4),
+    ]
+    const run = runDay(dataOf(rideDay(near0)), 'thirds')
+    const [t] = run.trades
+    expect(t.parts!.map((p) => p.rung)).toEqual([1, 2, 3])
+    expect(t.stopMove).toBeNull()
+    expect(run.outcomes.some((o) => o.result === 'add: plan under 1.5R')).toBe(true)
+  })
+  it('T6: a candle that trades past 1 ends the ladder; the open thirds run on to their exits', () => {
+    const past: Bar[] = [[B - 0.0003, B + 0.0015, B - 0.0004, B + 0.0012], ...quiet(B + 0.0012, 4)]
+    const run = runDay(dataOf(rideDay(past)), 'thirds')
+    const [t] = run.trades
+    expect(t.parts!.map((p) => p.rung)).toEqual([1])
+    expect(run.thirds!.ends).toEqual({ 'past 1': 1 })
+    expect(run.thirds!.pastOneBeforeTurn).toBe(1)
+  })
+  it('T6: while a ladder is alive a new v1 signal in that market is skipped; a ladder counts once a part opened', () => {
+    const run = runDay(d, 'thirds')
+    expect(run.trades).toHaveLength(1)
+    expect(run.outcomes.filter((o) => o.result === 'ladder')).toHaveLength(1)
+  })
+  it("look-ahead: the turn is decided on the candle's own close, and later candles do not change the parts", () => {
+    // Bar 38 closes up instead (its last minute moved): no add at bar 38.
+    const bars = rideDay(after)
+    bars[38] = [B + 0.0005, B + 0.0007, B - 0.0005, B + 0.0006]
+    const run = runDay(dataOf(bars), 'thirds')
+    expect(run.trades[0].parts!.some((p) => p.rung === 4 && p.candle === DAY0 + 38 * M15)).toBe(
+      false,
+    )
+    // Different candles after the add: the same four parts at the same fills.
+    const base = runDay(d, 'thirds').trades[0]
+    const changed = rideDay([...after.slice(0, 3), ...quiet(B - 0.0004, 10)])
+    const t2 = runDay(dataOf(changed), 'thirds').trades[0]
+    expect(t2.parts!.map((p) => [p.rung, p.entryTime, p.E, p.units])).toEqual(
+      base.parts!.map((p) => [p.rung, p.entryTime, p.E, p.units]),
+    )
+    expect(t2.why).not.toBe(base.why)
+  })
+  it('walkParts: a part that joins after TP1 keeps all its units until TP2', () => {
+    const t0 = DAY0 + 10 * 3600
+    const m1: OHLCCandle[] = [
+      [1.3, 1.3, 1.2949, 1.295],
+      [1.296, 1.296, 1.2955, 1.296],
+      [1.296, 1.296, 1.2925, 1.293],
+    ].map(([o, h, l, c], n) => ({ time: t0 + n * 60, open: o, high: h, low: l, close: c }))
+    const w = walkParts({
+      m: GBP,
+      m1,
+      long: false,
+      parts: [
+        { from: 0, E: 1.3 },
+        { from: 1, E: 1.296 },
+      ],
+      stops: [{ from: -Infinity, price: 1.302 }],
+      tp1: 1.295,
+      tp2: 1.293,
+      deadline: t0 + 3600,
+      deadlineWhy: 'time',
+    })
+    expect(w.fills[0].map((f) => [f.why, f.share])).toEqual([
+      ['tp1', 0.5],
+      ['tp2', 0.5],
+    ])
+    expect(w.fills[1].map((f) => [f.why, f.share])).toEqual([['tp2', 1]])
   })
 })
 
@@ -955,25 +1562,51 @@ describe('4 picking a setting', () => {
       qualified: false,
     })
   })
-  it('q: the higher total R, but within 2R it is q = 0.5', () => {
+  it('v1-flip: the top total R; within 2R the fewest rides; then ext = 0.272', () => {
+    const r = (ext: number, g: number, totalR: number, rides: number) => ({ ext, g, totalR, rides })
+    // Top 12R; within 2R: 12R (290 rides) and 10R (300 rides); 8.5R is out. The fewer rides win.
     expect(
-      pickQ([
-        { q: 0.5, totalR: 10 },
-        { q: 1, totalR: 12 },
+      pickFlip([
+        r(0.272, 1.5, 10, 300),
+        r(0.272, 2.5, 8.5, 150),
+        r(0.702, 1.5, 12, 290),
+        r(0.702, 2.5, 5, 140),
       ]),
-    ).toBe(0.5)
+    ).toEqual({ ext: 0.702, g: 1.5 })
     expect(
-      pickQ([
-        { q: 0.5, totalR: 10 },
-        { q: 1, totalR: 12.1 },
-      ]),
-    ).toBe(1)
-    expect(
-      pickQ([
-        { q: 0.5, totalR: 10 },
-        { q: 1, totalR: 5 },
-      ]),
-    ).toBe(0.5)
+      pickFlip([r(0.272, 1.5, 10, 300), r(0.272, 2.5, 9, 150), r(0.702, 1.5, 11, 290)]),
+    ).toEqual({ ext: 0.272, g: 2.5 })
+    expect(pickFlip([r(0.272, 1.5, 10, 300), r(0.702, 2.5, 13, 140)])).toEqual({
+      ext: 0.702,
+      g: 2.5,
+    })
+    expect(pickFlip([r(0.702, 2.5, 10, 150), r(0.272, 2.5, 9, 150)])).toEqual({
+      ext: 0.272,
+      g: 2.5,
+    })
+  })
+  it('v1-NY: as v1 (100 trades, 25% drawdown, top total, within 2R the most trades); then c = 15, then w = on', () => {
+    const r = (c: number, w: boolean, trades: number, totalR: number, maxDrawdown = 0.2) => ({
+      c,
+      w,
+      trades,
+      totalR,
+      maxDrawdown,
+    })
+    expect(pickNY([r(15, true, 150, 10), r(5, false, 200, 9)])).toMatchObject({
+      c: 5,
+      w: false,
+      qualified: true,
+    })
+    expect(pickNY([r(5, true, 150, 10), r(15, false, 150, 10), r(15, true, 150, 9)])).toMatchObject(
+      { c: 15, w: true },
+    )
+    expect(pickNY([r(5, false, 150, 10), r(5, true, 150, 10)])).toMatchObject({ c: 5, w: true })
+    expect(pickNY([r(15, true, 99, 10), r(5, false, 300, 10, 0.3)])).toMatchObject({
+      c: 15,
+      w: true,
+      qualified: false,
+    })
   })
 })
 
@@ -1012,24 +1645,40 @@ describe('5 counting', () => {
   })
   it('flip beats plain only when all four hold', () => {
     const o = {
-      reverseTrades: 30,
-      flipLegsR: 1,
+      rides: 30,
+      ridesR: 1,
       flipTotalR: 13,
       plainTotalR: 10,
       flipDrawdown: 0.2,
       plainDrawdown: 0.15,
     }
     expect(flipBeatsPlain(o).beats).toBe(true)
-    expect(flipBeatsPlain({ ...o, reverseTrades: 29 }).beats).toBe(false)
+    expect(flipBeatsPlain({ ...o, rides: 29 }).beats).toBe(false)
+    expect(flipBeatsPlain({ ...o, ridesR: 0 }).beats).toBe(false)
     expect(flipBeatsPlain({ ...o, flipTotalR: 12.9 }).beats).toBe(false)
     expect(flipBeatsPlain({ ...o, flipDrawdown: 0.21 }).beats).toBe(false)
+  })
+  it('thirds beats all at once: 30 ladders, no less R, no deeper drop, and clearly better on one', () => {
+    const o = {
+      ladders: 30,
+      thirdsTotalR: 13,
+      plainTotalR: 10,
+      thirdsDrawdown: 0.15,
+      plainDrawdown: 0.15,
+    }
+    expect(thirdsBeats(o).beats).toBe(true)
+    expect(thirdsBeats({ ...o, ladders: 29 }).beats).toBe(false)
+    expect(thirdsBeats({ ...o, thirdsTotalR: 12.9 }).beats).toBe(false) // not clearly better
+    expect(thirdsBeats({ ...o, thirdsTotalR: 10, thirdsDrawdown: 0.12 }).beats).toBe(true) // 3 points less drawdown
+    expect(thirdsBeats({ ...o, thirdsTotalR: 20, thirdsDrawdown: 0.16 }).beats).toBe(false) // a trade-off does not count
+    expect(thirdsBeats({ ...o, thirdsTotalR: 9.9, thirdsDrawdown: 0.05 }).beats).toBe(false)
   })
   it('95th percentile of 1,000 runs is the 950th value', () => {
     expect(p95(Array.from({ length: 1000 }, (_, i) => 1000 - i))).toBe(950)
   })
   it('mirror: the same minute the other way, same distances from its own fill', () => {
     const d = dataOf(flipDay([[B + 0.0026, B + 0.009, B + 0.0025, B + 0.0088]]))
-    const run = runDay(d, false)
+    const run = runDay(d)
     const [real] = run.trades
     const byId = new Map([[d.id, d]])
     const m = mirrorR(real, d)
@@ -1045,22 +1694,29 @@ describe('5 counting', () => {
       expect(T).toBeLessThanOrEqual(S0.lastEntry)
       expect((T - S0.start) % M15).toBe(0)
     }
-    const d = dataOf(flipDay())
-    const run = runDay(d, true)
+    const d = dataOf(rideDay())
+    const run = runDay(d, 'flip')
     const byId = new Map([[d.id, d]])
+    expect(run.trades.map((t) => t.kind)).toEqual(['ride', 'fib'])
     expect(coinRun(run.trades, byId, 7)).toEqual(coinRun(run.trades, byId, 7))
+  })
+  it('a mirrored ride keeps its own clock closes (the Fib close at the same moment)', () => {
+    const d = dataOf(rideDay())
+    const [ride] = runDay(d, 'flip').trades
+    expect(ride.deadlineWhy).toBe('fib')
+    expect(Number.isFinite(mirrorR(ride, d))).toBe(true)
   })
   it('coin flips draw again inside news blocks (20 tries at most)', () => {
     const d = dataOf(flipDay())
-    const run = runDay(d, false)
+    const run = runDay(d)
     const blocked = { ...d, windows: [{ from: DAY0, to: DAY0 + 86_400 }] }
     expect(coinRun(run.trades, new Map([[d.id, blocked]]), 1)).toEqual({ total: 0, missed: 1 })
   })
   it('half and double costs: same entries and levels, exits walked again; at normal costs nothing moves', () => {
-    const d = dataOf(flipDay())
-    const run = runDay(d, true)
-    for (const t of run.trades.filter((x) => x.leg !== 'reverse'))
-      expect(rescoreCosts(t, d, 1)).toBeCloseTo(t.r, 9)
+    const d = dataOf(rideDay())
+    const run = runDay(d, 'flip')
+    expect(run.trades).toHaveLength(2)
+    for (const t of run.trades) expect(rescoreCosts(t, d, 1)).toBeCloseTo(t.r, 9)
     const [orig] = run.trades
     expect(rescoreCosts(orig, d, 2)).toBeLessThan(rescoreCosts(orig, d, 0.5))
   })
@@ -1124,7 +1780,7 @@ describe.skipIf(!HAVE)(
     }, 60_000)
 
     it('reproduces the check values in 2.9 (GBP/USD, k = 2, b = 0.5)', () => {
-      const run = runLondon([data[0]], { k: 2, b: 0.5, flip: false }, FROM, TO)
+      const run = runLondon([data[0]], { k: 2, b: 0.5 }, FROM, TO)
       const find = (day: string, side: string) =>
         run.trades.find((t) => t.day === day && t.side === side)!
       const a = find('2025-11-14', 'BUY')
@@ -1160,27 +1816,110 @@ describe.skipIf(!HAVE)(
       expect(run.signals).toBe(341)
     })
 
-    it('a whole year of v1-flip: at most 2 v1 + reverse and 3 in all per market and day, 2 full losses, risk under the caps', () => {
-      const run = runLondon(data, { k: 2, b: 0.5, flip: true, q: 0.5 }, FROM, TO)
-      const byDay = new Map<string, LondonTrade[]>()
-      for (const t of run.trades)
-        byDay.set(`${t.market}|${t.day}`, [...(byDay.get(`${t.market}|${t.day}`) ?? []), t])
-      for (const ts of byDay.values()) {
-        expect(ts.filter((t) => t.leg !== 'reentry').length).toBeLessThanOrEqual(2)
-        expect(ts.length).toBeLessThanOrEqual(3)
-        expect(ts.filter((t) => t.leg === 'reverse').length).toBeLessThanOrEqual(1)
-        expect(ts.filter((t) => t.r <= -0.99 && !t.tp1Hit).length).toBeLessThanOrEqual(2)
-        for (const t of ts) if (t.leg !== 'v1') expect(ts[0].leg).toBe('v1')
+    it('a whole year of v1-flip: at most 2 trades and 1 ride per market and day, the ride first, 2 full losses, risk under the caps', () => {
+      for (const g of [1.5, 2.5]) {
+        const run = runLondon(data, { k: 2, b: 0.5, mode: 'flip', ext: 0.272, g }, FROM, TO)
+        const byDay = new Map<string, LondonTrade[]>()
+        for (const t of run.trades)
+          byDay.set(`${t.market}|${t.day}`, [...(byDay.get(`${t.market}|${t.day}`) ?? []), t])
+        for (const ts of byDay.values()) {
+          expect(ts.length).toBeLessThanOrEqual(2)
+          expect(ts.filter((t) => t.kind === 'ride').length).toBeLessThanOrEqual(1)
+          for (const t of ts) if (t.kind === 'ride') expect(ts[0]).toBe(t)
+          expect(ts.filter((t) => t.r <= -0.99 && !t.tp1Hit).length).toBeLessThanOrEqual(2)
+          // One trade per market at a time.
+          if (ts.length === 2) expect(ts[1].entryTime).toBeGreaterThanOrEqual(ts[0].exitTime)
+        }
+        expect(
+          run.trades
+            .filter((t) => t.kind === 'ride')
+            .every((t) => t.exitTime - t.entryTime <= 120 * 60),
+        ).toBe(true)
+        expect(run.maxOpenSeen).toBeLessThanOrEqual(V1.maxOpen)
+        expect(run.maxOpenRiskSeen).toBeLessThanOrEqual(V1.maxOpenRiskPct / 100 + 1e-9)
+        for (const t of run.trades)
+          expect(t.riskUsd).toBeLessThanOrEqual(0.02 * t.balanceAtEntry + 1e-6)
       }
-      expect(run.maxOpenSeen).toBeLessThanOrEqual(V1.maxOpen)
+    })
+
+    it('the one dollar bet holds all year: never a GBP/USD and a gold trade open on opposite dollar sides', () => {
+      for (const run of [
+        runLondon(data, { k: 2, b: 0.5 }, FROM, TO),
+        runLondon(data, { k: 2, b: 0.5, mode: 'flip', ext: 0.272, g: 1.5 }, FROM, TO),
+        runNY(data, { k: 2, b: 0.5, c: 15, w: false }, FROM, TO),
+      ]) {
+        const g = run.trades.filter((t) => t.market === 'GBPUSD')
+        const x = run.trades.filter((t) => t.market === 'XAUUSD')
+        for (const a of g)
+          for (const b2 of x) {
+            if (dollarSide(a.market, a.long) === dollarSide(b2.market, b2.long)) continue
+            const [first, second] = a.entryTime <= b2.entryTime ? [a, b2] : [b2, a]
+            expect(second.entryTime >= first.exitTime).toBe(true)
+          }
+      }
+    })
+
+    it('the ride and v1-NY check values (M6 ride A, N9 break A), entry side', () => {
+      const gbp = data[0]
+      const day = Date.parse('2025-11-11T00:00:00Z') / 1000
+      const s = sessionFor(day)
+      const tr = trackDay(gbp.c15, gbp.atr, s, 2)
+      const r = rideSignals(gbp.market, gbp.c15, tr.setups, 0.5, 1.5)[0]
+      expect(new Date(r.time * 1000).toISOString().slice(11, 16)).toBe('07:00')
+      expect([
+        +r.one.toFixed(5),
+        +r.zero.toFixed(5),
+        +r.level.toFixed(5),
+        +r.size.toFixed(2),
+      ]).toEqual([1.31711, 1.31206, 1.31603, 2.26])
+      const a = prepareRide(gbp, s, r, 0.272, null)
+      if ('why' in a) throw new Error(a.why)
+      expect([
+        +a.p.toFixed(5),
+        +a.E.toFixed(5),
+        +(a.plan.dist / 1e-4).toFixed(1),
+        +a.plan.tp1.toFixed(5),
+        +a.plan.rr.toFixed(2),
+      ]).toEqual([1.31288, 1.31286, 31.7, 1.31069, 0.69])
+      const ns = nySessionFor(Date.parse('2025-11-12T00:00:00Z') / 1000)
+      const ch = chartOf(gbp, M15)
+      const lv = nyLevels(gbp.m1, ns)!
+      expect([lv.LH, lv.LL, lv.RH, lv.RL].map((v) => +v.toFixed(5))).toEqual([
+        1.31551, 1.31072, 1.31225, 1.31046,
+      ])
+      const brk = nyBreak(ch, ns, lv, false)!
+      const x = prepareBreak(gbp, ns, ch, brk, lv, 0.5)
+      if ('why' in x) throw new Error(x.why)
+      expect([brk.long, +x.E.toFixed(5), +x.plan.stop.toFixed(5), +x.plan.tp1.toFixed(5)]).toEqual([
+        false,
+        1.3099,
+        1.31278,
+        1.30558,
+      ])
+    })
+
+    it('a year of thirds: every part inside the 2% cap, and about 1 in 20 signals goes in at once', () => {
+      const run = runLondon(data, { k: 2, b: 0.5, mode: 'thirds' }, FROM, TO)
+      for (const t of run.trades.filter((x) => x.kind === 'thirds'))
+        for (const p of t.parts!)
+          expect(p.tradeRiskAfter).toBeLessThanOrEqual(0.02 * p.balanceAtEntry + 1e-6)
+      expect(run.thirds!.confident).toBeLessThan(run.thirds!.taken / 10)
       expect(run.maxOpenRiskSeen).toBeLessThanOrEqual(V1.maxOpenRiskPct / 100 + 1e-9)
-      for (const t of run.trades)
-        expect(t.riskUsd).toBeLessThanOrEqual(0.02 * t.balanceAtEntry + 1e-6)
+    })
+
+    it('every v1-NY trade enters from 08:30 New York and exits by 11:30 New York, inside the race hours', () => {
+      const run = runNY(data, { k: 2, b: 0.5, c: 5, w: true }, FROM, TO)
+      for (const t of run.trades) {
+        const s = nySessionFor(Date.parse(t.day) / 1000)
+        expect(t.entryTime).toBeGreaterThan(s.rangeEnd)
+        expect(t.entryTime).toBeLessThanOrEqual(s.lastEntry + 5 * 60)
+        expect(inRaceHours(s, t.entryTime)).toBe(true)
+        expect(t.exitTime).toBeLessThanOrEqual(s.timeExit)
+      }
     })
 
     it('no look-ahead on real data: cutting the year in half changes no trade that closed before the cut', () => {
       const cutAt = Date.UTC(2026, 4, 1) / 1000
-      const full = runLondon(data, { k: 2, b: 0.5, flip: true, q: 0.5 }, FROM, TO)
       const cut = data.map((d) =>
         prepareMarket(
           d.id,
@@ -1189,9 +1928,15 @@ describe.skipIf(!HAVE)(
         ),
       )
       cut.forEach((c, n) => (c.windows = data[n].windows))
-      const part = runLondon(cut, { k: 2, b: 0.5, flip: true, q: 0.5 }, FROM, cutAt)
       const before = (ts: LondonTrade[]) => ts.filter((t) => t.exitTime < cutAt - 86_400)
-      expect(before(part.trades)).toEqual(before(full.trades))
+      for (const mode of ['flip', 'thirds'] as const) {
+        const full = runLondon(data, { k: 2, b: 0.5, mode, ext: 0.272, g: 1.5 }, FROM, TO)
+        const part = runLondon(cut, { k: 2, b: 0.5, mode, ext: 0.272, g: 1.5 }, FROM, cutAt)
+        expect(before(part.trades)).toEqual(before(full.trades))
+      }
+      const fullNY = runNY(data, { k: 2, b: 0.5, c: 5, w: false }, FROM, TO)
+      const partNY = runNY(cut, { k: 2, b: 0.5, c: 5, w: false }, FROM, cutAt)
+      expect(before(partNY.trades)).toEqual(before(fullNY.trades))
     })
   },
 )

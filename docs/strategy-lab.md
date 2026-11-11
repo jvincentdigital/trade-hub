@@ -352,9 +352,11 @@ first run is kept there as `run1-*`.
 
 A separate, frozen strategy, not one of the bots above. The rules live in
 `~/jvd-outputs/2026-11-11/london-strategy/SPEC.md`; the code follows it
-section by section (comments point to the spec numbers).
+section by section (comments point to the spec numbers). Rewritten the same
+afternoon after John's answers (`JOHN-ANSWERS.md`): the old stop-and-reverse
+flip is gone, and v1-flip, v1-NY and thirds are new.
 
-- **What**: GBP/USD and gold only, 15-minute candles built from the 1-minute
+- **v1**: GBP/USD and gold only, 15-minute candles built from the 1-minute
   BID files. Entries from 07:00 to 15:00 London, flat by 16:30 London (UK
   summer time aware). After a big move (k ATRs inside 12 candles) the Fib has
   1 at the last opposite candle and 0 at the end of the move. A closed candle
@@ -362,32 +364,75 @@ section by section (comments point to the spec numbers).
   next 1-minute open. Stop past 1 by b ATRs, at least 10 round trips of costs,
   plan between 1.5R and 2.5R. Half off at 0, the rest at -0.272. No trades 30
   minutes around red news, at most 2 trades per market per day.
-- **v1-flip**: after the day's first trade is stopped before TP1, a reverse
-  trade at the stop fill with a quick target (q stop distances, 2 hours at
-  most), then one re-entry at a better price if the reverse won.
-- **Code**: `src/lib/lab/johnsLondon.ts` (pure: signals, plan, 1-minute exit
-  walk, one account for both markets, mirror, coin flips, the pick rule, the
-  loader guard) and `johnsLondon.test.ts` (one test per rule, look-ahead
-  guards, the flip state machine, and the spec's check values on the design
-  data when the files are there). It reuses `impulseAt` and `fibLevel`
-  (`fib.ts`), `atrSeries`, `londonSummer`, the news windows and ISM dates
-  (`news.ts`), `spreadAt`/`slippageAt` (`markets.ts`), `seeded` and
+- **One dollar bet (2.8)**: GBP/USD and gold never sit on opposite dollar
+  sides in one account (GBP/USD long and gold long are "USD down"). A trade
+  that reaches its stop or target later inside the minute of the new fill
+  still counts as open; one force-closed at that minute's open does not.
+- **Race hours** (John's live rules, a backstop in the code): entries only
+  02:00 to 12:30 AST (06:00 to 16:30 UTC), flat at 12:45 AST. Every v1 and
+  v1-NY moment is inside them, so they never change a backtest trade (a test
+  walks a whole year of sessions to show it).
+- **v1-flip (section 3)**: v1 plus "the ride": on a setup's first move candle
+  (the arming candle, or a candle that moved 0) that closes with the move and
+  passes the size test (v1's plan at a fill exactly at 0.786 pays at least g,
+  before the 2.5R cap), a market order with the move. Stop at that 0.786 level
+  (fixed, cost floor), one target at 0 - ext x (1 - 0), 120 minutes at most,
+  and closed at the open of the minute in which its own setup's Fib entry
+  fills. Only a market's first trade of the day; then v1's Fib entry as usual.
+  `trackDay` reports each setup's move candles and its Fib signal;
+  `rideSignals` and `prepareRide` are pure.
+- **v1-NY (section 3A)**: its own account. New York clock (`nySessionFor`, US
+  summer time): range 08:00 to 08:30 NY from 1-minute candles, London's high
+  and low from 07:00 London to 08:00 NY. The first c-minute candle (15 or 5)
+  that closes past the break line (w = on: also past London's high or low) is
+  the break: stop past the far side of the range by b ATRs, one target at
+  1.5R, fill at most 0.1 x the stop worse than the close. Then v1's Fib entry
+  on the break's side after the break candle (trackers start empty at 08:00
+  NY). Also reports London's lines (break or rejection at London's high and
+  low, 08:00 to 11:00 NY).
+- **Thirds (section 3B)**: a Fib entry whose signal candle already closed our
+  way goes in at once. Otherwise a ladder: thirds at 0.786, 0.836 and 0.886
+  (each at a candle close, a third of 2%), one stop from v1's rule at the last
+  rung, and one add at the first turn candle that brings the trade to 2% and
+  moves the stop behind the pullback (never further). `walkParts` walks the
+  whole trade; the account takes parts (`addPart`) and re-walked fills
+  (`replaceFills`). R = net dollars / 2% of the balance at the first part.
+- **Code**: `src/lib/lab/johnsLondon.ts` (pure: signals, plans, 1-minute exit
+  walks, one account per run, mirror, coin flips, pick rules, the loader
+  guard) and `johnsLondon.test.ts` (one test per rule, look-ahead guards for
+  the ride, the New York range and the thirds' turn candle, the caps, no
+  loops, and the spec's check values 2.9, M6, N9 on the design data when the
+  files are there). It reuses `impulseAt` and `fibLevel` (`fib.ts`),
+  `atrSeries`, `londonSummer`, `nySummer`/`nyOffset`, the news windows and
+  ISM dates (`news.ts`), `spreadAt`/`slippageAt` (`markets.ts`), `seeded` and
   `directionTest`. It does not use `johnsFib` or the lab engine's exits.
   Gold has its own costs (0.040% a round trip), not `labMarket('XAUUSD')`.
 - **Runner**: `npx tsx scripts/lab/london-v1.ts --history DIR --from
-2025-11-11 --to 2026-11-10 --out DIR`. Six runs: v1 for the 4 (k, b) pairs,
-  the pick, then v1-flip for q = 0.5 and 1.0. Writes `results.json` (every
-  run, every trade, per market) and `results.md`. Design mode only: the
-  loader refuses `history-1m-24mo` and `history-old`, any file but the 1m
-  ones, and any file whose first candle is before 2025-11-11. There is no
-  clean-year mode yet: that run needs the freeze record and checks of spec
-  section 5 first.
-- **Design year (2025-11-11 to 2026-11-10)**: picked k = 2, b = 0.5, q = 0.5.
-  v1: 123 trades (GBP/USD 43, gold 80), +22.1R, $10,000 to $14,913, max drop
-  13.7%, mirror z 1.75. v1-flip: 172 trades, +9.6R, $11,602; its 47 reverse
-  trades lost 10.0R, so flip does not beat plain. All three check values in
-  spec 2.9 match. Run folder:
-  `~/jvd-outputs/2026-11-11/london-strategy/design-run/`.
+2025-11-11 --to 2026-11-10 --out DIR`. The 13 runs of spec section 4: v1 x 4
+  (k, b), v1-flip x 4 (ext, g), v1-NY x 4 (c, w), v1 with thirds, with the
+  pick rules and the "beats" checks. It also checks the spec's entry-side
+  values (2.9, M6, N9, T8) and, when `DIR/build1-ceb7a2b/results.json` is
+  there, compares the 4 v1 runs with the first build trade by trade. Writes
+  `results.json` (every run, every trade, every thirds part) and
+  `results.md`. Design mode only: the loader refuses `history-1m-24mo` and
+  `history-old`, any file but the 1m ones, and any file whose first candle is
+  before 2025-11-11. There is no clean-year mode yet: that run needs the
+  freeze record and checks of spec section 5 first.
+- **Design year (2025-11-11 to 2026-11-10)**, second build:
+  - v1 picked k = 2, b = 0.5: 121 trades, +24.1R, $10,000 to $15,508, max
+    drop 13.7%, mirror z 1.83. The first build had 123 trades (+22.1R); the
+    dollar bet skipped 2 GBP/USD trades (both -1R), every other trade is the
+    same with the same R, and no trade was ended by the 12:45 rule.
+  - v1-flip picked ext = 0.272, g = 2.5: 266 trades (151 rides, -14.4R), +6.6R
+    in all, $10,866. It does not beat plain at any setting. g = 1.5 lost 21R.
+  - v1-NY: no setting qualified (every drawdown over 25%), so c = 15, w = on,
+    labelled "did not qualify": 222 trades, -38.2R, $4,537. Almost all of it is
+    break trades (218, -39.4R); only 4 Fib entries.
+  - Thirds: 114 trades, +16.1R, max drop 12.5%, against all at once +24.1R,
+    13.7%. It does not beat all at once (less R, the drawdown only 1.2 points
+    better).
+  - Run folder: `~/jvd-outputs/2026-11-11/london-strategy/design-run/` (the
+    first build's files are in `build1-ceb7a2b/`).
 - **Versus the prototype** (134 trades, +23.9R): the prototype missed the ISM
   news blocks (it appended them to a sorted list and stopped its loop early),
   so it took a few trades the spec does not. Gold costs now follow the price.
