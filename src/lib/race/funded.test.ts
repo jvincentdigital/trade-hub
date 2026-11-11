@@ -7,6 +7,8 @@ import { NOT_LIVE } from './account'
 import {
   checkFunded,
   createFunded,
+  dayWorstCase,
+  lossAtStop,
   FUNDED,
   fundedView,
   stepFunded,
@@ -271,9 +273,15 @@ describe('funded test: FTMO limits', () => {
       'the day is down $400.00, 4% of the start or more: no new trades until the next FTMO day',
     )
     expect(r.funded.status).toBe('active')
-    // $399 down still trades
+    // $399 down is under the $400 stop, but a 2% trade on top ($192) is over the $475 worst case
     const under = withClosed([closedT(-399, NOW - 1800)])
-    expect(stepFunded(under, markets, [cand('a', 'GBP-USD')], NOW).opened).toHaveLength(1)
+    expect(fundedView(under, PRICE, NOW).dayStopped).toBe(false)
+    expect(stepFunded(under, markets, [cand('a', 'GBP-USD')], NOW).passed[0].reason).toMatch(
+      /^worst case today would be -\$591\.02 .* over the \$475\.00 cap/,
+    )
+    // $270 down: $270 + $194.60 (2% of $9,730) = $464.60 still fits
+    const room = withClosed([closedT(-270, NOW - 1800)])
+    expect(stepFunded(room, markets, [cand('a', 'GBP-USD')], NOW).opened).toHaveLength(1)
     // the next FTMO day (19:00 AST) starts from the lower balance: free again
     expect(fundedView(at4, PRICE, ast(2026, 11, 11, 19)).dayStopped).toBe(false)
   })
@@ -301,6 +309,39 @@ describe('funded test: FTMO limits', () => {
     expect(checkFunded(open, { ...p, 'GBP-USD': 1.2936 }, NOW).status).toBe('active')
     // once failed it stays failed, even after a recovery
     expect(checkFunded(r.funded, PRICE, NOW + 3600).status).toBe('failed')
+  })
+
+  describe('worst case under $475 (the $500 day limit minus 5% for slippage)', () => {
+    // real fees: forex 0.007% a side, gold 0.02%
+    const fx = Object.keys(PRICE).map((m) =>
+      mt(m, { feeRate: m === 'pax-gold' ? 0.0002 : m === 'bitcoin' ? 0.001 : 0.00007 }),
+    )
+
+    it('two fresh 2% trades still fit, fees included', () => {
+      const r = stepFunded(createFunded(0), fx, [cand('a', 'GBP-USD'), cand('b', 'pax-gold')], NOW)
+      expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD', 'pax-gold'])
+      const worst = dayWorstCase(r.funded, NOW)
+      expect(worst).toBeGreaterThan(400) // $200 + $200 + four fees
+      expect(worst).toBeLessThan(475)
+      expect(lossAtStop(r.opened[1])).toBeCloseTo(200 + 20_000 * 0.0002 + 19_800 * 0.0002)
+    })
+
+    it("the reviewer's repro: after a $209 stop, two trades at once would risk $612: the second waits", () => {
+      const f = withClosed([closedT(-209, NOW - 1800)])
+      const r = stepFunded(f, fx, [cand('a', 'GBP-USD'), cand('b', 'EUR-USD')], NOW)
+      expect(r.opened.map((t) => t.market)).toEqual(['GBP-USD'])
+      expect(r.passed).toHaveLength(1)
+      expect(r.passed[0].reason).toMatch(
+        /^worst case today would be -\$6\d\d\.\d\d .* \$475\.00 cap/,
+      )
+      // what is left can't break the $500 limit even if both stops hit
+      expect(dayWorstCase(r.funded, NOW)).toBeLessThan(475)
+    })
+
+    it('a gain earlier in the day does not lift the cap; an open winner still counts at its stop', () => {
+      const f = withClosed([closedT(300, NOW - 1800)], [trade('GBP-USD')])
+      expect(dayWorstCase(f, NOW)).toBeCloseTo(200) // realized gain counts as 0, not -$300
+    })
   })
 
   it('the day limits stay $500 and $400 when the account is up or down (FTMO: % of the start)', () => {

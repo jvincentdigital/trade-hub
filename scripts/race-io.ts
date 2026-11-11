@@ -71,6 +71,11 @@ function relayEnv(): { url: string; key: string } | null {
 
 /** Send the saved state to the live site's relay. Never throws, never prints the key. */
 export async function push(state: RaceState) {
+  // A test file (RACE_FILE set) never goes to the live site, even without --no-push.
+  if (process.env.RACE_FILE) {
+    console.log('Not pushed: RACE_FILE is set, so this is a test file (live site untouched)')
+    return
+  }
   const env = relayEnv()
   if (!env) return
   try {

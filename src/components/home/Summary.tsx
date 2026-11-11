@@ -367,8 +367,8 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
         />
       </div>
       <p style={{ ...secondary, fontSize: FS.xs, marginTop: 8 }}>
-        Today {v.newToday} of {FUNDED.maxNewPerDay} new trades, {v.openCount} of{' '}
-        {FUNDED.sizing.maxOpen} open. The day resets at {clockOf(v.nextDay)} (midnight in Prague).
+        {/* One string: JSX text with entities can lose a space (docs/dashboard.md, Gotcha). */}
+        {`Today ${v.newToday} of ${FUNDED.maxNewPerDay} new trades, ${v.openCount} of ${FUNDED.sizing.maxOpen} open. The day resets at ${clockOf(v.nextDay)} (midnight in Prague). A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${usdShort((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}.`}
       </p>
       {v.status === 'active' && v.dayStopped && (
         <p style={{ fontSize: FS.sm, marginTop: 6, color: 'var(--amber)' }}>

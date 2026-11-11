@@ -607,7 +607,7 @@ function FundedLive() {
       </div>
       {/* One string: JSX text with entities can lose a space here (docs/dashboard.md, Gotcha). */}
       <p style={small}>
-        {`One ${money(FUNDED.startMoney)} play account that takes every strategy's signals in a fixed order (the built-in rules as listed on Strategies, then London breakout, then Claude's picks): the first to signal a market gets it. ${FUNDED.sizing.riskPct}% risk per trade, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${money((FUNDED.startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start, counted from the day's opening balance) or money under ${money(floor)} fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. Today follows this account.`}
+        {`One ${money(FUNDED.startMoney)} play account that takes every strategy's signals in a fixed order (the built-in rules as listed on Strategies, then London breakout, then Claude's picks): the first to signal a market gets it. ${FUNDED.sizing.riskPct}% risk per trade, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${money((FUNDED.startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start, counted from the day's opening balance) or money under ${money(floor)} fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${money((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}. Today follows this account.`}
       </p>
       {!f || !v ? (
         <p style={{ fontSize: 13, marginTop: 12 }}>

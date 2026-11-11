@@ -41,7 +41,9 @@ column sits on the left and stays in view while the trades scroll on the right.
      and **Trading days** ("2 of 4"). The tiles' group label reads it as one
      line: "Funded test: +$425.93, day loss used 3.74% of 5%, 0.00% of 10% max,
      2 of 4 days, target +$1,000". Under them: "Today 3 of 3 new trades, 2 of 2
-     open. The day resets at 7:00 PM (midnight in Prague)." Once the day is
+     open. The day resets at 7:00 PM (midnight in Prague). A new trade opens
+     only if the day's worst case, every open trade hitting its stop, stays
+     under $475." Once the day is
      down $400: "no new trades until 7:00 PM". Failed or passed: a red or green
      box with the rule that broke (or the pass) and its time, "No new trades".
    - A small line of the open P&L since the first open trade ("Open trades,

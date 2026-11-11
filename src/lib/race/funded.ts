@@ -36,6 +36,13 @@ export const FUNDED = {
   dailyLossPct: 5,
   /** Our own buffer: no new trades for the day once it is down 4% of the start ($400). */
   dayStopPct: 4,
+  /**
+   * Our second buffer: a new trade opens only if the day's worst case stays at
+   * or under 4.75% of the start ($475: the $500 limit minus 5% for slippage).
+   * Worst case = the day's realized loss + every open trade hitting its stop
+   * + this one hitting its stop, all fees included (dayWorstCase).
+   */
+  worstCasePct: 4.75,
   /** Fail: balance or money under $9,000 (10% of the start, static). */
   maxLossPct: 10,
 } as const
@@ -166,6 +173,21 @@ export function checkFunded(
   return f
 }
 
+/** Dollars a trade loses if it hits its stop, both fees included (the exit fee at the stop price). */
+export const lossAtStop = (t: FundedTrade) =>
+  tradeRisk(t) + t.entryFee + (t.entryFee * t.stop) / t.entry
+
+/**
+ * The day's worst case if every open trade hits its stop: the loss already
+ * realized since the FTMO day began (0 when the day is up), plus each open
+ * trade's loss at its stop with both fees.
+ */
+export function dayWorstCase(f: FundedState, nowSec: number): number {
+  const start = pragueDayStart(nowSec)
+  const dayStart = f.startMoney + f.closed.reduce((a, t) => a + (t.exitTime < start ? t.pnl : 0), 0)
+  return Math.max(0, dayStart - f.balance) + f.open.reduce((a, t) => a + lossAtStop(t), 0)
+}
+
 export interface FundedStep {
   funded: FundedState
   opened: FundedTrade[]
@@ -265,6 +287,17 @@ export function stepFunded(
     })
     if (!size.ok) {
       no(size.reason)
+      continue
+    }
+    // Worst case with this trade too: never past $475 (the $500 day limit with a margin).
+    const fee = size.valueUsd * m.feeRate
+    const worst =
+      dayWorstCase({ ...acc, open }, nowSec) + size.riskUsd + fee + (fee * levels.stop) / m.price
+    const cap = (acc.startMoney * FUNDED.worstCasePct) / 100
+    if (worst > cap) {
+      no(
+        `worst case today would be -${usd(worst)} if every open trade and this one hit their stops, over the ${usd(cap)} cap (the ${usd((acc.startMoney * FUNDED.dailyLossPct) / 100)} day limit with a margin)`,
+      )
       continue
     }
     const t: FundedTrade = {

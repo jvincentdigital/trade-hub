@@ -82,8 +82,10 @@ Options:
 
 - `make race-reset` (or `scripts/race-reset 1000`): start over, see "Starting over".
 - `npx tsx scripts/race-tick.ts --push-only`: send the saved file to the live site, no tick.
-- `--no-push`: tick without sending, for a test file. Always use it with a
-  `RACE_FILE` test path, or the test race replaces the real one on the live site.
+- `--no-push`: tick without sending. With `RACE_FILE` set (a test file) the
+  scripts never push anyway: `push` in `race-io.ts` prints "Not pushed:
+  RACE_FILE is set" (added 2026-11-11 after a review), so a test race can't
+  replace the real one on the live site.
 
 `/api/race` reads that file locally; on the live site it reads the copy the
 tick pushes to the race relay worker (`docs/live.md`). The home page
@@ -247,18 +249,19 @@ as the main card (`docs/dashboard.md`); the Race tab shows it above the Lab.
 The limits copy FTMO's 2-Step challenge, the best documented fit for John's
 markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
 
-| Rule                 | Value                                                                                                                                                                               |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start                | $10,000, play money                                                                                                                                                                 |
-| Risk per trade       | 2% of the current balance ($200 at the start), size from the fill-to-stop distance like the Lab                                                                                     |
-| Open trades          | at most 2, one per market                                                                                                                                                           |
-| New trades a day     | at most 3 per FTMO day                                                                                                                                                              |
-| Rules for new trades | the Lab's four (`newTradeBlock`): Bitcoin only among crypto, one pound/dollar bet, at most 2 the same way on the dollar, nothing on USD/JPY, NZD/USD or GBP/JPY (once-a-day prices) |
-| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down $400 (4% of the start) from its opening balance                                                                     |
-| Daily loss           | **failed** when the day loses $500 (5% of the start, FTMO's rule) from its opening balance, closed and open trades together                                                         |
-| Max loss             | **failed** when the balance or the money (with open P&L) is under $9,000 (10% of the start, static)                                                                                 |
-| Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                                                                                             |
-| Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)                                                                         |
+| Rule                 | Value                                                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start                | $10,000, play money                                                                                                                                                                                                                         |
+| Risk per trade       | 2% of the current balance ($200 at the start), size from the fill-to-stop distance like the Lab                                                                                                                                             |
+| Open trades          | at most 2, one per market                                                                                                                                                                                                                   |
+| New trades a day     | at most 3 per FTMO day                                                                                                                                                                                                                      |
+| Rules for new trades | the Lab's four (`newTradeBlock`): Bitcoin only among crypto, one pound/dollar bet, at most 2 the same way on the dollar, nothing on USD/JPY, NZD/USD or GBP/JPY (once-a-day prices)                                                         |
+| Worst case (ours)    | a new trade opens only if the day's worst case stays under $475 (the $500 limit minus 5% for slippage): the day's realized loss, plus every open trade hitting its stop, plus this one hitting its stop, all fees included (`dayWorstCase`) |
+| Day stop (ours)      | no new trades for the rest of the FTMO day once the day is down $400 (4% of the start) from its opening balance                                                                                                                             |
+| Daily loss           | **failed** when the day loses $500 (5% of the start, FTMO's rule) from its opening balance, closed and open trades together                                                                                                                 |
+| Max loss             | **failed** when the balance or the money (with open P&L) is under $9,000 (10% of the start, static)                                                                                                                                         |
+| Target               | **passed** with balance and money at $11,000 or more (+10%) and at least 4 trading days                                                                                                                                                     |
+| Day                  | FTMO's: midnight to midnight in Prague, which is 19:00 AST in winter and 18:00 AST in summer (`session.ts`)                                                                                                                                 |
 
 - **Signal order.** Each check collects every strategy's signal in a fixed
   order: the built-in rules in the order of `BUILT_IN_RULES`
@@ -284,8 +287,12 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
 - **Start.** The first tick that runs this code starts it with $10,000. Every
   signal already out there at that moment is marked as used, so it only
   trades signals that come after.
-- Not built: no check that a new trade's stop would fit under the 5% day
-  limit (only the 4% buffer), no consistency rule (FTMO 2-Step has none), no
+- Why the worst-case check (review, 2026-11-11): the $400 stop only looks
+  at money already lost. One stop (-$209) and then two trades opened together
+  that both stop would lose $612 and fail the test on day one. With the check,
+  the second trade waits: two fresh trades ($200 each plus fees, about $420)
+  still fit, a third after a stop does not.
+- Not built: no consistency rule (FTMO 2-Step has none), no
   news pause (FTMO's challenge has none, and John chose to trade through red
   news, 2026-11-11).
 
