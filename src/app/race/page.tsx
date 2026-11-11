@@ -688,7 +688,12 @@ function Live({ start }: { start: number }) {
                         market: t.market,
                         direction: t.direction,
                         time: t.exitTime,
-                        how: t.reason === 'target' ? 'hit target' : 'hit stop',
+                        how:
+                          t.reason === 'target'
+                            ? 'hit target'
+                            : t.reason === 'manual'
+                              ? 'closed by you'
+                              : 'hit stop',
                         pnl: t.pnl * scale,
                         size: sizeOf(t, scale),
                       }))}

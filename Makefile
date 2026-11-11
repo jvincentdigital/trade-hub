@@ -77,6 +77,9 @@ extract-strategies: ## Turn course transcripts into strategy rules via claude -p
 race-tick: ## Strategy race: one live tick for every strategy's play account (state in ~/.local/share/trade-hub/race.json)
 	npx tsx scripts/race-tick.ts
 
+race-close-all: ## Strategy race: close every open trade by hand at the first 1-minute price at or after AT (usage: make race-close-all AT=2026-11-11T17:04:31Z [DRY=1])
+	npx tsx scripts/race-close-all.ts --at $(AT) $(if $(DRY),--dry-run)
+
 race-reset: ## Strategy race: back up race.json, start over at 2% risk per trade, first tick, push (usage: make race-reset [START=1000])
 	scripts/race-reset $(START)
 
