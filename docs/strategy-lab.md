@@ -444,6 +444,27 @@ flip is gone, and v1-flip, v1-NY and thirds are new.
 - **Versus the prototype** (134 trades, +23.9R): the prototype missed the ISM
   news blocks (it appended them to a sorted list and stopped its loop early),
   so it took a few trades the spec does not. Gold costs now follow the price.
+- **In the live race** (`src/lib/race/johnsLondonLive.ts`, SPEC.md section
+  6): v1 passed its six lines on the clean year (97 trades, +27.6R, seen
+  twice), so it is a race account of its own, "John's London v1", $10,000,
+  frozen k = 2, b = 0.5. v1-NY failed and v1-flip and thirds did not beat
+  plain, so none of them race. Each tick rebuilds today's setups with
+  `trackDay` on closed Kraken 15-minute candles (signals and exits both on
+  closed candles only), after two feed checks (newest closed candle under 30
+  minutes old, 14 of the last 20 candles moving). It acts on the newest signal
+  whose candle closed within the last 60 minutes and is newer than the
+  account's mark; a signal it passes moves the mark too (`seen`), so each gets
+  one look. The plan is worked out at the price now (2.5, the cost floor from
+  2.2, 1.5R minimum, no chase against the signal close). Red news is Forex
+  Factory's "High" list; with no list at all it opens nothing. Four engine
+  options in `live.ts`, each off unless a market tick turns it on:
+  `sizeStop` (the sizer sees the stop plus the race fee on both sides, so a
+  stop-out costs 2%), `minRiskPct` (skip a trade the margin cap cut under
+  1%), `confirm` (GBP/USD only: the lone-wick rule; a reach counts when the
+  candle closes past the level or the next candle reaches it too, otherwise
+  it is logged as LONE WICK) and `seen`. The first tick of a session logs its
+  time, with LATE START when it came more than 15 minutes late. The dollar bet
+  comes from main's `newTradeBlock` once this branch is merged with main.
 
 ## Not done
 

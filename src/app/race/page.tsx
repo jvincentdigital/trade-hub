@@ -103,8 +103,8 @@ export default function RacePage() {
         <Link href="/strategies" style={{ color: 'var(--indigo)', padding: '14px 0' }}>
           Strategies
         </Link>
-        . London breakout and Claude&apos;s picks are live-race only: open one of their trades on
-        Today to read &quot;Why these levels&quot;.
+        . London breakout, Claude&apos;s picks and John&apos;s London v1 are live-race only: open
+        one of their trades on Today to read &quot;Why these levels&quot;.
       </p>
 
       <div role="note" style={warn}>
