@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { inWindow, nextWindowStart, newsWindows, overlapsWindow, parseNewsCsv } from './news'
+import {
+  inWindow,
+  ismEvents,
+  nextWindowStart,
+  newsWindows,
+  overlapsWindow,
+  parseNewsCsv,
+} from './news'
 
 const CSV = `time_utc,currency,event,source_url
 2025-03-07T13:30:00Z,USD,Non-Farm Employment Change (Employment Situation Feb 2025),https://x
@@ -23,7 +30,11 @@ describe('news filter windows', () => {
       { from: t('2025-03-12T12:00:00Z'), to: t('2025-03-12T13:00:00Z') },
       { from: t('2025-04-30T10:30:00Z'), to: t('2025-04-30T11:30:00Z') },
     ])
-    expect(newsWindows(ev, ['JPY'], 'close')).toHaveLength(1)
+    // BoJ has no fixed time: 02:00-04:30 UTC (statement) and 06:00-07:00 UTC (press conference).
+    expect(newsWindows(ev, ['JPY'], 'close')).toEqual([
+      { from: t('2025-05-01T02:00:00Z'), to: t('2025-05-01T04:30:00Z') },
+      { from: t('2025-05-01T06:00:00Z'), to: t('2025-05-01T07:00:00Z') },
+    ])
     expect(newsWindows(ev, ['USD'], 'off')).toEqual([])
   })
   it('day mode blocks the whole UTC day', () => {
@@ -41,5 +52,18 @@ describe('news filter windows', () => {
     expect(overlapsWindow(w, t('2025-03-07T12:30:00Z'), t('2025-03-07T13:30:00Z'))).toBe(true)
     expect(nextWindowStart(w, t('2025-03-08T00:00:00Z'))).toBe(t('2025-03-12T12:00:00Z'))
     expect(nextWindowStart(w, t('2025-04-01T00:00:00Z'))).toBe(Infinity)
+  })
+})
+
+describe('ISM dates by rule', () => {
+  it('first and third business days at 10:00 New York, skipping New Year and Labor Day', () => {
+    const ev = ismEvents(t('2025-12-31T00:00:00Z'), t('2026-09-30T00:00:00Z'))
+    const iso = (x: number) => new Date(x * 1000).toISOString().slice(0, 16)
+    // Jan 2026: the 1st is a holiday (Thursday), so Fri 2nd and Tue 6th; EST, 15:00 UTC.
+    expect(iso(ev[0].time)).toBe('2026-01-02T15:00')
+    expect(iso(ev[1].time)).toBe('2026-01-06T15:00')
+    // Sep 2026: Labor Day is Mon 7th... the 1st is a Tuesday; EDT, 14:00 UTC.
+    const sep = ev.filter((e) => iso(e.time).startsWith('2026-09'))
+    expect(sep.map((e) => iso(e.time))).toEqual(['2026-09-01T14:00', '2026-09-03T14:00'])
   })
 })

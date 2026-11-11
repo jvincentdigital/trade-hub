@@ -35,13 +35,21 @@ export const liveTradeSchema = z.object({
   entryFee: z.number(),
   /** Why it was opened, in plain words (Claude's picks). */
   note: z.string().optional(),
+  /** First target (lab bots, John's Fib: half off at 0): `part1` of the units close there, the rest keeps going. */
+  target1: z.number().optional(),
+  part1: z.number().optional(),
+  /** Latest time it may stay open (lab bots: day trade 17:00 New York, swing 5 days, race 10 days). */
+  deadline: z.number().optional(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
 
 export const closedLiveTradeSchema = liveTradeSchema.extend({
   exitTime: z.number(),
   exit: z.number(),
-  reason: z.enum(['stop', 'target']),
+  /** time: its deadline passed; news: closed before red news (lab bots). A first-target close is a "target" with part1Of set. */
+  reason: z.enum(['stop', 'target', 'time', 'news']),
+  /** Set on the first-target close of a trade: the share of the units it closed. */
+  part1Of: z.number().optional(),
   /** Net dollars, both fees included. */
   pnl: z.number(),
   fees: z.number(),
@@ -238,6 +246,12 @@ export interface MarketTick {
   leverage: number
   /** Stored on a trade this signal opens (Claude's picks: the reason). */
   note?: string
+  /** Lab bots: first target of a trade this signal opens (half closes there). */
+  target1?: number
+  /** Lab bots: latest time a trade this signal opens may stay open. */
+  deadline?: number
+  /** Lab bots with the news filter on "close": close this market's open trades now, at the price. */
+  closeNow?: boolean
 }
 
 export interface StepResult {
@@ -253,30 +267,95 @@ const dir = (d: 'long' | 'short') => (d === 'long' ? 1 : -1)
 /** Dollars lost if the stop is hit, from entry, before fees. */
 export const tradeRisk = (t: LiveTrade) => t.units * Math.abs(t.entry - t.stop) * t.usdPerQuote
 
+/** One exit of a trade (all of it, or the first-target part). */
+interface Exit {
+  exit: number
+  time: number
+  reason: ClosedLiveTrade['reason']
+  /** Share of the trade's units this exit closes (1 = all that is left). */
+  share: number
+}
+
 /**
- * First later path candle that hits the stop (checked first; a gap fills at the open) or target.
- * Skipped: the candle the entry happened in, and any candle that started
- * before the entry (a market whose path moved to smaller candles, like
- * forex from daily to 15m on 2026-11-10, must not look before its entry).
+ * The exits a trade reaches on later path candles: the stop first (a gap
+ * fills at the open), then the first target (part of the units), then the
+ * target; a candle starting at or after its deadline closes it at that
+ * candle's open. Skipped: the candle the entry happened in, and any candle
+ * that started before the entry (a market whose path moved to smaller
+ * candles, like forex from daily to 15m on 2026-11-10, must not look before
+ * its entry).
  */
-function exitOf(t: LiveTrade, path: OHLCCandle[]) {
+function exitsOf(t: LiveTrade, path: OHLCCandle[]): Exit[] {
   const long = t.direction === 'long'
+  const out: Exit[] = []
+  let first = t.target1
   for (const c of path) {
     if (c.time <= t.entryBucket || c.time < t.entryTime) continue
+    if (t.deadline != null && c.time >= t.deadline) {
+      out.push({ exit: c.open, time: c.time, reason: 'time', share: 1 })
+      return out
+    }
     if (long ? c.low <= t.stop : c.high >= t.stop) {
       const gapped = long ? c.open < t.stop : c.open > t.stop
-      return { exit: gapped ? c.open : t.stop, time: c.time, reason: 'stop' as const }
+      out.push({ exit: gapped ? c.open : t.stop, time: c.time, reason: 'stop', share: 1 })
+      return out
     }
-    if (long ? c.high >= t.takeProfit : c.low <= t.takeProfit)
-      return { exit: t.takeProfit, time: c.time, reason: 'target' as const }
+    if (first != null && (long ? c.high >= first : c.low <= first)) {
+      out.push({ exit: first, time: c.time, reason: 'target', share: t.part1 ?? 0.5 })
+      first = undefined
+    }
+    if (long ? c.high >= t.takeProfit : c.low <= t.takeProfit) {
+      out.push({ exit: t.takeProfit, time: c.time, reason: 'target', share: 1 })
+      return out
+    }
   }
-  return null
+  return out
+}
+
+/** Close `share` of a trade's units at an exit: the closed part and what stays open. */
+function closePart(
+  t: LiveTrade,
+  x: Exit,
+  feeRate: number,
+): { closed: ClosedLiveTrade; rest: LiveTrade | null } {
+  const part = Math.min(1, Math.max(0, x.share))
+  const units = t.units * part
+  const entryFee = t.entryFee * part
+  const gross = units * dir(t.direction) * (x.exit - t.entry) * t.usdPerQuote
+  const exitFee = units * x.exit * t.usdPerQuote * feeRate
+  const closed: ClosedLiveTrade = {
+    ...t,
+    units,
+    margin: t.margin * part,
+    entryFee,
+    exitTime: x.time,
+    exit: x.exit,
+    reason: x.reason,
+    pnl: gross - entryFee - exitFee,
+    fees: entryFee + exitFee,
+    ...(part < 1 ? { part1Of: part } : {}),
+  }
+  if (part >= 1) return { closed, rest: null }
+  const { target1: _t1, part1: _p1, ...keep } = t
+  void _t1
+  void _p1
+  return {
+    closed,
+    rest: {
+      ...keep,
+      units: t.units - units,
+      margin: t.margin - closed.margin,
+      entryFee: t.entryFee - entryFee,
+    },
+  }
 }
 
 /**
  * One tick for one strategy:
  * 1. Each open trade closes if a later path candle of its market hit its stop
- *    or target; both fees are paid then and the net P&L goes to the balance.
+ *    or target (lab bots also: part at a first target, at their deadline, or
+ *    before red news); both fees are paid then and the net P&L goes to the
+ *    balance.
  * 2. Each market's signal newer than the last one used is consumed. With no
  *    trade open in that market it opens at the latest price, risking 2% of
  *    the balance, unless a limit says no (see sizeRaceTrade).
@@ -291,25 +370,37 @@ export function stepStrategy(
   let balance = s.balance
   const open: LiveTrade[] = []
   const closed: ClosedLiveTrade[] = []
-  for (const t of s.open) {
-    const m = byMarket.get(t.market)
-    const hit = m ? exitOf(t, m.path) : null
-    if (!m || !hit) {
-      open.push(t)
+  for (const t0 of s.open) {
+    const m = byMarket.get(t0.market)
+    if (!m) {
+      open.push(t0)
       continue
     }
-    const gross = t.units * dir(t.direction) * (hit.exit - t.entry) * t.usdPerQuote
-    const exitFee = t.units * hit.exit * t.usdPerQuote * m.feeRate
-    const c: ClosedLiveTrade = {
-      ...t,
-      exitTime: hit.time,
-      exit: hit.exit,
-      reason: hit.reason,
-      pnl: gross - t.entryFee - exitFee,
-      fees: t.entryFee + exitFee,
+    let t: LiveTrade | null = t0
+    for (const x of exitsOf(t0, m.path)) {
+      if (!t) break
+      const r = closePart(t, x, m.feeRate)
+      balance += r.closed.pnl
+      closed.push(r.closed)
+      t = r.rest
     }
-    balance += c.pnl
-    closed.push(c)
+    // No later candle yet, but the deadline has passed or red news is due:
+    // close at the price now, while the market trades (its newest candle is
+    // under 2 hours old). Shut for the weekend, the reopen candle closes it.
+    const last = m.path[m.path.length - 1]
+    const live = !!last && nowSec - last.time < 2 * 3600
+    const late = t?.deadline != null && nowSec >= t.deadline
+    if (t && live && m.price > 0 && (late || m.closeNow)) {
+      const r = closePart(
+        t,
+        { exit: m.price, time: nowSec, reason: late ? 'time' : 'news', share: 1 },
+        m.feeRate,
+      )
+      balance += r.closed.pnl
+      closed.push(r.closed)
+      t = null
+    }
+    if (t) open.push(t)
   }
 
   const lastSignal = { ...s.lastSignal }
@@ -323,8 +414,8 @@ export function stepStrategy(
     const valid =
       p > 0 &&
       (sig.direction === 'long'
-        ? p > sig.stop && p < sig.takeProfit
-        : p < sig.stop && p > sig.takeProfit)
+        ? p > sig.stop && p < sig.takeProfit && (m.target1 == null || p < m.target1)
+        : p < sig.stop && p > sig.takeProfit && (m.target1 == null || p > m.target1))
     if (!valid || open.some((t) => t.market === m.market)) continue
     if (m.usdPerQuote == null) {
       passed.push({ market: m.market, reason: 'no USD rate for its quote currency' })
@@ -357,6 +448,8 @@ export function stepStrategy(
       margin: size.margin,
       entryFee: size.valueUsd * m.feeRate,
       ...(m.note ? { note: m.note } : {}),
+      ...(m.target1 != null ? { target1: m.target1, part1: 0.5 } : {}),
+      ...(m.deadline != null ? { deadline: m.deadline } : {}),
     }
     open.push(t)
     opened.push(t)

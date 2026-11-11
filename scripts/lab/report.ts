@@ -3,15 +3,18 @@
  *
  *   npx tsx scripts/lab/report.ts [--dir DIR]     (make lab runs it after the lab)
  *
- * DIR defaults to ~/jvd-outputs/<today>/strategy-lab. A hand-written notes.md
- * in DIR (plain paragraphs, "- " bullets, **bold**) goes in as "What it means".
+ * DIR defaults to ~/jvd-outputs/<today>/strategy-lab. Hand-written files in
+ * DIR go in as they are (plain paragraphs, "- " bullets, **bold**): notes.md
+ * as "What it means", fixes.md as the review findings and what was done. A
+ * run1-results.json there (an earlier run) adds a before-and-after table.
  * The HTML is one calm phone-first page: dark, one accent, no sideways scroll.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { BotDetail, BotResult } from '../../src/lib/lab/bots'
+import type { BotDetail, BotResult, Neighbour, SigStats } from '../../src/lib/lab/bots'
 import { labMarket, type LabMarketId } from '../../src/lib/lab/markets'
+import { LAB_BOTS, LAB_MAX_DAYS } from '../../src/lib/race/labBots'
 
 type Detailed = BotResult & { detail: BotDetail }
 interface FamRow {
@@ -22,48 +25,44 @@ interface FamRow {
   eligible: number
   positiveOos: number
   positiveBoth: number
+  medianOosR: number | null
+  medianIsR: number | null
   medianOosPerMonth: number | null
-  best: { id: string; oosPerMonth: number; oosNet: number } | null
 }
-interface GroupRow {
+interface FibGroup {
   key: string
   bots: number
   eligible: number
   positiveOos: number
+  positiveBoth: number
   medianOosPerMonth: number | null
   medianOosWinRate: number | null
-  medianOosAvgR: number | null
-  oosTrades: number
+  medianIsR: number | null
+  medianOosR: number | null
+  medianIsR0: number | null
+  medianOosR0: number | null
+  holdPositive: number
+  holdBots: number
 }
 interface NewsRow {
   words: string
   pairs: number
+  identical: number
   better: number
   worse: number
-  same: number
+  signTestP: number | null
   medianDiff: number | null
-  meanDiff: number | null
-  medianTradesCut: number | null
-  byFamily: Record<string, { pairs: number; better: number; medianDiff: number | null }>
-  biggest: {
-    family: string
-    diff: number
-    off: number
-    on: number
-    tradesOff: number
-    tradesOn: number
-  }[]
 }
 interface Results {
   generatedAt: string
   runSeconds: number
-  workers: number
   settings: {
     startMoney: number
     sizing: { riskPct: number; maxOpen: number; maxOpenRiskPct: number }
     inSampleShare: number
     minOosTrades: number
     newsPadMinutes: number
+    costTimes: { rolloverX: number; reopenX: number; newsX: number }
     costs: {
       id: string
       label: string
@@ -72,51 +71,78 @@ interface Results {
       unit: string
       feePerSide: number
       leverage: number
-      timeframes: string[]
+      swap: [number, number]
     }[]
     params: Record<string, string>
   }
   counts: {
     bots: number
     controls: number
+    distinct: number
     eligible: number
     positiveOos: number
     positiveBoth: number
-    medianOosPerMonth: number | null
+    holdBots: number
+    holdPositive: number
+    positiveAll3: number
   }
   luck: {
-    line: number
-    best: { id: string; oosPerMonth: number; oosNet: number; oosTrades: number; isNet: number }[]
-    eligible: number
-    positiveOos: number
-    realAboveLine: number
-    rankOfBestCoin: number
+    tests: number
+    bonferroniZ: number
+    p05: number
+    expectedByLuck: number
+    survivors: string[]
+    best: { id: string; z: number; p: number; isZ: number; isP: number; n: number }[]
+    coins: {
+      eligible: number
+      positiveOos: number
+      positiveBoth: number
+      best: { id: string; oosNet: number; isNet: number }[]
+    }
+    realPositiveOos: number
+    realPositiveBoth: number
   }
-  shortlist: string[]
-  shortlistDetails: Detailed[]
+  ranking: string[]
+  copies: Record<string, string[]>
+  top5: {
+    rule: string
+    qualified: number
+    fibSwapped: boolean
+    bestFibQualified: string | null
+    bots: Detailed[]
+  }
   top10: Detailed[]
-  bestFib: Detailed | null
+  probablyLuck: string[]
+  firstRun: Detailed[]
+  fibBest: Detailed[]
+  swingFib: Detailed[]
   ensembles: Detailed[]
   newsEffect: Record<string, NewsRow>
   families: FamRow[]
   fib: {
-    byVariant: GroupRow[]
-    byTfStyle: GroupRow[]
-    byMarket: GroupRow[]
-    chosenK: Record<string, number>
-    chosenEntry: Record<string, number>
+    byVariant: FibGroup[]
+    byTfStyle: FibGroup[]
+    zeroCost: {
+      id: string
+      variant: string
+      tf: string
+      style: string
+      isN: number
+      oosN: number
+      isR0: number | null
+      oosR0: number | null
+      isR: number | null
+      oosR: number | null
+      isSe: number | null
+      oosSe: number | null
+    }[]
   }
-  fibCosts?: {
-    id: string
-    tf: string
-    style: string
-    variant: string
-    trades: number
-    normal: number
-    free: number
-    double: number
-  }[]
   bots: BotResult[]
+}
+interface Run1 {
+  generatedAt: string
+  counts: { bots: number; eligible: number; positiveOos: number; positiveBoth: number }
+  bots: { id: string; is: { net: number }; oos: { net: number; trades: number } }[]
 }
 
 function arg(name: string): string | undefined {
@@ -128,9 +154,12 @@ const localDate = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 const DIR = arg('dir') ?? join(homedir(), 'jvd-outputs', localDate(), 'strategy-lab')
+const read = (f: string) => (existsSync(join(DIR, f)) ? readFileSync(join(DIR, f), 'utf8') : '')
 
-const R: Results = JSON.parse(readFileSync(join(DIR, 'results.json'), 'utf8'))
-const NOTES = existsSync(join(DIR, 'notes.md')) ? readFileSync(join(DIR, 'notes.md'), 'utf8') : ''
+const R: Results = JSON.parse(read('results.json'))
+const RUN1: Run1 | null = read('run1-results.json') ? JSON.parse(read('run1-results.json')) : null
+const NOTES = read('notes.md')
+const FIXES = read('fixes.md')
 
 // ── formatting ───────────────────────────────────────────
 let MINUS = '-'
@@ -138,8 +167,12 @@ const usd = (x: number) => '$' + Math.round(Math.abs(x)).toLocaleString('en-US')
 const money = (x: number) => (x < 0 ? MINUS : '') + usd(x)
 const delta = (x: number) => (x < 0 ? MINUS : '+') + usd(x)
 const pct = (x: number | null, d = 0) => (x == null ? 'n/a' : `${(x * 100).toFixed(d)}%`)
-const num = (x: number | null, d = 1) =>
+const num = (x: number | null | undefined, d = 2) =>
   x == null ? 'n/a' : (x < 0 ? MINUS : '') + Math.abs(x).toFixed(d)
+const sR = (x: number | null | undefined) =>
+  x == null ? 'n/a' : (x < 0 ? MINUS : '+') + Math.abs(x).toFixed(2) + 'R'
+const pv = (p: number | null | undefined) =>
+  p == null ? 'n/a' : p < 0.001 ? 'under 0.001' : p.toFixed(3)
 
 const TF: Record<string, string> = {
   '5m': '5m',
@@ -153,6 +186,7 @@ const STYLE: Record<string, string> = {
   scalp: 'scalp',
   day: 'day trade',
   swing: 'swing',
+  position: 'position',
   race: 'race exits',
 }
 const NEWS: Record<string, string> = {
@@ -169,22 +203,34 @@ const mlabel = (id: string) => {
   }
 }
 const marketsShort = (b: BotResult) =>
-  b.scope === 'all' ? `all ${b.markets.length} markets` : b.markets.map(mlabel).join(' + ')
+  b.scope === 'all' ? `${b.markets.length} markets (no Bitcoin)` : b.markets.map(mlabel).join(' + ')
 const label = (b: BotResult) =>
   b.family === 'ensemble'
     ? b.name
     : `${b.name}, ${TF[b.tf]} ${STYLE[b.style]}, ${marketsShort(b)}, ${NEWS[b.news]}`
-const both = (b: BotResult) => b.is.net > 0 && b.oos.net > 0
-const bestOf = (m: Record<string, { net: number }>) => {
-  const e = Object.entries(m).sort((a, b) => b[1].net - a[1].net)
-  return e.length ? e[0][0] : null
-}
+const short = (b: BotResult) => `${b.name} (${TF[b.tf]}, ${marketsShort(b)})`
 const byId = new Map(R.bots.map((b) => [b.id, b]))
 const fmtDate = (t: number) => new Date(t * 1000).toISOString().slice(0, 10)
-const oosMonths = (tf: string) => {
-  const b = R.bots.find((x) => x.tf === tf && x.scope === 'GBPUSD')
-  return b ? b.oos.months.toFixed(1) : 'a few'
-}
+const run1 = (id: string) => RUN1?.bots.find((b) => b.id === id) ?? null
+const holdLine = (b: BotResult) =>
+  !b.hold
+    ? b.tf === '1h' || b.tf === '4h' || b.tf === '1d'
+      ? 'Older history (2019-2024): not downloaded yet for this market.'
+      : 'Older history (2019-2024): none for 5-30 minute candles.'
+    : `Older history ${fmtDate(b.hold.span.from)} to ${fmtDate(b.hold.span.to)}, same settings, never used to pick anything: ${money(START + b.hold.m.net)} from $10,000 (${delta(b.hold.m.net)}, ${b.hold.m.trades} trades, profit factor ${num(b.hold.m.profitFactor)}, max drop ${b.hold.m.maxDrawdownPct.toFixed(1)}%), ${sR(b.hold.sig.meanR)} a signal.`
+const START = 10_000
+const sigLine = (name: string, s: SigStats) =>
+  `${name}: ${s.n} signals, ${sR(s.meanR)} each after costs (${sR(s.meanR0)} with no costs, ${sR(s.meanR2)} with double); longs ${sR(s.long.meanR)} (${s.long.n}), shorts ${sR(s.short.meanR)} (${s.short.n}); luck test p ${pv(s.p)}`
+const nbLine = (n: Neighbour[]) =>
+  n.map((x) => `${x.label}: ${sR(x.isR)} / ${sR(x.oosR)}`).join('; ')
+/** US30 with Micro Dow futures: whole contracts of $0.50 a point (units in the lab are $1 a point). */
+const mymNet = (d: Detailed) =>
+  d.detail.oosTrades
+    .filter((t) => t.market === 'US30')
+    .reduce(
+      (a, t) => a + (t.units > 0 ? (t.pnl * Math.floor(t.units / 0.5) * 0.5) / t.units : 0),
+      0,
+    ) + d.detail.oosTrades.filter((t) => t.market !== 'US30').reduce((a, t) => a + t.pnl, 0)
 
 // ── content model: blocks rendered to both formats ───────
 type Block =
@@ -195,273 +241,296 @@ type Block =
   | { cards: { title: string; lines: string[] }[] }
   | { notes: string }
 
+function botCard(d: Detailed, i: number | null): { title: string; lines: string[] } {
+  const live = LAB_BOTS.find((b) => b.labId === d.id)
+  const x = d.extras!
+  const n = d.detail
+  const ci = x.oosCi95 ? `${sR(x.oosCi95[0])} to ${sR(x.oosCi95[1])}` : 'n/a'
+  const lines = [
+    d.what,
+    `Test months (${fmtDate(d.span.split)} to ${fmtDate(d.span.to)}): $10,000 became **${money(d.oos.end)}** (${delta(d.oos.net)}), ${d.oos.trades} trades, ${pct(d.oos.winRate)} won, profit factor ${num(d.oos.profitFactor)}, max drop ${d.oos.maxDrawdownPct.toFixed(1)}% (closed trades only). Settings ${JSON.stringify(d.params).replace(/"/g, '')}.`,
+    `Earlier months (${fmtDate(d.span.from)} to ${fmtDate(d.span.split)}, where the settings were chosen): ${delta(d.is.net)} on ${d.is.trades} trades, profit factor ${num(d.is.profitFactor)}.`,
+    `How fragile: without its 3 best test trades ${delta(x.oosWithoutTop3)}; 95% range of the average trade ${ci}; ${x.oosWeekend.trades} trades held over a weekend made ${delta(x.oosWeekend.net)}. With the first run's flat costs it would show ${delta(n.flatCostNet)}.`,
+    sigLine('Each signal on its own, test months', d.sig!.oos),
+    sigLine('Earlier months', d.sig!.is),
+    `Nearby settings (average R per signal, earlier / test): ${nbLine(n.neighbours)}.`,
+    `UK summer / winter time, test months: ${delta(x.season.oos.summer.net)} (${x.season.oos.summer.trades}) / ${delta(x.season.oos.winter.net)} (${x.season.oos.winter.trades}); earlier months: ${delta(x.season.is.summer.net)} (${x.season.is.summer.trades}) / ${delta(x.season.is.winter.net)} (${x.season.is.winter.trades}).`,
+    holdLine(d),
+  ]
+  if (d.markets.includes('US30'))
+    lines.push(
+      `US30 sizing: in the US, a $10,000 account would trade Micro Dow futures ($0.50 a point, whole contracts), not a 20:1 CFD. Rounded down to whole contracts, the test months come to about ${delta(mymNet(d))} (risk per trade about 1% instead of 2%).`,
+    )
+  if (live) lines.push(`Live race: **${live.name}**, ${LAB_MAX_DAYS[live.style]}. ${live.why}`)
+  return { title: `${i != null ? `${i}. ` : ''}${label(d)}`, lines }
+}
+
 function build(): Block[] {
   const s = R.settings
   const c = R.counts
+  const L = R.luck
   const out: Block[] = []
-  const firstSpan = R.top10[0]?.span
-  out.push({ h: 1, text: 'Strategy lab: which bot makes money?' })
-  out.push({
-    p: `${c.bots} play-money bots, each with its own ${usd(s.startMoney)} account, ${s.sizing.riskPct}% risk per trade (the race's rules: at most ${s.sizing.maxOpen} trades open, ${s.sizing.maxOpenRiskPct}% open risk, margin limits). Run ${R.generatedAt.slice(0, 16).replace('T', ' ')} UTC on the Mac Mini in ${R.runSeconds} seconds. Nothing here touched a broker, a live account or the live race.`,
-  })
-  out.push({ h: 2, text: 'The short answer' })
-  out.push({
-    ul: [
-      `**${c.positiveOos} of ${c.eligible}** bots with enough trades made money in the test period they never saw (the last ${Math.round((1 - s.inSampleShare) * 100)}% of the history). Only **${c.positiveBoth}** made money in both halves.`,
-      `A **coin flip** bot (random entries, same stops, targets and costs) made ${delta(R.luck.line)} a month at best, enough to rank #${R.luck.rankOfBestCoin}. Only ${R.luck.realAboveLine} real bots did better than that luck line.`,
-      R.shortlist.length
-        ? `Bots that beat the coin flip AND made money in both halves: ${[
-            ...new Set(
-              R.shortlist.map((id) => {
-                const b = byId.get(id)!
-                return `${b.name}, ${TF[b.tf]}, ${marketsShort(b)}`
-              }),
-            ),
-          ].join('; ')} (with or without the news filter where both qualify).`
-        : 'No bot beat the coin flip and made money in both halves.',
-    ],
-  })
-  if (NOTES) {
-    out.push({ h: 2, text: 'What it means' })
-    out.push({ notes: NOTES })
-  }
+  const t5 = R.top5.bots
 
-  // How it was tested
-  out.push({ h: 2, text: 'How it was tested' })
+  out.push({ h: 1, text: "Strategy lab, second run: after the reviewers' fixes" })
   out.push({
-    ul: [
-      `**Walk-forward.** Each bot has a few free settings (${Object.entries(s.params)
-        .filter(([k]) => k !== 'ensemble')
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(
-          '; ',
-        )}). They were chosen on the first ${Math.round(s.inSampleShare * 100)}% of the history (in-sample) and then scored only on the last ${Math.round((1 - s.inSampleShare) * 100)}% (out-of-sample), in a fresh ${usd(s.startMoney)} account. A big gap between the two halves means the settings were fitted to the past.`,
-      `**Ranked** by out-of-sample dollars per month, only bots with at least ${s.minOosTrades} out-of-sample trades.`,
-      '**History:** 1-hour, 4-hour and daily candles for 24 months on all 7 markets; 5, 15 and 30-minute candles for 12 months on GBP/USD and gold and 24 months on Bitcoin (the other markets only have days of small candles so far).' +
-        (firstSpan
-          ? ` A 1-hour bot's test period runs ${fmtDate(R.bots.find((b) => b.tf === '1h' && b.scope === 'all')?.span.split ?? firstSpan.split)} to ${fmtDate(firstSpan.to)}.`
-          : ''),
-      '**Backtest rules** as in the race: enter at the next candle open, the stop counts first when a candle touches both, gaps fill at the open. Plus the spread (prices in the history are the bid), slippage on every market fill and a commission. Scalps close by the end of their session, day trades by 21:00 UTC, swings within 5 days.',
-      `**News filter** (the red events: US jobs, CPI, retail sales, Fed, GDP; Bank of England and UK CPI; ECB; Bank of Japan): no new trades from ${s.newsPadMinutes} minutes before to ${s.newsPadMinutes} after an event in the pair's currencies; tested with open trades kept and with open trades closed before it.`,
-    ],
+    p: `${c.bots} play-money bots (${c.distinct} different ones once exact copies are merged), each with its own $10,000 account and the race's rules: 2% risk per trade, at most 5 open, 10% open risk, margin limits. Run ${R.generatedAt.slice(0, 16).replace('T', ' ')} UTC on the Mac Mini in ${R.runSeconds} seconds. Nothing here touched a broker, a live account or the live race.`,
   })
-  out.push({
-    table: {
-      head: ['Market', 'Spread', 'Slippage', 'Commission / side'],
-      rows: s.costs.map((m) => [
-        m.label,
-        m.unit === 'price'
-          ? m.id.endsWith('JPY')
-            ? `${(m.spread / 0.01).toFixed(1)} pip`
-            : m.id === 'XAUUSD'
-              ? `$${m.spread.toFixed(2)}`
-              : m.id === 'US30'
-                ? `${m.spread} pts`
-                : `${(m.spread / 0.0001).toFixed(1)} pip`
-          : `${(m.spread * 100).toFixed(2)}%`,
-        m.unit === 'price'
-          ? m.id.endsWith('JPY')
-            ? `${(m.slippage / 0.01).toFixed(1)} pip`
-            : m.id === 'XAUUSD'
-              ? `$${m.slippage.toFixed(2)}`
-              : m.id === 'US30'
-                ? `${m.slippage} pt`
-                : `${(m.slippage / 0.0001).toFixed(1)} pip`
-          : `${(m.slippage * 100).toFixed(2)}%`,
-        `${(m.feePerSide * 100).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}%`,
-      ]),
-    },
-  })
+  if (NOTES) out.push({ h: 2, text: 'What it means' }, { notes: NOTES })
 
-  // Top 10
-  out.push({ h: 2, text: 'Top 10 bots (best version of each strategy)' })
-  out.push({
-    p: `Ranked by out-of-sample money a month. "Both halves" says whether it also made money in-sample; a bot that lost in-sample and won after is more likely lucky than good.`,
-  })
-  out.push({
-    cards: R.top10.map((b, i) => {
-      const mk = Object.entries(b.detail.byMarket).sort((x, y) => y[1].net - x[1].net)
-      const ss = bestOf(b.detail.bySession)
-      return {
-        title: `${i + 1}. ${label(b)}`,
-        lines: [
-          b.what,
-          `${usd(s.startMoney)} became **${money(b.oos.end)}** in ${b.oos.months.toFixed(1)} months: **${delta(b.oos.perMonth)} a month**, max drop ${b.oos.maxDrawdownPct.toFixed(1)}%, ${b.oos.tradesPerMonth.toFixed(1)} trades a month (${b.oos.trades} trades, ${pct(b.oos.winRate)} won, profit factor ${num(b.oos.profitFactor, 2)}, worst month ${money(b.oos.worstMonth)}).`,
-          `Markets: ${mk.map(([m, v]) => `${mlabel(m)} ${delta(v.net)}`).join(', ')}. Best session: ${ss ?? 'n/a'}. Settings ${JSON.stringify(b.params).replace(/"/g, '')}.`,
-          `In-sample: ${delta(b.is.net)} on ${b.is.trades} trades. ${both(b) ? 'Made money in both halves.' : '**Lost in-sample**, so treat the win as luck until it repeats.'} Without any costs: ${delta(b.detail.costs.free)}; with double costs: ${delta(b.detail.costs.double)}.`,
-        ],
-      }
-    }),
-  })
-  out.push({
-    table: {
-      head: ['#', 'Bot', '$/month', 'Max drop'],
-      narrow: true,
-      rows: R.top10.map((b, i) => [
-        String(i + 1),
-        `${b.name} (${TF[b.tf]}, ${marketsShort(b)})${both(b) ? '' : ' *'}`,
-        delta(b.oos.perMonth),
-        `${b.oos.maxDrawdownPct.toFixed(0)}%`,
-      ]),
-    },
-  })
-  out.push({ p: '* lost money in-sample.' })
-
-  // John's Fib
-  out.push({ h: 2, text: "John's Fib" })
-  out.push({
-    p: 'Sell: after a big drop, 1 at the top of the last bullish candle before it, 0 at the bottom; sell the pullback at 0.786 or 0.886; stop just past 1; half off at 0, the rest at -0.272. Buy is the mirror. "Big" = at least k x the ATR(14) within 12 candles. Six versions: plain limit order, with a reversal candle (engulfing, stars, pin bars, hammers), London session only, candle + the day\'s London direction, and with or without the bigger chart\'s trend (EMA 50).',
-  })
-  out.push({
-    table: {
-      head: ['Chart', 'Ranked bots', 'Made money', 'Median $/month'],
-      rows: R.fib.byTfStyle.map((g) => [
-        g.key.replace('-', ' ').replace('1d', 'daily'),
-        String(g.eligible),
-        `${g.positiveOos}`,
-        g.medianOosPerMonth == null ? 'too few trades' : delta(g.medianOosPerMonth),
-      ]),
-    },
-  })
-  out.push({
-    table: {
-      head: ['Version', 'Ranked bots', 'Made money', 'Median $/month'],
-      rows: R.fib.byVariant.map((g) => [
-        R.families.find((f) => f.variant === g.key)?.name.replace("John's Fib", 'Fib') ?? g.key,
-        String(g.eligible),
-        `${g.positiveOos}`,
-        g.medianOosPerMonth == null ? 'n/a' : delta(g.medianOosPerMonth),
-      ]),
-    },
-  })
-  const fibWin = R.fib.byTfStyle.filter((g) => g.medianOosWinRate != null)
-  out.push({
-    ul: [
-      `Median win rate by chart: ${fibWin.map((g) => `${g.key.split('-')[0]} ${pct(g.medianOosWinRate)}`).join(', ')}. Median result per trade: ${fibWin.map((g) => `${g.key.split('-')[0]} ${num(g.medianOosAvgR, 2)}R`).join(', ')}.`,
-      `Settings the walk-forward kept: impulse k ${Object.entries(R.fib.chosenK)
-        .map(([k, n]) => `${k}x ATR ${n} times`)
-        .join(', ')}; entry ${Object.entries(R.fib.chosenEntry)
-        .map(([k, n]) => `${k} ${n} times`)
-        .join(', ')}.`,
-      R.bestFib
-        ? `Best Fib bot: ${label(R.bestFib)}: ${money(R.bestFib.oos.end)} from ${usd(s.startMoney)} (${delta(R.bestFib.oos.perMonth)} a month, ${R.bestFib.oos.trades} trades, max drop ${R.bestFib.oos.maxDrawdownPct.toFixed(1)}%); in-sample ${delta(R.bestFib.is.net)}.`
-        : 'No Fib bot had enough trades to rank.',
-    ],
-  })
-  if (R.fibCosts?.length) {
-    out.push({ h: 3, text: 'Is it the costs?' })
+  if (RUN1) {
+    out.push({ h: 2, text: 'Before and after the fixes' })
     out.push({
-      p: "John's Fib on all markets, no news filter, out-of-sample, with the same settings: normal costs, no costs at all, double costs.",
+      p: 'The first run (02:54 this morning) next to this one. Costs now include wider spreads at the rollover, the Sunday reopen and on news, plus overnight swap; sessions follow London and New York time; 4-hour and daily candles close at 17:00 New York; Bitcoin trades only in its own account. **Most results got worse.**',
     })
+    const row = (name: string, id: string) => {
+      const a = run1(id)
+      const b = byId.get(id)
+      return [
+        name,
+        a ? `${delta(a.oos.net)} (${delta(a.is.net)})` : 'n/a',
+        b ? `${delta(b.oos.net)} (${delta(b.is.net)})` : 'n/a',
+      ]
+    }
     out.push({
       table: {
-        head: ['Version, chart', 'Normal', 'No costs', 'Double'],
-        rows: R.fibCosts.map((f) => [
-          `${(R.families.find((x) => x.variant === f.variant)?.name ?? f.variant).replace("John's Fib", 'Fib')}, ${TF[f.tf]} ${STYLE[f.style]}`,
-          delta(f.normal),
-          delta(f.free),
-          delta(f.double),
-        ]),
+        head: ['', 'First run: test (earlier)', 'Now: test (earlier)'],
+        rows: [
+          [
+            'Bots with 30+ test trades',
+            String(RUN1.counts.eligible),
+            `${c.eligible} (copies merged)`,
+          ],
+          ['Made money in the test months', String(RUN1.counts.positiveOos), String(c.positiveOos)],
+          ['Made money in both halves', String(RUN1.counts.positiveBoth), String(c.positiveBoth)],
+          row('RSI range reversal, 1h, US30', 'rsi-range-reversal|1h-race|US30|off'),
+          row('RSI range reversal, 1h, USD/JPY', 'rsi-range-reversal|1h-race|USDJPY|off'),
+          row('London breakout, gold, close before news', 'lb|15m-day|XAUUSD|close'),
+          row("John's Fib, 4h, USD/JPY", 'fib|4h-swing|USDJPY|off'),
+        ],
       },
     })
   }
 
-  // News
-  out.push({ h: 2, text: 'What the news filter did' })
+  out.push({ h: 2, text: 'Top 5 for the live race' })
   out.push({
-    p: 'Each bot was run with and without the filter; out-of-sample money compared, same strategy, chart and markets.',
+    p: `The rule, fixed before looking: ${R.top5.rule}. ${R.top5.qualified} bots qualified. The older 2019-2024 history played no part in the choice. ${R.top5.fibSwapped ? 'No Fib was in the top 5, so the best qualifying Fib took 5th place.' : t5.some((b) => b.family === 'fib') ? "John's Fib qualified on its own." : "No version of John's Fib qualified."}`,
   })
   out.push({
     table: {
-      head: ['Filter', 'Better', 'Worse', 'Median change'],
-      rows: Object.entries(R.newsEffect).map(([mode, n]) => [
-        mode === 'block'
-          ? 'No new trades, keep open'
-          : mode === 'close'
-            ? 'No new trades, close open'
-            : 'Scalper: skip red-news days',
-        `${n.better} of ${n.pairs}`,
-        `${n.worse}`,
+      head: ['#', 'Bot', 'Test $', 'PF', 'Drop', 'Trades'],
+      narrow: true,
+      rows: t5.map((b, i) => [
+        String(i + 1),
+        `${b.name}, ${mlabel(b.markets[0])}, ${TF[b.tf]} ${STYLE[b.style]}`,
+        delta(b.oos.net),
+        num(b.oos.profitFactor),
+        `${b.oos.maxDrawdownPct.toFixed(0)}%`,
+        String(b.oos.trades),
+      ]),
+    },
+  })
+  out.push({ cards: t5.map((d, i) => botCard(d, i + 1)) })
+
+  out.push({ h: 2, text: 'Is any of it more than luck?' })
+  out.push({
+    ul: [
+      `**The random-direction test.** ${L.tests} different bots with 30+ test trades. For each, every test-months signal was also traded the other way (same time, stop and target mirrored). ${L.p05} of them beat their mirror at the usual 5% level; luck alone would give about ${num(L.expectedByLuck, 0)}. As a group the bots pick the side no better than a coin.`,
+      `After correcting for testing ${L.tests} bots (Holm), ${L.survivors.length} pass: ${L.survivors.map((id) => short(byId.get(id)!)).join('; ') || 'none'}. A single bot needs a z of about ${num(L.bonferroniZ)} to pass that bar.`,
+      `Best test-month z-scores: ${L.best
+        .slice(0, 6)
+        .map((x) => `${short(byId.get(x.id)!)} z ${num(x.z)} (earlier months z ${num(x.isZ)})`)
+        .join('; ')}.`,
+      `**Coin-flip bots** (random entries, the luckiest of 6 seeds kept in-sample): ${L.coins.positiveOos} of ${L.coins.eligible} made money in the test months and ${L.coins.positiveBoth} in both halves. Real bots: ${L.realPositiveOos} of ${L.tests} and ${L.realPositiveBoth} of ${L.tests}. The first run used the best coin flip as a "luck line"; that line was too low and has been dropped.`,
+      `**Older history (2019 to 2024-11, about 6 years, 1-hour and bigger charts):** ${c.holdPositive} of ${c.holdBots} bots made money there with the settings chosen on 2024-2026; ${c.positiveAll3} made money in all three periods.`,
+    ],
+  })
+
+  out.push({ h: 2, text: 'Ranking that needs both halves' })
+  out.push({
+    p: `Ranked by the lower of the earlier-months and test-months t-score of the average R per signal (each signal on its own, all costs), best version of each strategy and chart. A t under 2 is within luck for one bot, let alone for ${L.tests}.`,
+  })
+  out.push({
+    table: {
+      head: ['Bot', 't both', 'R earlier', 'R test', 'Test $', 'Older'],
+      rows: R.top10.map((b) => [
+        short(b),
+        num(Math.min(b.sig!.is.t ?? -99, b.sig!.oos.t ?? -99)),
+        sR(b.sig!.is.meanR),
+        sR(b.sig!.oos.meanR),
+        delta(b.oos.net),
+        b.hold ? delta(b.hold.m.net) : 'n/a',
+      ]),
+    },
+  })
+  const luckRows = R.probablyLuck.map((id) => byId.get(id)!).filter(Boolean)
+  if (luckRows.length) {
+    out.push({ h: 3, text: 'Probably luck: made money in the test months after losing earlier' })
+    out.push({
+      table: {
+        head: ['Bot', 'Earlier', 'Test'],
+        rows: luckRows.map((b) => [short(b), delta(b.is.net), delta(b.oos.net)]),
+      },
+    })
+  }
+
+  out.push({ h: 2, text: "John's Fib" })
+  const fz = R.fib.zeroCost
+  out.push({
+    p: 'Sell: after a big drop, 1 at the top of the last bullish candle before it, 0 at the bottom; sell the pullback at 0.786 or 0.886; stop just past 1; half off at 0, the rest at -0.272. Buy is the mirror. New this run: a swing version (the move may take 40 candles, the setup lives 60, 1 at the swing high or low), because both of your USD/JPY examples took 4 to 6 weeks of daily candles.',
+  })
+  out.push({
+    table: {
+      head: ['Chart', 'Bots', 'Made money', 'R earlier', 'R test', 'R no costs'],
+      rows: R.fib.byTfStyle.map((g) => [
+        `${g.key.replace('-', ' ')}`,
+        String(g.eligible),
+        String(g.positiveOos),
+        sR(g.medianIsR),
+        sR(g.medianOosR),
+        `${sR(g.medianIsR0)} / ${sR(g.medianOosR0)}`,
+      ]),
+    },
+  })
+  out.push({
+    table: {
+      head: ['Version', 'Bots', 'Made money', 'Both halves', 'R test'],
+      rows: R.fib.byVariant.map((g) => [
+        R.families.find((f) => f.variant === g.key)?.name ?? g.key,
+        String(g.eligible),
+        String(g.positiveOos),
+        String(g.positiveBoth),
+        sR(g.medianOosR),
+      ]),
+    },
+  })
+  out.push({ h: 3, text: 'Before any costs' })
+  out.push({
+    p: 'Average R per signal with spread, slippage, commission and swap all set to zero, each signal on its own, all markets but Bitcoin, no news filter. Plus or minus is one standard error.',
+  })
+  out.push({
+    table: {
+      head: ['Version, chart', 'Earlier', 'Test'],
+      rows: fz.map((z) => [
+        `${R.families.find((f) => f.variant === z.variant)?.name ?? z.variant}, ${TF[z.tf]} ${STYLE[z.style]}`,
+        `${sR(z.isR0)} ±${num(z.isSe)}`,
+        `${sR(z.oosR0)} ±${num(z.oosSe)}`,
+      ]),
+    },
+  })
+  const fb = R.fibBest[0]
+  if (fb) out.push({ cards: [botCard(fb, null)] })
+
+  out.push({ h: 2, text: 'What the news filter did' })
+  out.push({
+    p: 'Each bot was run with and without the filter, out-of-sample money compared. One row per strategy, chart and single market (the pooled accounts repeat those markets); pairs with exactly the same trades are counted apart. The list now also has ISM manufacturing and services (dates by rule), and BoJ days block 02:00-04:30 and 06:00-07:00 UTC.',
+  })
+  out.push({
+    table: {
+      head: ['Filter', 'Better', 'Worse', 'Same trades', 'Chance (sign test)', 'Median change'],
+      rows: Object.values(R.newsEffect).map((n) => [
+        n.words,
+        String(n.better),
+        String(n.worse),
+        String(n.identical),
+        pv(n.signTestP),
         delta(n.medianDiff ?? 0),
       ]),
     },
   })
-  const day = R.newsEffect.day
-  if (day?.biggest?.length)
-    out.push({
-      p: `Skipping red-news days helped the scalper most: ${day.biggest
-        .slice(0, 3)
-        .map(
-          (d) =>
-            `${d.family.replace('scalper|', '').replace('-scalp', '')} ${delta(d.off)} to ${delta(d.on)}`,
-        )
-        .join('; ')}. It still lost money.`,
-    })
 
-  // Combined accounts
-  if (R.ensembles.length) {
-    out.push({ h: 2, text: 'Combining them in one account' })
+  const lb = R.bots.filter(
+    (b) => b.family === 'london' && b.variant === 'lb' && b.news === 'off' && b.extras,
+  )
+  if (lb.length) {
+    out.push({ h: 2, text: 'London breakout by season' })
+    out.push({
+      p: 'The live London breakout runs on fixed UTC hours (Asian range 00:00-06:00, breaks 06:00-10:00 UTC), so in UK summer it trades an hour later against London. Kept that way on purpose (it is the live rule) and split by season instead. UK clocks went back on 2026-10-25: the live race is now in winter time.',
+    })
     out.push({
       table: {
-        head: ['Account', 'Out-of-sample', '$/month', 'In-sample'],
-        rows: R.ensembles.map((e) => [
-          `${e.name}${e.news !== 'off' && e.id.includes('|') ? ` (${NEWS[e.news]})` : ''}`,
-          `${money(e.oos.end)} (${e.oos.trades} trades)`,
-          delta(e.oos.perMonth),
-          delta(e.is.net),
+        head: ['Markets', 'Summer earlier', 'Winter earlier', 'Summer test', 'Winter test'],
+        rows: lb.map((b) => [
+          marketsShort(b),
+          `${delta(b.extras!.season.is.summer.net)} (${b.extras!.season.is.summer.trades})`,
+          `${delta(b.extras!.season.is.winter.net)} (${b.extras!.season.is.winter.trades})`,
+          `${delta(b.extras!.season.oos.summer.net)} (${b.extras!.season.oos.summer.trades})`,
+          `${delta(b.extras!.season.oos.winter.net)} (${b.extras!.season.oos.winter.trades})`,
         ]),
       },
     })
   }
 
-  // Families
-  out.push({ h: 2, text: 'Every strategy at a glance' })
+  if (R.firstRun.length) {
+    out.push({ h: 2, text: "The first run's favourites, checked again" })
+    out.push({ cards: R.firstRun.map((d) => botCard(d, null)) })
+  }
+
+  out.push({ h: 2, text: 'Combining them in one account' })
   out.push({
     table: {
-      head: ['Strategy', 'Ranked', 'Made money', 'Median $/month'],
-      rows: R.families.map((f) => [
-        f.name,
-        String(f.eligible),
-        `${f.positiveOos} (both halves ${f.positiveBoth})`,
-        f.medianOosPerMonth == null ? 'too few trades' : delta(f.medianOosPerMonth),
+      head: ['Account', 'Earlier', 'Test'],
+      rows: R.ensembles.map((e) => [
+        `${e.name}${e.id.includes('|block') ? ' (news: no new trades)' : ''}`,
+        delta(e.is.net),
+        `${delta(e.oos.net)} (${e.oos.trades} trades)`,
       ]),
     },
   })
-  const failed = R.families.filter(
-    (f) => f.eligible > 0 && f.positiveOos === 0 && f.family !== 'control',
-  )
-  out.push({ h: 3, text: 'What failed' })
+
+  out.push({ h: 2, text: 'Every strategy at a glance' })
   out.push({
-    ul: [
-      `No version made money out-of-sample: ${failed.map((f) => f.name).join('; ')}.`,
-      ...R.families
-        .filter((f) => f.eligible === 0 && f.family !== 'control')
-        .map(
-          (f) =>
-            `${f.name}: too few trades to judge (${f.bots} bots, none with ${s.minOosTrades} out-of-sample trades).`,
-        ),
-    ],
+    table: {
+      head: ['Strategy', 'Bots', 'Made money', 'Both halves', 'R test'],
+      rows: R.families.map((f) => [
+        f.name,
+        String(f.eligible),
+        String(f.positiveOos),
+        String(f.positiveBoth),
+        sR(f.medianOosR),
+      ]),
+    },
   })
 
-  // Caveats
-  out.push({ h: 2, text: 'Honest caveats' })
+  if (FIXES) out.push({ h: 2, text: "The reviewers' findings and what was done" }, { notes: FIXES })
+
+  out.push({ h: 2, text: 'How it was tested' })
   out.push({
     ul: [
-      `**Past results.** The out-of-sample test is about ${oosMonths('15m')} months for the 5 to 30-minute bots and ${oosMonths('1h')} months for 1-hour and up. Markets change; what worked in that stretch of 2026 may not work next.`,
-      `**Luck from testing many bots.** ${c.bots} bots were tried; even with no edge, the best few look good. The best of ${R.luck.eligible} coin flips made ${delta(R.luck.line)} a month; with ${c.eligible} real bots in the pool, pure luck can reach higher than that, so the luck line is a floor, not a ceiling. Trust only what beats it, in both halves, and then in a live forward test.`,
-      '**Small samples.** 30 to 60 trades is not much: a few trades either way change the ranking.',
-      "**Costs.** Spreads, slippage and commission are typical numbers, not a broker's real fills. Spreads widen at the daily rollover (21:00-22:00 UTC) and on news; that is only partly modelled (the news filter). Tight-stop bots on small charts depend on this most.",
-      '**Candles, not ticks.** Inside a candle the order of the high and the low is unknown; the stop is assumed first and a limit fill never reaches its target in its own candle. That leans against the bots.',
-      "**London breakout** runs the race's fixed winter UTC hours, so in summer it is an hour late against London (as in the live race).",
-      '**Not done:** 5 to 30-minute history for EUR/USD, USD/JPY, US30 and EUR/GBP is only days long so far, so the small-chart bots only trade GBP/USD, gold and Bitcoin.',
+      `**Walk-forward.** Each bot's few settings (${Object.entries(s.params)
+        .filter(([k]) => k !== 'ensemble' && k !== 'control')
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(
+          '; ',
+        )}) were chosen on the first ${Math.round(s.inSampleShare * 100)}% of 2024-11 to 2026-11 and scored on the rest in a fresh $10,000 account.`,
+      '**Holdout.** For 1-hour and bigger charts, the same settings also ran once on 2019 to 2024-11 (Dukascopy and Binance hourly files, 4-hour and daily candles built from them). Nothing was chosen on it. That older stretch has no news list, so the news versions behave like "no filter" there, and news spreads are not added.',
+      '**Each signal on its own.** Besides the account, every planned trade was also run alone (no "one at a time", no account limits). Average R per signal, its t-score, and the cost sweep (no costs, normal, double) use that fixed set of signals, so trade order cannot move them.',
+      `**Costs.** Spread and slippage per market (table), x${s.costTimes.rolloverX} spread and x2 slippage on 21:00-23:00 UTC candles (rollover), x${s.costTimes.reopenX} spread and x5 slippage on the first candle after a gap (Sunday reopen, the daily gold and US30 halt), x${s.costTimes.newsX} spread and x5 slippage on a candle with red news, x1.5 around the Asian open (23:00-01:00 UTC, forex and gold), x2.5 for US30 outside New York cash hours, and overnight swap on each weekday rollover held (Wednesday counts 3 for forex and gold, Friday for US30). Bitcoin (exchange spot) has none of these.`,
+      '**Clocks.** Scalps close at the end of their session and day trades by 17:00 New York, with London and New York daylight saving. 4-hour and daily candles close at 17:00 New York (as broker and TradingView forex charts), Bitcoin on UTC.',
+      '**Backtest rules** as in the race: enter at the next candle open, the stop counts first when a candle touches both, gaps fill at the open, a limit fill never reaches its target in its own candle. Drawdowns are on closed trades only, so the real drops were somewhat deeper.',
     ],
   })
+  out.push({
+    table: {
+      head: ['Market', 'Spread', 'Slippage', 'Fee / side', 'Swap long / short a year'],
+      rows: s.costs.map((m) => [
+        m.label,
+        m.unit === 'price' ? String(m.spread) : `${(m.spread * 100).toFixed(2)}%`,
+        m.unit === 'price' ? String(m.slippage) : `${(m.slippage * 100).toFixed(2)}%`,
+        `${(m.feePerSide * 100).toFixed(4)}%`,
+        `${(m.swap[0] * 100).toFixed(1)}% / ${(m.swap[1] * 100).toFixed(1)}%`,
+      ]),
+    },
+  })
+
   out.push({ h: 2, text: 'Files' })
   out.push({
     ul: [
-      `${DIR}/results.json: every bot (settings, in-sample and out-of-sample numbers), the top 10 with every trade.`,
-      `${DIR}/ranking.csv and ranking.md: the full ranking.`,
-      'Code: trade-hub src/lib/lab and scripts/lab; how it works: docs/strategy-lab.md. Rerun with `make lab`.',
+      `${join(DIR, 'results.json')}: every bot (settings, both halves, the older history, per-signal stats), the top 5 and top 10 with every test trade.`,
+      `${join(DIR, 'ranking.csv')} and ranking.md: the full ranking (needs both halves).`,
+      `${join(DIR, 'race-new-bots.png')}: the race page on a phone with the five new accounts.`,
+      `${join(DIR, 'run1-REPORT.md')}: the first run, kept for comparison.`,
+      'Code: trade-hub src/lib/lab, scripts/lab, src/lib/race/labBots.ts; docs/strategy-lab.md. Rerun with `make lab`.',
     ],
   })
   return out

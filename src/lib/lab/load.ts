@@ -11,9 +11,11 @@ import { createGunzip } from 'node:zlib'
 import type { OHLCCandle } from '../types/market'
 import type { LabMarketId, LabTf } from './markets'
 import { parseNewsCsv, type NewsEvent } from './news'
-import { DAY, utcWeekday } from './time'
+import { DAY, HOUR, nyOffset } from './time'
 
 export const DEFAULT_HISTORY_DIR = join(homedir(), 'jvd-outputs/trading/history')
+/** Older 1h history (2019 to the start of the main files), the untouched holdout. */
+export const DEFAULT_OLD_HISTORY_DIR = join(homedir(), 'jvd-outputs/trading/history-old')
 
 export const historyFile = (dir: string, m: LabMarketId, tf: LabTf) =>
   join(dir, m, `${m}_${tf}.csv.gz`)
@@ -47,47 +49,63 @@ export async function loadCandleFile(file: string): Promise<OHLCCandle[]> {
 }
 
 /**
- * Forex, gold and US30 daily files have a short Sunday bar (about 21:00 to
- * 24:00 UTC, README). Merge it into Monday so a "day" is a trading day.
+ * 4h or daily candles from 1h on the forex day: it starts at 17:00 New York
+ * (21:00 UTC in US summer, 22:00 in winter), as brokers and TradingView forex
+ * charts draw them. 4h candles start at 17, 21, 01, 05, 09, 13 New York. No
+ * Sunday stub: the Sunday open starts Monday's candle.
  */
-export function mergeSundayBars(days: OHLCCandle[]): OHLCCandle[] {
+export function nyCloseBars(h1: OHLCCandle[], sec: number): OHLCCandle[] {
   const out: OHLCCandle[] = []
-  let carry = null as OHLCCandle | null
-  for (const d of days) {
-    if (utcWeekday(d.time) === 0) {
-      const prev: OHLCCandle | null = carry
-      carry = prev
-        ? {
-            time: prev.time,
-            open: prev.open,
-            high: Math.max(prev.high, d.high),
-            low: Math.min(prev.low, d.low),
-            close: d.close,
-          }
-        : { ...d }
-      continue
-    }
-    if (carry && d.time - carry.time <= 2 * DAY) {
+  let key = NaN
+  for (const b of h1) {
+    const off = nyOffset(b.time) * HOUR
+    const k = Math.floor((b.time + off + 7 * HOUR) / sec)
+    if (k !== key) {
+      key = k
       out.push({
-        time: d.time,
-        open: carry.open,
-        high: Math.max(carry.high, d.high),
-        low: Math.min(carry.low, d.low),
-        close: d.close,
+        time: k * sec - 7 * HOUR - off,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
       })
     } else {
-      out.push(d)
+      const c = out[out.length - 1]
+      c.high = Math.max(c.high, b.high)
+      c.low = Math.min(c.low, b.low)
+      c.close = b.close
     }
-    carry = null
   }
   return out
 }
 
+/** 4h or daily candles from 1h on UTC boundaries (Bitcoin, which trades every hour of the week). */
+export function utcBars(h1: OHLCCandle[], sec: number): OHLCCandle[] {
+  const out: OHLCCandle[] = []
+  for (const b of h1) {
+    const t = Math.floor(b.time / sec) * sec
+    const c = out[out.length - 1]
+    if (c && c.time === t) {
+      c.high = Math.max(c.high, b.high)
+      c.low = Math.min(c.low, b.low)
+      c.close = b.close
+    } else out.push({ time: t, open: b.open, high: b.high, low: b.low, close: b.close })
+  }
+  return out
+}
+
+/**
+ * One market and candle size. 4h and daily come from the 1h file: on the
+ * 17:00 New York close for forex, gold and US30, on UTC for Bitcoin.
+ */
 export async function loadMarket(dir: string, m: LabMarketId, tf: LabTf): Promise<OHLCCandle[]> {
-  const file = historyFile(dir, m, tf)
+  const big = tf === '4h' || tf === '1d'
+  const file = historyFile(dir, m, big ? '1h' : tf)
   if (!existsSync(file)) throw new Error(`missing history file ${file}`)
   const bars = await loadCandleFile(file)
-  return tf === '1d' && m !== 'BTCUSDT' ? mergeSundayBars(bars) : bars
+  if (!big) return bars
+  const sec = tf === '4h' ? 4 * HOUR : DAY
+  return m === 'BTCUSDT' ? utcBars(bars, sec) : nyCloseBars(bars, sec)
 }
 
 export async function loadNews(dir: string): Promise<NewsEvent[]> {

@@ -21,7 +21,9 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { parseRaceState, type RaceState } from '../src/lib/race/live'
 import { feedOf } from '../src/lib/feeds'
-import { fetchMarketCandles } from '../src/lib/race/feeds'
+import { fetchMarketCandles, fetchYahooHourly, YAHOO_US30 } from '../src/lib/race/feeds'
+import { FF_WEEK_URL, parseFfWeek } from '../src/lib/race/newsFeed'
+import type { NewsEvent } from '../src/lib/lab/news'
 import { dropClosedForex } from '../src/lib/race/candles'
 import { getInstrument } from '../src/lib/paper/instruments'
 import type { CandleTf } from '../src/lib/kraken'
@@ -217,6 +219,8 @@ export async function waitLock(ms: number): Promise<(() => void) | null> {
  * them, but no broker would fill there.
  */
 export async function fetchMarket(id: string, tf: CandleTf): Promise<OHLCCandle[]> {
+  // US30 (lab bots only): Dow futures 1h from Yahoo's public chart feed, whatever size is asked.
+  if (id === 'US30') return fetchYahooHourly(YAHOO_US30)
   const forex = getInstrument(id)?.market === 'forex'
   const get = () => fetchMarketCandles(id, tf).then((c) => (forex ? dropClosedForex(c) : c))
   if (feedOf(id) !== 'ecb') return get()
@@ -225,5 +229,49 @@ export async function fetchMarket(id: string, tf: CandleTf): Promise<OHLCCandle[
   } catch {
     await sleep(30_000)
     return get()
+  }
+}
+
+// ── Red news (lab bots' news filter) ─────────────────────────────────────
+
+const FF_CACHE = join(dirname(FILE), 'ff-thisweek.json')
+const FF_MAX_AGE_MS = 6 * 3600_000
+
+/**
+ * This week's red ("High") events from Forex Factory's free weekly feed. The
+ * file is cached next to the race file and downloaded at most every 6 hours
+ * (about 4 calls a day). A failed download falls back to the cached copy;
+ * with neither, the lab bots' news filter is off for that tick and says so.
+ */
+export async function loadRedNews(): Promise<{ events: NewsEvent[]; note: string }> {
+  const cached = existsSync(FF_CACHE) ? statSync(FF_CACHE) : null
+  if (cached && Date.now() - cached.mtimeMs < FF_MAX_AGE_MS) {
+    const events = parseFfWeek(JSON.parse(readFileSync(FF_CACHE, 'utf8')))
+    return { events, note: `red news: ${events.length} events this week (cached)` }
+  }
+  try {
+    const res = await fetch(FF_WEEK_URL, {
+      headers: { 'user-agent': 'trade-hub race (play money)' },
+      signal: AbortSignal.timeout(20_000),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json: unknown = await res.json()
+    const events = parseFfWeek(json)
+    if (!Array.isArray(json)) throw new Error('not a list')
+    writeFileSync(`${FF_CACHE}.tmp`, JSON.stringify(json))
+    renameSync(`${FF_CACHE}.tmp`, FF_CACHE)
+    return { events, note: `red news: ${events.length} events this week (Forex Factory)` }
+  } catch (e) {
+    if (cached) {
+      const events = parseFfWeek(JSON.parse(readFileSync(FF_CACHE, 'utf8')))
+      return {
+        events,
+        note: `red news: feed failed (${(e as Error).message}), using the cached copy`,
+      }
+    }
+    return {
+      events: [],
+      note: `red news: feed failed (${(e as Error).message}), news filter off this tick`,
+    }
   }
 }

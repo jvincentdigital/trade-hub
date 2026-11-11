@@ -195,6 +195,18 @@ other slots. Since the one-account sizing there are no slots: a new market
 just starts trading from the shared balance, and `syncRaceState` only adds a
 new built-in strategy with fresh money. See `docs/gold.md`.
 
+## Lab bots joining (2026-11-11)
+
+The strategy lab's top 5 (`src/lib/race/labBots.ts`) join the same way: the
+first tick after the merge adds five accounts named "Lab: ..." at the race's
+start money ($10,000) and touches nothing else. Checked on a copy of
+`race.json`: all 11 existing accounts, their 9 open trades and $110,000 of
+balances came out identical. They bring a few things the older accounts do
+not use: a first target (half closes there), a deadline, a red-news filter
+from Forex Factory's weekly feed, and US30 from Yahoo's public chart feed.
+Closed trades can now say `time` or `news`. See `docs/strategy-lab.md`,
+"Top 5 in the live race".
+
 ## Hourly job (installed by John, 2026-11-10)
 
 `com.jvd.trade-hub-race` runs on the Mac Mini. Files:

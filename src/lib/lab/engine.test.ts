@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { OHLCCandle } from '../types/market'
 import { simulate, type LabEntry, type SimSetup } from './engine'
-import { labMarket } from './markets'
-import { newsWindows, parseNewsCsv } from './news'
+import { labMarket, swapCost } from './markets'
+import { newsWindows, parseNewsCsv, spikeWindows } from './news'
 
 // Wednesday 2026-07-01 00:00 UTC, 15-minute candles.
 const T0 = Date.UTC(2026, 6, 1) / 1000
@@ -17,12 +17,14 @@ const flat = (n: number, p = 1.3) =>
   Array.from({ length: n }, (_, i) => bar(i, p, p + 0.0002, p - 0.0002, p))
 
 const GBP = labMarket('GBPUSD') // spread 1 pip, slippage 0.2 pip, fee 0.0025% a side
+// Flat costs (the first run's model) unless a test turns the time-of-day model on.
 const setup = (o: Partial<SimSetup> = {}): SimSetup => ({
   market: GBP,
   tf: '15m',
   style: 'swing',
   news: 'off',
   windows: [],
+  flatCosts: true,
   ...o,
 })
 const long = (i: number, stop: number, target: number, o: Partial<LabEntry> = {}): LabEntry => ({
@@ -149,5 +151,65 @@ describe('news filter in the engine', () => {
     )
     expect(t.why).toBe('news')
     expect(t.exitTime).toBe(T0 + 48 * 900)
+  })
+})
+
+describe('costs by time of day, gaps, news and swap', () => {
+  // Wednesday 2026-07-01, 1h candles from 18:00 UTC.
+  const T = Date.UTC(2026, 6, 1, 18) / 1000
+  const h = (i: number, p = 1.3, gapAfter = -1) => ({
+    time: T + i * 3600 + (gapAfter >= 0 && i > gapAfter ? 3600 : 0),
+    open: p,
+    high: p + 0.0002,
+    low: p - 0.0002,
+    close: p,
+  })
+  const s1 = (o: Partial<SimSetup> = {}): SimSetup =>
+    setup({ tf: '1h', style: 'race', flatCosts: false, ...o })
+  it('a buy at the 21:00 UTC rollover pays 4x the spread and 2x the slippage', () => {
+    const c = Array.from({ length: 10 }, (_, i) => h(i))
+    const [t] = simulate(c, [long(3, 1.29, 1.31)], s1())
+    expect(t.entry).toBeCloseTo(1.3 + 4 * 0.0001 + 2 * 0.00002, 9)
+    const [calm] = simulate(c, [long(1, 1.29, 1.31)], s1()) // 19:00
+    expect(calm.entry).toBeCloseTo(1.3 + 0.0001 + 0.00002, 9)
+  })
+  it('the first candle after a gap pays 8x the spread', () => {
+    const c = Array.from({ length: 10 }, (_, i) => h(i, 1.3, 0)) // 18:00, then 20:00 (a gap)
+    const [t] = simulate(c, [long(1, 1.29, 1.31)], s1())
+    expect(t.entry).toBeCloseTo(1.3 + 8 * 0.0001 + 5 * 0.00002, 9)
+  })
+  it('a red-news candle pays 3x the spread and 5x the slippage', () => {
+    const ev = parseNewsCsv('time_utc,currency,event\n2026-07-01T19:00:00Z,USD,CPI m/m\n')
+    const c = Array.from({ length: 10 }, (_, i) => h(i))
+    const [t] = simulate(c, [long(1, 1.29, 1.31)], s1({ spikes: spikeWindows(ev, ['USD']) }))
+    expect(t.entry).toBeCloseTo(1.3 + 3 * 0.0001 + 5 * 0.00002, 9)
+  })
+  it('overnight swap: one charge per weekday rollover, Wednesday counts 3', () => {
+    const m = labMarket('USDJPY') // short pays 4.5% a year
+    const wed = Date.UTC(2026, 6, 1, 12) / 1000
+    expect(swapCost(m, false, wed, wed + 3600, 150).nights).toBe(0)
+    expect(swapCost(m, false, wed, wed + 86_400, 150)).toEqual({
+      nights: 3,
+      cost: (150 * 0.045 * 3) / 365,
+    })
+    // Wednesday noon to Monday noon: Wed (3) + Thu + Fri; Sat and Sun none.
+    expect(swapCost(m, false, wed, wed + 5 * 86_400, 150).nights).toBe(5)
+    expect(swapCost(labMarket('US30'), true, wed, wed + 5 * 86_400, 40_000).nights).toBe(5) // Fri counts 3
+    expect(swapCost(labMarket('BTCUSDT'), true, wed, wed + 5 * 86_400, 1).nights).toBe(0)
+  })
+  it('a trade held past rollovers loses the swap from its exit and flags a weekend', () => {
+    const c = Array.from({ length: 24 * 6 }, (_, i) => h(i))
+    const [t] = simulate(c, [long(1, 1.29, 1.31)], s1({ market: labMarket('EURUSD') }))
+    expect(t.nights).toBeGreaterThan(0)
+    expect(t.weekend).toBe(true)
+  })
+  it('every signal on its own when asked (no one-at-a-time)', () => {
+    const c = flat(20)
+    const ts = simulate(
+      c,
+      [long(2, 1.29, 1.31), long(5, 1.29, 1.31)],
+      setup({ style: 'race', independent: true }),
+    )
+    expect(ts).toHaveLength(2)
   })
 })

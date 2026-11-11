@@ -192,7 +192,8 @@ export interface ClosedRow {
   pnl: number
   /** Milliseconds. */
   closedAt: number
-  reason: 'stop' | 'target' | 'manual'
+  /** time and news: lab bots in the race (deadline passed, closed before red news). */
+  reason: 'stop' | 'target' | 'manual' | 'time' | 'news'
 }
 
 export function closedTrades(
@@ -202,7 +203,7 @@ export function closedTrades(
   const race: ClosedRow[] = state
     ? Object.values(state.strategies).flatMap((s) =>
         s.closed.map((t) => ({
-          key: `race:${s.ruleId}:${t.market}:${t.exitTime}`,
+          key: `race:${s.ruleId}:${t.market}:${t.exitTime}${t.part1Of ? ':part' : ''}`,
           by: s.name,
           market: t.market,
           side: t.direction,

@@ -33,6 +33,15 @@ export const fibLevel = (one: number, zero: number, x: number) => zero + x * (on
 
 export const IMPULSE_BARS = 12
 export const SETUP_EXPIRY_BARS = 24
+/**
+ * The swing version (added 2026-11-11 after checking John's two USD/JPY
+ * examples on real candles, where each swing took 4 to 6 weeks of daily
+ * candles): the impulse may take 40 candles, the setup lives 60 candles, and
+ * "1" is the swing extreme (the highest high of those 40 candles before a
+ * sell's low, the lowest low before a buy's high).
+ */
+export const SWING_IMPULSE_BARS = 40
+export const SWING_EXPIRY_BARS = 60
 /** "Just beyond 1": a quarter of an ATR past it. */
 export const STOP_PAD_ATR = 0.25
 
@@ -59,6 +68,7 @@ export function impulseAt(
   dir: 'down' | 'up',
   k: number,
   bars = IMPULSE_BARS,
+  anchor: 'candle' | 'extreme' = 'candle',
 ): Impulse | null {
   const from = j - bars + 1
   if (from < 1) return null
@@ -68,6 +78,18 @@ export function impulseAt(
     if (down ? c[x].low <= c[j].low : c[x].high >= c[j].high) return null
   }
   const zero = down ? c[j].low : c[j].high
+  if (anchor === 'extreme') {
+    // "1" = the swing extreme of the window before j.
+    let o = -1
+    for (let x = from; x < j; x++)
+      if (o < 0 || (down ? c[x].high > c[o].high : c[x].low < c[o].low)) o = x
+    if (o < 1) return null
+    const lvl = down ? c[o].high : c[o].low
+    const a0 = atr[o - 1]
+    return a0 > 0 && Math.abs(lvl - zero) >= k * a0
+      ? { direction: dir, one: lvl, zero, oneIdx: o, zeroIdx: j, atr: a0 }
+      : null
+  }
   // The most extreme "other way" candle seen so far, walking back from j.
   let best = down ? -Infinity : Infinity
   for (let x = j - 1; x >= from; x--) {
@@ -98,6 +120,8 @@ export interface FibOptions {
   allow?: (i: number, long: boolean) => boolean
   /** Precomputed ATR(14) (atrSeries). */
   atr?: number[]
+  /** Swing version: SWING_IMPULSE_BARS, SWING_EXPIRY_BARS and the swing extreme as 1. */
+  swing?: boolean
 }
 
 interface Armed extends Impulse {
@@ -107,6 +131,9 @@ interface Armed extends Impulse {
 /** Every trade John's Fib would plan on these candles (both directions). */
 export function johnsFib(c: OHLCCandle[], o: FibOptions): LabEntry[] {
   const atr = o.atr ?? atrSeries(c, 14)
+  const bars = o.swing ? SWING_IMPULSE_BARS : IMPULSE_BARS
+  const expiry = o.swing ? SWING_EXPIRY_BARS : SETUP_EXPIRY_BARS
+  const anchor = o.swing ? 'extreme' : 'candle'
   const out: LabEntry[] = []
   for (const dir of ['down', 'up'] as const) {
     const long = dir === 'up'
@@ -172,10 +199,10 @@ export function johnsFib(c: OHLCCandle[], o: FibOptions): LabEntry[] {
           }
         }
         const broken = long ? b.low < s.one : b.high > s.one
-        if (entered || broken || j - s.armedAt >= SETUP_EXPIRY_BARS) s = null
+        if (entered || broken || j - s.armedAt >= expiry) s = null
       }
       if (!s) {
-        const imp = impulseAt(c, atr, j, dir, o.k)
+        const imp = impulseAt(c, atr, j, dir, o.k, bars, anchor)
         if (imp) s = { ...imp, armedAt: j }
       }
     }

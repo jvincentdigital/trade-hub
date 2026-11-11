@@ -149,3 +149,40 @@ describe('johnsFib entries', () => {
     ).toHaveLength(0)
   })
 })
+
+// John's two USD/JPY daily examples on the real candles (Dukascopy bid, New
+// York-close days). Skipped where the history folder is missing (CI).
+describe("John's examples on real USD/JPY daily candles", async () => {
+  const { existsSync } = await import('node:fs')
+  const { DEFAULT_HISTORY_DIR, historyFile, loadMarket } = await import('./load')
+  const { atrSeries } = await import('../race/londonBreakout')
+  const have = existsSync(historyFile(DEFAULT_HISTORY_DIR, 'USDJPY', '1h'))
+  const day = (t: number) => new Date((t + 7 * 3600) * 1000).toISOString().slice(0, 10)
+  const at = async (date: string) => {
+    const c = await loadMarket(DEFAULT_HISTORY_DIR, 'USDJPY', '1d')
+    return { c, atr: atrSeries(c, 14), j: c.findIndex((b) => day(b.time) === date) }
+  }
+  it.skipIf(!have)(
+    'buy (his 1 = 153.174, 0 = 159.032): the 12-candle rule finds 153.240 and 159.034',
+    async () => {
+      const { c, atr, j } = await at('2026-09-24')
+      const imp = impulseAt(c, atr, j, 'up', 4)
+      expect(imp).toMatchObject({ one: 153.24, zero: 159.034 })
+      expect(day(c[imp!.oneIdx].time)).toBe('2026-09-11')
+    },
+  )
+  it.skipIf(!have)(
+    'sell (his 1 = 163.738, 0 = 152.846): the 12-candle rule anchors at the 09-01 bounce, the swing version at the 07-23 high',
+    async () => {
+      const { c, atr, j } = await at('2026-09-08')
+      const small = impulseAt(c, atr, j, 'down', 4)
+      expect(small).toMatchObject({ one: 160.273, zero: 152.889 })
+      expect(day(c[small!.oneIdx].time)).toBe('2026-09-01')
+      const sw = impulseAt(c, atr, j, 'down', 4.5, 40, 'extreme')
+      expect(sw).toMatchObject({ one: 163.989, zero: 152.889 })
+      expect(day(c[sw!.oneIdx].time)).toBe('2026-07-23')
+      // His 1 is the 07-30 high exactly: the first big candle of the drop.
+      expect(c.find((b) => day(b.time) === '2026-07-30')?.high).toBe(163.738)
+    },
+  )
+})

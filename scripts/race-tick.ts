@@ -18,9 +18,11 @@
  * risking 2% of it (src/lib/race/account.ts). State: ~/.local/share/trade-hub/race.json
  * (override with RACE_FILE). Play money only: nothing here talks to a broker.
  *
- * Strategies: the built-in rules, London breakout (src/lib/race/londonBreakout.ts)
- * and Claude's picks (opened by scripts/claude-picks.ts; a tick only checks
- * their stops and targets). A lock (race.json.lock) keeps two runs from
+ * Strategies: the built-in rules, London breakout (src/lib/race/londonBreakout.ts),
+ * Claude's picks (opened by scripts/claude-picks.ts; a tick only checks
+ * their stops and targets) and the strategy lab's top 5 (src/lib/race/labBots.ts:
+ * US30 from Yahoo's public chart feed, a red-news filter from Forex Factory's
+ * free weekly feed, cached next to the race file). A lock (race.json.lock) keeps two runs from
  * writing at once: a tick that finds it taken waits up to 3 minutes, then
  * prints one line and stops.
  *
@@ -43,15 +45,25 @@ import type { CandleTf } from '../src/lib/kraken'
 import { LONDON_BREAKOUT, londonBreakout } from '../src/lib/race/londonBreakout'
 import { CLAUDE_PICKS } from '../src/lib/race/claudePicks'
 import {
+  LAB_BOTS,
+  labCheck,
+  newsCloseDue,
+  RACE_ONLY_MARKETS,
+  type LabBot,
+} from '../src/lib/race/labBots'
+import { newsWindows, type Window } from '../src/lib/lab/news'
+import { nyCloseBars } from '../src/lib/lab/load'
+import {
   createRaceState,
   MAX_TICK_LOG,
   stepStrategy,
   summarize,
   syncRaceState,
+  tradeRisk,
   type MarketTick,
 } from '../src/lib/race/live'
 import type { OHLCCandle } from '../src/lib/types/market'
-import { fetchMarket, FILE, load, money, push, save, waitLock } from './race-io'
+import { fetchMarket, FILE, load, loadRedNews, money, push, save, waitLock } from './race-io'
 
 const args = process.argv.slice(2)
 const startArg = args.includes('--start') ? Number(args[args.indexOf('--start') + 1]) : 1000
@@ -62,6 +74,8 @@ type Plan = { id: string; name: string; markets: string[] } & (
   | { kind: 'london' }
   /** Claude's picks open from scripts/claude-picks.ts; the tick only closes them. */
   | { kind: 'picks' }
+  /** The strategy lab's top 5 (src/lib/race/labBots.ts, docs/strategy-lab.md). */
+  | { kind: 'lab'; bot: LabBot }
 )
 
 const PLANS: Plan[] = [
@@ -84,14 +98,21 @@ const PLANS: Plan[] = [
     name: CLAUDE_PICKS.name,
     markets: [...CLAUDE_PICKS.markets],
   },
+  ...LAB_BOTS.map((bot) => ({
+    kind: 'lab' as const,
+    id: bot.id,
+    name: bot.name,
+    markets: [bot.market],
+    bot,
+  })),
 ]
 
-const ecb = (id: string) => feedOf(id) === 'ecb'
-/** Candles stops and targets are checked on: 1h crypto, 15m gold and Kraken forex, daily ECB forex. */
+const ecb = (id: string) => !RACE_ONLY_MARKETS[id] && feedOf(id) === 'ecb'
+/** Candles stops and targets are checked on: 1h crypto and US30 (Yahoo), 15m gold and Kraken forex, daily ECB forex. */
 const pathTf = (id: string): CandleTf =>
-  ecb(id) ? '1d' : getInstrument(id)?.market === 'crypto' ? '1h' : '15m'
-/** ECB-only forex has daily candles whatever size is asked for. */
-const sizeFor = (id: string, tf: CandleTf): CandleTf => (ecb(id) ? '1d' : tf)
+  ecb(id) ? '1d' : getInstrument(id)?.market === 'crypto' || id === 'US30' ? '1h' : '15m'
+/** ECB-only forex has daily candles whatever size is asked for; US30 (Yahoo) is always 1h. */
+const sizeFor = (id: string, tf: CandleTf): CandleTf => (ecb(id) ? '1d' : id === 'US30' ? '1h' : tf)
 const key = (id: string, tf: CandleTf) => `${id}:${sizeFor(id, tf)}`
 
 async function main() {
@@ -150,6 +171,7 @@ async function tick() {
         want(id, '15m')
         want(id, '1h')
       }
+      if (p.kind === 'lab') want(id, p.bot.candles === 'kraken-ny4h' ? '1h' : p.bot.tf)
     }
   const data = new Map<string, OHLCCandle[]>()
   const skipped = new Set<string>()
@@ -171,6 +193,15 @@ async function tick() {
   }
   state.prices = { ...state.prices, ...prices }
 
+  // Red news for the lab bots' filter (Forex Factory's free weekly feed, cached).
+  const red = PLANS.some((p) => p.kind === 'lab' && p.bot.news !== 'off')
+    ? await loadRedNews()
+    : { events: [], note: '' }
+  if (red.note) console.log(`  ${red.note}`)
+  const windowsOf = (bot: LabBot): Window[] => newsWindows(red.events, bot.currencies, bot.news)
+  /** Lab bot extras for the market tick: first target, deadline, close before news. */
+  const labExtra = new Map<string, Pick<MarketTick, 'target1' | 'deadline' | 'closeNow'>>()
+
   const shut = forexClosed(nowSec)
   if (shut)
     console.log('  Forex market closed (Friday 17:00 to Sunday 17:00 New York): no forex signals')
@@ -178,6 +209,24 @@ async function tick() {
     if (p.kind === 'picks') return null
     const inst = getInstrument(id)
     if (shut && inst?.market === 'forex') return null
+    if (p.kind === 'lab') {
+      const bot = p.bot
+      const raw = data.get(key(id, bot.candles === 'kraken-ny4h' ? '1h' : bot.tf))
+      if (!raw?.length || !(prices[id] > 0)) return null
+      const closed =
+        bot.candles === 'kraken-ny4h'
+          ? closedOnly(nyCloseBars(closedOnly(raw, 1, nowSec), 4 * 3600), 4, nowSec)
+          : closedOnly(raw, TF_HOURS[bot.tf], nowSec)
+      const w = windowsOf(bot)
+      const r = labCheck(bot, closed, nowSec, prices[id], w)
+      labExtra.set(`${p.id}|${id}`, {
+        ...(r.signal?.target1 != null ? { target1: r.signal.target1 } : {}),
+        deadline: r.deadline,
+        closeNow: newsCloseDue(bot, w, nowSec),
+      })
+      console.log(`  LAB ${bot.name}: ${r.note}`)
+      return r.signal
+    }
     if (p.kind === 'london') {
       const m15 = data.get(key(id, '15m'))
       const h1 = data.get(key(id, '1h'))
@@ -207,16 +256,19 @@ async function tick() {
     for (const id of p.markets) {
       const path = data.get(key(id, pathTf(id)))
       const inst = getInstrument(id)
-      if (!path?.length || !inst) continue
+      const only = RACE_ONLY_MARKETS[id]
+      if (!path?.length || (!inst && !only)) continue
       const price = prices[id]
+      const signal = signalFor(p, id)
       ticks.push({
         market: id,
-        signal: signalFor(p, id),
+        signal,
         path,
         price,
-        usdPerQuote: usdPerQuoteFor(inst, price, prices),
-        feeRate: FEE_RATE[inst.market],
-        leverage: LEVERAGE[inst.market],
+        usdPerQuote: inst ? usdPerQuoteFor(inst, price, prices) : 1,
+        feeRate: inst ? FEE_RATE[inst.market] : only.feeRate,
+        leverage: inst ? LEVERAGE[inst.market] : only.leverage,
+        ...(p.kind === 'lab' ? labExtra.get(`${p.id}|${id}`) : {}),
       })
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing)
@@ -229,9 +281,10 @@ async function tick() {
     for (const t of r.opened) {
       const inst = getInstrument(t.market)
       const size = sizingOf({ inst, ...t, target: t.takeProfit })
-      console.log(
-        `  OPEN  ${p.name} ${t.market} ${t.direction} at ${t.entry}: ${sizingLine(inst, size)}`,
-      )
+      const sizeWords = inst
+        ? sizingLine(inst, size)
+        : `${t.units.toFixed(3)} units, $${tradeRisk(t).toFixed(2)} at the stop`
+      console.log(`  OPEN  ${p.name} ${t.market} ${t.direction} at ${t.entry}: ${sizeWords}`)
     }
     for (const x of r.passed) console.log(`  PASS  ${p.name} ${x.market}: ${x.reason}`)
   }

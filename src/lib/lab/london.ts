@@ -33,9 +33,12 @@ export interface LondonLabOptions {
 
 /**
  * One London breakout per weekday, from 15m candles (and 1h for the 20-day
- * average range), exactly as the race checks it at each 15-minute close from
- * 06:15 to 10:00 UTC, with the race's margin floor on the stop. The trade
- * enters at the open of the candle after the break.
+ * average range), exactly as the live race checks it at each 15-minute tick
+ * from 06:15 to 10:00 UTC: the price is the open of the candle starting at
+ * the tick (what the tick would fill at), so the race's "no chase" and "back
+ * inside the range" checks run, the stop and target sit around that price,
+ * and a break stays usable for 2 closed candles. The race's margin floor
+ * applies to the stop. The trade enters at that candle's open.
  */
 export function londonLab(m15: OHLCCandle[], h1: OHLCCandle[], o: LondonLabOptions): LabEntry[] {
   const out: LabEntry[] = []
@@ -50,15 +53,14 @@ export function londonLab(m15: OHLCCandle[], h1: OHLCCandle[], o: LondonLabOptio
     const m = m15.slice(i0, i1)
     const h = h1.slice(h0, h1End)
     for (let now = d + 6 * HOUR + M15; now <= d + 10 * HOUR; now += M15) {
-      const lastClose = m15[firstAtOrAfter(m15, now - M15)]
-      const minDist = lastClose
-        ? minStopForFullRisk(lastClose.close, o.leverage, RACE_SIZING.riskPct)
-        : 0
-      const chk = londonBreakout(m, h, now, { fresh: 1, minDist })
+      const i = firstAtOrAfter(m15, now)
+      if (i >= m15.length) break
+      if (m15[i].time !== now) continue // no candle opens at this tick (a gap): no fill
+      const price = m15[i].open
+      const minDist = minStopForFullRisk(price, o.leverage, RACE_SIZING.riskPct)
+      const chk = londonBreakout(m, h, now, { minDist, price })
       if (!chk.signal) continue
       const s = chk.signal
-      const i = firstAtOrAfter(m15, s.time + M15)
-      if (i >= m15.length) break
       const dist = Math.abs(s.entry - s.stop)
       const long = s.direction === 'long' ? !o.fade : !!o.fade
       out.push({
@@ -67,7 +69,7 @@ export function londonLab(m15: OHLCCandle[], h1: OHLCCandle[], o: LondonLabOptio
         direction: long ? 'long' : 'short',
         stop: long ? s.entry - dist : s.entry + dist,
         target: long ? s.entry + o.rr * dist : s.entry - o.rr * dist,
-        signalTime: s.time + M15,
+        signalTime: now,
       })
       break
     }
