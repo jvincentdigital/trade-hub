@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CLAUDE_PICKS,
   checkPick,
   checkPicks,
   parsePicks,
+  picksPrompt,
   stopBand,
   swings,
   type PickContext,
@@ -111,6 +113,34 @@ describe("Claude's picks: checking each trade", () => {
     ).toMatch(/against the open pick/)
     expect(reason(good, longOpen)).toMatch(/already open/)
     expect(reason({ ...good, market: 'pax-gold', stop: 3995, target: 4010 }, longOpen)).toBe('ok')
+  })
+
+  it('one pound/dollar bet: never GBP/USD and gold on opposite sides, in Claude order', () => {
+    const goldShort = { market: 'pax-gold', direction: 'short', stop: 4005, target: 3990 }
+    // against an open pick
+    const longOpen = { ...ctx, open: [openTrade({ direction: 'long' })] }
+    expect(checkPicks([goldShort], longOpen).rejected[0].reason).toBe(
+      'against the open GBP-USD long (one pound/dollar bet per account)',
+    )
+    // inside one answer: Claude's first pick wins
+    const r = checkPicks([goldShort, good], ctx)
+    expect(r.accepted.map((p) => p.market)).toEqual(['pax-gold'])
+    expect(r.rejected[0].reason).toBe(
+      'against the open pax-gold short (one pound/dollar bet per account)',
+    )
+  })
+
+  it('tells Claude the real balance, not $1,000', () => {
+    expect(picksPrompt([], 0, 10_000)).toContain('"Claude\'s picks": $10,000, each trade')
+    expect(picksPrompt([], 0, 9836.24)).toContain('$9,836,')
+    expect(picksPrompt([], 0)).toContain('"Claude\'s picks": each trade risks 2%')
+    expect(picksPrompt([], 0, 10_000)).not.toContain('$1,000')
+    expect(picksPrompt([], 0)).toContain('one pound/dollar bet')
+  })
+
+  it('offers no crypto: only GBP/USD and gold', () => {
+    expect(CLAUDE_PICKS.markets).toEqual(['GBP-USD', 'pax-gold'])
+    expect(reason({ ...good, market: 'BNB' })).toMatch(/not one of/)
   })
 
   it('keeps at most 2 picks, one per market', () => {

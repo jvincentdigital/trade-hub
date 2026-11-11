@@ -100,8 +100,20 @@ may not happen at the same moment). The app labels it "computed from GBP/USD
 and USD/JPY". Because it follows GBP/USD inside the day (on 10 Nov both
 broke above the Asian range on the same 06:00 candle), London breakout and
 Claude's picks do not trade it: it would be a second 2% bet on the same pound
-move. The built-in rules still trade it, and it stays on Today's "Pound &
-gold" tab. On `/forex/GBP-JPY` the chart is the ECB's daily close; a line
+move. The built-in rules still trade it, but since 2026-11-11 never while the
+same account has GBP/USD open (and no GBP/USD while it has GBP/JPY open), and
+it stays on Today's "Pound & gold" tab.
+
+**One pound/dollar bet per account (John, 2026-11-11).** Inside each account,
+GBP/USD, GBP/JPY, EUR/GBP and gold count as one bet: never opposite sides
+(a GBP/USD long rules out a gold short and a EUR/GBP long), at most 2 trades
+the same way. Different accounts may still disagree. John: "most of the time
+when you start doing a pair with Great British Pound, most of the time they go
+the same way... when it comes to pound and dollar, what goes is as much as the
+same as the gold with the dollar." Details and log lines:
+`docs/strategy-race.md`, "Two rules for new trades". The same day John also
+stopped new crypto trades except Bitcoin; London breakout and Claude's picks
+never traded crypto. On `/forex/GBP-JPY` the chart is the ECB's daily close; a line
 under the header says the race and Today use the computed price, so the two
 can differ.
 
@@ -189,7 +201,10 @@ on daily).
    at least 1.5x the stop distance; not against (or on top of) an open
    Claude's picks trade on that market; at most 2, one per market. The 1h ATR
    replaced the 15m one: with the margin floor, GBP/USD's 15m band shrank to
-   8.9 to 10.8 pips.
+   8.9 to 10.8 pips. Since 2026-11-11 also one pound/dollar bet: no gold
+   pick against an open GBP/USD pick (or the other way), counting earlier
+   picks in the same answer first. The prompt gives the account's balance
+   from `race.json` (it said $1,000 before).
 4. Opens the ones that pass at the current price with the race's 2% sizing
    and limits, stores the reason on the trade (Today shows it on the row),
    saves under the race lock (waits up to 5 minutes for a running tick) and
