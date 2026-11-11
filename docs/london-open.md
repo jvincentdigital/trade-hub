@@ -27,11 +27,20 @@ done").
 | 07:00             | 11:00       | Last 15-minute tick; the hourly tick carries on as always                   |
 | every hour at :07 |             | The hourly race tick (`com.jvd.trade-hub-race`), 24/7                       |
 
-Weekdays only for the London jobs (Monday to Friday). The plists set `WEEKDAYS_ONLY=1`
-and the wrappers exit on Saturday and Sunday. Don't use launchd `Weekday` keys: on the
-Mac Mini they never fired (2026-11-11, `runs = 0` all night, while Hour/Minute-only
-jobs ran). Since 2026-11-11 the 15-minute ticks run 02:00-12:45 AST (London to New
-York) and Claude's picks at 03:47 and 09:47 AST.
+Since 2026-11-11 the 15-minute ticks run 02:00-12:45 AST (London to New York) and
+Claude's picks at 03:47 and 09:47 AST, weekdays only.
+
+**The plists schedule minutes only; the wrappers check the day and the hour.** The
+London plist fires at :00, :15, :30 and :45 every hour and sets `RUN_HOURS="2 3 ... 12"`;
+the picks plist fires at :47 and sets `RUN_HOURS="3 9"`. Both set `WEEKDAYS_ONLY=1`. The
+wrapper exits at once outside those hours and on Saturday and Sunday. Why: on the Mac
+Mini launchd ran every `Hour` entry 4 hours late (2026-11-11: the 02:00 tick first fired
+at 06:00 AST, the 03:47 picks at 07:47 AST), while the minute-only hourly job ran on
+time. The likely cause is that the Mac's time zone was set to Puerto Rico 15 minutes
+after it booted (Nov 9), and launchd kept the zone it started with (02:00 in UTC-8 is
+06:00 AST). A restart would probably fix it too, but the Mac has FileVault on and no
+auto-login, so every agent would wait until someone signs in. Minute-only schedules
+are safe either way. Check after install: `race-london.log` should start at 02:00 AST.
 All three jobs use the Mac Mini's clock, which is on AST.
 
 - **Breakouts start at 02:00, an hour before Frankfurt.** That is the spec
@@ -279,7 +288,7 @@ cp scripts/launchd/com.jvd.trade-hub-claude-picks.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jvd.trade-hub-race-london.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jvd.trade-hub-claude-picks.plist
 launchctl list | grep trade-hub       # race, race-london, claude-picks
-launchctl print gui/$(id -u)/com.jvd.trade-hub-race-london | head -60   # shows its calendar entries (105 in the plist)
+launchctl print gui/$(id -u)/com.jvd.trade-hub-race-london | head -60   # shows its calendar entries (4 minutes; the wrapper checks the hour)
 make race-tick                        # one tick now, so both new accounts exist (picks stops without race.json)
 zsh -c 'source ~/.zprofile; make claude-picks DRY=1'   # optional: see a brief
 ```

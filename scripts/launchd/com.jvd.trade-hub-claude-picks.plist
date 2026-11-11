@@ -4,6 +4,8 @@
 <dict>
 	<key>EnvironmentVariables</key>
 	<dict>
+		<key>RUN_HOURS</key>
+		<string>3 9</string>
 		<key>WEEKDAYS_ONLY</key>
 		<string>1</string>
 	</dict>
@@ -25,14 +27,6 @@
 	<key>StartCalendarInterval</key>
 	<array>
 		<dict>
-			<key>Hour</key>
-			<integer>3</integer>
-			<key>Minute</key>
-			<integer>47</integer>
-		</dict>
-		<dict>
-			<key>Hour</key>
-			<integer>9</integer>
 			<key>Minute</key>
 			<integer>47</integer>
 		</dict>
