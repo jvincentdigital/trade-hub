@@ -11,9 +11,12 @@ import {
   dayWorstCase,
   lossAtStop,
   FUNDED,
+  FUNDED_B_SIGNALS_FROM,
   FUNDED_SIGNALS_FROM,
   FUNDED_SIZES,
+  FUNDED_TESTS,
   fundedAccounts,
+  fundedLabel,
   fundedOf,
   fundedView,
   lotStep,
@@ -21,7 +24,9 @@ import {
   stepFunded,
   withFunded,
   type FundedCandidate,
+  type FundedTick,
 } from './funded'
+import { LONDON_BREAKOUT } from './londonBreakout'
 import {
   applyDailyClose,
   createRaceState,
@@ -277,9 +282,13 @@ describe('funded test: signal order and markets', () => {
     const old = trade('GBP-USD', { strategy: 'london-breakout' })
     const own = trade('pax-gold', { strategy: V })
     const f = withClosed([], [old, own])
+    // The race tags each tick with its strategy: these are v1's.
     const r = stepFunded(
       f,
-      [mt('GBP-USD', { closeNow: true }), mt('pax-gold', { closeNow: true })],
+      [
+        { ...mt('GBP-USD', { closeNow: true }), strategy: V },
+        { ...mt('pax-gold', { closeNow: true }), strategy: V },
+      ],
       [],
       NOW,
     )
@@ -664,5 +673,181 @@ describe('funded test: four sizes (John, 2026-11-12)', () => {
       expect(f.open).toHaveLength(0)
       expect(f.balance).toBeCloseTo(f.startMoney + (f.startMoney / 10_000) * 15_000 * 0.005)
     }
+  })
+})
+
+describe('funded test B: v1 + breakouts (John, 2026-11-12)', () => {
+  const B = FUNDED_B_SIGNALS_FROM
+  const LB = LONDON_BREAKOUT.id
+  const stepB = (f: FundedState, ticks: FundedTick[], cands: FundedCandidate[], now = NOW) =>
+    stepFunded(f, ticks, cands, now, null, {}, B)
+
+  it('takes v1 first, then the London breakout; test A stays v1 only', () => {
+    expect(B).toEqual(['johns-london-v1', 'london-breakout'])
+    expect(FUNDED_TESTS.map((t) => [t.id, t.label, t.feeds])).toEqual([
+      ['v1', 'v1 only', [V]],
+      ['breakouts', 'v1 + breakouts', B],
+    ])
+    expect(fundedLabel(50_000, 'breakouts')).toBe('Funded test v1 + breakouts $50K')
+    expect(fundedLabel(50_000)).toBe('Funded test $50K')
+  })
+
+  it('B takes a London breakout signal that A ignores; both take the v1 signal', () => {
+    const lb = cand(LB, 'pax-gold')
+    const v1 = cand(V, 'GBP-USD')
+    // the breakout comes first in the list, as in the race's plan order
+    const a = stepFunded(createFunded(0), markets, [lb, v1], NOW)
+    expect(a.opened.map((t) => [t.strategy, t.market])).toEqual([[V, 'GBP-USD']])
+    expect(a.passed).toEqual([])
+    expect(a.funded.lastSignal).toEqual({ [`${V}:GBP-USD`]: v1.signal.time })
+    const b = stepB(createFunded(0), markets, [lb, v1])
+    expect(b.opened.map((t) => [t.strategy, t.market])).toEqual([
+      [V, 'GBP-USD'],
+      [LB, 'pax-gold'],
+    ])
+    expect(b.funded.lastSignal).toEqual({
+      [`${V}:GBP-USD`]: v1.signal.time,
+      [`${LB}:pax-gold`]: lb.signal.time,
+    })
+    // other strategies still trade only in their Lab accounts
+    expect(stepB(createFunded(0), markets, [cand('ema50-pullback', 'EUR-USD')]).opened).toEqual([])
+  })
+
+  it('both signal one market on the same check: v1 opens, the breakout is passed', () => {
+    const r = stepB(createFunded(0), markets, [
+      cand(LB, 'GBP-USD', { direction: 'short' }),
+      cand(V, 'GBP-USD'),
+    ])
+    expect(r.opened.map((t) => [t.strategy, t.direction])).toEqual([[V, 'long']])
+    expect(r.passed).toEqual([
+      { strategy: LB, market: 'GBP-USD', reason: `a GBP-USD trade is already open (from ${V})` },
+    ])
+  })
+
+  it("each trade keeps its own strategy's exits: v1's first target and news close stay with v1", () => {
+    const g = PRICE['GBP-USD']
+    const au = PRICE['pax-gold']
+    const ticks: FundedTick[] = [
+      { ...mt('GBP-USD', { target1: g * 1.01, deadline: NOW + 3600, confirm: true }), strategy: V },
+      { ...mt('GBP-USD'), strategy: LB },
+      { ...mt('pax-gold', { target1: au * 1.01 }), strategy: V },
+      { ...mt('pax-gold'), strategy: LB },
+    ]
+    const r = stepB(createFunded(0), ticks, [cand(LB, 'GBP-USD'), cand(V, 'pax-gold')])
+    const gbp = r.opened.find((t) => t.market === 'GBP-USD')!
+    const gold = r.opened.find((t) => t.market === 'pax-gold')!
+    expect(gold).toMatchObject({ strategy: V, target1: au * 1.01, part1: 0.5 })
+    expect(gbp.strategy).toBe(LB)
+    expect([gbp.target1, gbp.part1, gbp.deadline, gbp.confirm]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ])
+    // v1's news close at the next check closes v1's gold, not the breakout's GBP/USD
+    const news = ticks.map((t) => (t.strategy === V ? { ...t, closeNow: true } : t))
+    const n = stepB(r.funded, news, [], NOW + 60)
+    expect(n.closed.map((x) => [x.strategy, x.market, x.reason])).toEqual([[V, 'pax-gold', 'news']])
+    expect(n.funded.open.map((t) => t.strategy)).toEqual([LB])
+    // a breakout trade with no breakout tick takes another strategy's tick for price and path only
+    const only = stepB(r.funded, [news[0], news[2]], [], NOW + 60)
+    expect(only.funded.open.map((t) => t.strategy)).toEqual([LB])
+  })
+
+  it('limits count per test and per size', () => {
+    // A is down 4% today: no new trades there. B has its own day: the same v1 signal opens.
+    const sig = cand(V, 'GBP-USD')
+    const aDown = withClosed([closedT(-400, NOW - 1800)])
+    expect(stepFunded(aDown, markets, [sig], NOW).passed[0].reason).toMatch(
+      /no new trades until the next FTMO day/,
+    )
+    const { accounts } = addFundedSizes([], 0)
+    const steps = accounts.map((f) => stepB(f, markets, [sig, cand(LB, 'pax-gold')]))
+    // 2% of each size, whole 0.01 lots, as in test A
+    expect(steps.map((r) => r.opened.map((t) => t.units))).toEqual([
+      [15_000, 5],
+      [76_000, 25],
+      [153_000, 50],
+      [307_000, 100],
+    ])
+    // B's 3 new trades a day: a breakout signal after three entries today waits
+    const three = withClosed([
+      closedT(10, NOW - 3000, NOW - 3500),
+      closedT(10, NOW - 2000, NOW - 2500),
+      closedT(10, NOW - 1000, NOW - 1500),
+    ])
+    expect(stepB(three, markets, [cand(LB, 'pax-gold')]).passed[0].reason).toBe(
+      '3 new trades today already',
+    )
+    // B fails on its own: 5% of its own start lost today
+    const bDown = { ...createFunded(0, [], 50_000), balance: 47_500 }
+    bDown.closed = [{ ...closedT(-2_500, NOW - 1800), strategy: LB }]
+    expect(stepB(bDown, markets, [sig]).funded.status).toBe('failed')
+  })
+
+  it('migration: B starts empty in four sizes; A and every strategy are left as they were', () => {
+    const st = createRaceState(
+      [
+        { id: V, name: "John's London v1" },
+        { id: LB, name: 'London breakout' },
+      ],
+      10_000,
+      0,
+    )
+    st.strategies[LB] = { ...st.strategies[LB], balance: 10_150, open: [trade('pax-gold')] }
+    st.funded = withClosed([closedT(120, NOW - 7200)], [trade('EUR-USD', { strategy: V })])
+    st.fundedSizes = addFundedSizes(fundedAccounts(st), 0).added
+    const before = raceStateSchema.parse(JSON.parse(JSON.stringify(st)))
+    expect(fundedAccounts(st, 'breakouts')).toEqual([])
+    // the signals out there at the first check after the merge
+    const out = [cand(LB, 'pax-gold'), cand(V, 'GBP-USD')]
+    const nowMs = NOW * 1000
+    const { added } = addFundedSizes(fundedAccounts(st, 'breakouts'), nowMs, out)
+    expect(added.map((f) => f.startMoney)).toEqual([...FUNDED_SIZES])
+    for (const f of added) {
+      expect(f).toMatchObject({ balance: f.startMoney, open: [], closed: [], status: 'active' })
+      expect(f.startedAt).toBe(nowMs)
+      expect(f.lastSignal).toEqual({
+        [`${LB}:pax-gold`]: NOW - 600,
+        [`${V}:GBP-USD`]: NOW - 600,
+      })
+    }
+    const next = withFunded(st, added, 'breakouts')
+    const back = raceStateSchema.parse(JSON.parse(JSON.stringify(next)))
+    const { fundedB, ...rest } = back
+    expect(rest).toEqual(before) // A's four sizes and every strategy unchanged
+    expect(fundedB?.map((f) => f.startMoney)).toEqual([...FUNDED_SIZES])
+    expect(fundedOf(back, 50_000, 'breakouts')?.balance).toBe(50_000)
+    expect(fundedOf(back, 10_000)?.closed).toHaveLength(1) // A's history
+    // running again adds nothing
+    expect(addFundedSizes(fundedAccounts(back, 'breakouts'), nowMs + 1).added).toHaveLength(0)
+    // the signals out there at the start open nowhere; a newer breakout opens in all four
+    const fresh = cand(LB, 'pax-gold', { time: NOW - 60 })
+    for (const f of fundedAccounts(back, 'breakouts')) {
+      expect(stepB(f, markets, out).opened).toHaveLength(0)
+      expect(stepB(f, markets, [fresh]).opened.map((t) => t.strategy)).toEqual([LB])
+    }
+  })
+
+  it('the 12:45 close books both tests, every size', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
+    const withTrade = (size: number): FundedState => ({
+      ...createFunded(0, [], size),
+      open: [trade('GBP-USD', { units: (size / 10_000) * 15_000 })],
+    })
+    const next = withFunded(
+      withFunded(st, [withTrade(10_000)]),
+      FUNDED_SIZES.map(withTrade),
+      'breakouts',
+    )
+    next.prices = { 'GBP-USD': 1.305 }
+    next.dailyCloseAt = ast(2026, 11, 11, 2)
+    const r = applyDailyClose(next, ast(2026, 11, 11, 12, 45), () => 0)
+    expect(r.closed.map((c) => c.strategy)).toEqual([
+      fundedLabel(10_000),
+      ...FUNDED_SIZES.map((s) => fundedLabel(s, 'breakouts')),
+    ])
+    for (const f of fundedAccounts(r.state, 'breakouts')) expect(f.open).toHaveLength(0)
+    expect(r.state.funded?.open).toHaveLength(0)
   })
 })

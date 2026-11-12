@@ -212,6 +212,39 @@ describe('Close now: the request flow', () => {
     expect(r.state.funded?.balance).toBe(10_000)
   })
 
+  it('a v1 + breakouts close names that test and size, and closes there only', () => {
+    // The same trade open in v1 only $10K, v1 + breakouts $10K and v1 + breakouts $50K.
+    const st = race()
+    const t: FundedTrade = { ...gbp, strategy: 'johns-london-v1' }
+    st.fundedB = [
+      { ...createFunded(0), open: [t] },
+      { ...createFunded(0, [], 50_000), open: [{ ...t, units: 100_000 }] },
+    ]
+    const idB = tradeId(fundedAccountId(10_000, 'breakouts'), gbp)
+    expect(idB).toBe(`funded-b-10k|GBP-USD|${gbp.entryTime}`)
+    expect(fundedAccountId(200_000, 'breakouts')).toBe('funded-b-200k')
+    expect(CLOSE_ID.test(idB)).toBe(true)
+    expect(findOpen(st, idB)?.trade).toMatchObject({ strategy: 'johns-london-v1', units: 20_000 })
+    expect(findOpen(st, tradeId(fundedAccountId(100_000, 'breakouts'), gbp))).toBeNull()
+    const mins = quiet(at(10, 0), at(10, 20), 1.305)
+    const r = bookCloseRequests(
+      st,
+      { [idB]: { id: idB, at: at(10, 14, 20) * 1000 } },
+      () => mins,
+      at(10, 0),
+      () => 0,
+    )
+    expect(r.booked.map((b) => b.account)).toEqual(['funded-b-10k'])
+    const [tenB, fiftyB] = r.state.fundedB!
+    expect(tenB.open).toHaveLength(0)
+    expect(tenB.closed.map((c) => c.reason)).toEqual(['manual'])
+    expect(tenB.balance).toBeCloseTo(10_000 + 20_000 * 0.005 - gbp.entryFee)
+    // its other size and the v1 only test keep their trade
+    expect(fiftyB.open).toHaveLength(1)
+    expect(r.state.funded?.open).toHaveLength(1)
+    expect(r.state.funded?.balance).toBe(10_000)
+  })
+
   it('stop before the tap books the stop, not the tap', () => {
     const mins = quiet(at(10, 0), at(10, 20))
     mins[3] = min(at(10, 3), 1.291, 1.291, 1.289)

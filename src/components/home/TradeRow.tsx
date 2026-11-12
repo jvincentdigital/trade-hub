@@ -471,7 +471,7 @@ function Panel(props: {
  */
 function CloseNow(props: {
   name: string
-  /** Funded size ("$50K"): the close is in that account only. */
+  /** Funded size and test ("$50K v1 only"): the close is in that account only. */
   account?: string
   requestedAt?: number
   now: number
@@ -531,7 +531,7 @@ function CloseNow(props: {
         <b style={{ fontWeight: 600 }}>Close this {props.name} now?</b>{' '}
         {props.account && (
           <span style={{ display: 'block', margin: '4px 0' }}>
-            {`Only in the ${props.account} funded test. The other sizes keep their trade.`}
+            {`Only in the ${props.account} funded test. The other sizes and the other test keep their trade.`}
           </span>
         )}
         <span style={secondary}>

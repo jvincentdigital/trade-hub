@@ -4,14 +4,15 @@ import { X } from 'lucide-react'
 import { formatQuote, getInstrument } from '@/lib/paper/instruments'
 import type { OpenPosition } from '@/lib/positions/positions'
 import { shortName, sideWord, signedShort, usdShort } from '@/lib/positions/today'
-import { FUNDED } from '@/lib/race/funded'
+import { FUNDED, type FundedTestId } from '@/lib/race/funded'
 import { JOHNS_LONDON } from '@/lib/race/johnsLondonLive'
 import { V1 } from '@/lib/lab/johnsLondon'
 import { perMoveText, sizeText, sizingOf } from '@/lib/sizing/sizing'
 import { FS, button, secondary } from './ui'
 
-// Today follows the funded test, which takes only John's London v1 signals
-// (src/lib/race/funded.ts). Facts from v1's frozen settings, so the text stays true.
+// Today follows a funded test: v1 only takes John's London v1 signals, v1 +
+// breakouts the London breakout's too (src/lib/race/funded.ts). Facts from v1's
+// frozen settings, so the text stays true.
 
 /** One real open trade worked through: stop distance, size, $ per pip, goal. */
 function example(pos: OpenPosition | undefined): string | null {
@@ -37,6 +38,7 @@ export function HowSheet(props: {
   onClose: () => void
   sample?: OpenPosition
   startMoney: number
+  test: FundedTestId
 }) {
   const { open, onClose, startMoney } = props
   const ref = useRef<HTMLDialogElement>(null)
@@ -51,6 +53,7 @@ export function HowSheet(props: {
   const ex = example(props.sample)
   const risk = (startMoney * FUNDED.sizing.riskPct) / 100
   const b = { color: 'var(--text-primary)', fontWeight: 600 }
+  const both = props.test === 'breakouts'
 
   return (
     <dialog
@@ -101,7 +104,7 @@ export function HowSheet(props: {
           {[
             [
               'Signal.',
-              `Only John's London v1, on GBP/USD and gold. It looks at finished 15-minute candles from 3:00 AM to 11:00 AM (7:00 AM to 3:00 PM London; an hour earlier in UK summer). After a move of ${JOHNS_LONDON.k} ATRs within ${V1.impulseBars} candles, a pullback to the ${V1.zone} level that does not break 1 is a signal, in the direction of the move.`,
+              `${both ? "John's London v1 first" : "Only John's London v1"}, on GBP/USD and gold. It looks at finished 15-minute candles from 3:00 AM to 11:00 AM (7:00 AM to 3:00 PM London; an hour earlier in UK summer). After a move of ${JOHNS_LONDON.k} ATRs within ${V1.impulseBars} candles, a pullback to the ${V1.zone} level that does not break 1 is a signal, in the direction of the move.${both ? ' Then the London breakout, on GBP/USD, EUR/GBP and gold: the first 15-minute close outside the Asian range (8:00 PM to 2:00 AM) between 2:00 and 6:00 AM, stop at the middle of the range or 1 ATR away, whichever is closer, target 2 times the stop. When both signal one market, v1 goes first.' : ''}`,
             ],
             [
               'Entry.',
@@ -117,7 +120,7 @@ export function HowSheet(props: {
             ],
             [
               'Size.',
-              `The funded test is one ${usdShort(startMoney)} play account that takes only John's London v1 signals, and every trade risks ${FUNDED.sizing.riskPct}% of its balance at that moment: about ${usdShort(risk)} if the stop hits. A far stop means a smaller position. Forex is shown in lots (1 lot = 100,000 units), gold in lots of 100 oz, crypto in coins.`,
+              `The funded test is one ${usdShort(startMoney)} play account that takes ${both ? "John's London v1 and London breakout signals" : "only John's London v1 signals"}, and every trade risks ${FUNDED.sizing.riskPct}% of its balance at that moment: about ${usdShort(risk)} if the stop hits. A far stop means a smaller position. Forex is shown in lots (1 lot = 100,000 units), gold in lots of 100 oz, crypto in coins.`,
             ],
             [
               'Limits.',

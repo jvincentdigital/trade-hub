@@ -1,5 +1,11 @@
 import { goalBar, signedShort, usdShort } from '@/lib/positions/today'
-import { FUNDED, sizeLabel, type FundedView } from '@/lib/race/funded'
+import {
+  FUNDED,
+  fundedTest,
+  sizeLabel,
+  type FundedTestId,
+  type FundedView,
+} from '@/lib/race/funded'
 import { pct } from './format'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
 
@@ -39,8 +45,10 @@ interface Props {
   closedToday: string | null
   /** The size shown ($10K, $50K, $100K or $200K): the card's numbers are that account's. */
   startMoney: number
+  /** The test shown: v1 only or v1 + breakouts. */
+  test: FundedTestId
   riskPct: number
-  /** The $10K | $50K | $100K | $200K switch (SizeSwitch). */
+  /** The v1 only | v1 + breakouts and $10K | $50K | $100K | $200K switches (SizeSwitch.tsx). */
   sizeSwitch?: React.ReactNode
 }
 
@@ -72,7 +80,7 @@ export function Summary(p: Props) {
       >
         <div style={{ minWidth: 0 }}>
           <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>
-            {`${FUNDED.name} ${sizeLabel(p.startMoney)}${p.since ? `, started ${p.since}` : ''}`}
+            {`${FUNDED.name} ${sizeLabel(p.startMoney)}, ${fundedTest(p.test).label}${p.since ? `, started ${p.since}` : ''}`}
           </p>
           {!p.failed && (
             <p
@@ -277,7 +285,9 @@ export function Summary(p: Props) {
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {usdShort(p.startMoney)} play account
         </b>{' '}
-        takes only John&apos;s London v1 signals and risks{' '}
+        {p.test === 'breakouts'
+          ? "takes John's London v1 signals first, then the London breakout's, and risks"
+          : "takes only John's London v1 signals and risks"}{' '}
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {p.riskPct}% ({usdShort((p.startMoney * p.riskPct) / 100)})
         </b>{' '}

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { bookClose, type ClosedLiveTrade, type LiveTrade, type RaceState } from './live'
-import { fundedAccountId, fundedAccounts, withFunded } from './funded'
+import { FUNDED_TESTS, fundedAccountId, fundedAccounts, withFunded } from './funded'
 
 // "Close now" on Today (John, 2026-11-11). The live site cannot write
 // race.json (the Mac's race check is its only writer), so a tap stores a close
@@ -12,14 +12,21 @@ import { fundedAccountId, fundedAccounts, withFunded } from './funded'
 
 /**
  * The $10K funded test's account in a trade id; the other sizes are
- * "funded-50k" and so on (fundedAccountId in ./funded.ts). Lab trades use
- * their strategy id.
+ * "funded-50k" and so on, the v1 + breakouts test "funded-b-10k" and so on
+ * (fundedAccountId in ./funded.ts). Lab trades use their strategy id.
  */
 export const FUNDED_ACCOUNT = 'funded'
 
-/** The funded account a trade id's account part names, or undefined for a Lab account. */
-const fundedById = (state: RaceState, account: string) =>
-  fundedAccounts(state).find((f) => fundedAccountId(f.startMoney) === account)
+/** The funded account (and its test) a trade id's account part names, or undefined for a Lab account. */
+const fundedById = (state: RaceState, account: string) => {
+  for (const { id: test } of FUNDED_TESTS) {
+    const f = fundedAccounts(state, test).find(
+      (x) => fundedAccountId(x.startMoney, test) === account,
+    )
+    if (f) return { f, test }
+  }
+  return undefined
+}
 
 /** "<account>|<market>|<entry time, Unix seconds>". The worker checks the same pattern. */
 export const CLOSE_ID = /^[a-z0-9-]{1,64}\|[A-Za-z0-9-]{1,32}\|\d{1,12}$/
@@ -44,7 +51,7 @@ export function findOpen(
 ): { account: string; trade: LiveTrade } | null {
   const [account, market, entry] = id.split('|')
   const list = account.startsWith(FUNDED_ACCOUNT)
-    ? fundedById(state, account)?.open
+    ? fundedById(state, account)?.f.open
     : state.strategies[account]?.open
   const trade = list?.find((t) => t.market === market && t.entryTime === Number(entry))
   return trade ? { account, trade } : null
@@ -138,10 +145,11 @@ export function bookCloseRequests(
       continue
     }
     const fee = feeRate(trade.market)
-    // A funded trade closes in its own size's account only.
-    const f = account.startsWith(FUNDED_ACCOUNT) ? fundedById(next, account) : undefined
+    // A funded trade closes in its own test and size's account only.
+    const inFunded = account.startsWith(FUNDED_ACCOUNT) ? fundedById(next, account) : undefined
     let c: ClosedLiveTrade
-    if (f) {
+    if (inFunded) {
+      const { f, test } = inFunded
       const own = bookClose(f.open.find((t) => t === trade)!, d.exit, d.time, d.reason, fee)
       c = own
       const after = {
@@ -152,7 +160,8 @@ export function bookCloseRequests(
       }
       next = withFunded(
         next,
-        fundedAccounts(next).map((x) => (x === f ? after : x)),
+        fundedAccounts(next, test).map((x) => (x === f ? after : x)),
+        test,
       )
     } else {
       const s = next.strategies[account]

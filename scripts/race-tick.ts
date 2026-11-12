@@ -5,7 +5,7 @@
  *   npx tsx scripts/race-tick.ts --reset --start 1000
  *   npx tsx scripts/race-tick.ts --push-only   (send the saved state to the live site, no tick)
  *   npx tsx scripts/race-tick.ts --no-push     (tick without sending, for a test file in RACE_FILE)
- *   npx tsx scripts/race-tick.ts --funded-reset (back up race.json, start fresh $10K/$50K/$100K/$200K funded tests)
+ *   npx tsx scripts/race-tick.ts --funded-reset (back up race.json, start both funded tests fresh, $10K/$50K/$100K/$200K each)
  *   make race-reset                            (back up race.json, start over, first tick, push)
  *
  * Fetches fresh candles per market (Kraken's free public OHLC for crypto,
@@ -71,13 +71,15 @@ import {
   addFundedSizes,
   checkFunded,
   FUNDED,
-  FUNDED_SIGNALS_FROM,
+  FUNDED_FEEDS,
+  FUNDED_TESTS,
   fundedAccounts,
+  fundedLabel,
   fundedView,
-  sizeLabel,
   stepFunded,
   withFunded,
   type FundedCandidate,
+  type FundedTick,
 } from '../src/lib/race/funded'
 import {
   applyDailyClose,
@@ -368,12 +370,12 @@ async function tick() {
     for (const id of r.waiting) console.log(`  Close request waits for its minute: ${id}`)
     clearIds = [...r.booked.map((b) => b.id), ...r.dropped]
   }
-  // The funded test takes only John's London v1's signals (FUNDED_SIGNALS_FROM in
-  // src/lib/race/funded.ts), on v1's own market ticks (closed candles, its news
-  // close, the lone-wick flag). Other markets get a plain tick, for a trade it
-  // opened before the switch.
+  // The funded tests take the signals of their feeds only (FUNDED_TESTS in
+  // src/lib/race/funded.ts: v1 only, and v1 + London breakout), each on its own
+  // strategy's market ticks (v1: closed candles, its news close, the lone-wick
+  // flag). Other markets get a plain tick, for a trade opened before a switch.
   const candidates: FundedCandidate[] = []
-  const marketTicks = new Map<string, MarketTick>()
+  const fundedTicks: FundedTick[] = []
   for (const p of PLANS) {
     const ticks: MarketTick[] = []
     for (const id of p.markets) {
@@ -400,11 +402,12 @@ async function tick() {
           : {}),
       })
       const t = ticks[ticks.length - 1]
-      if (p.id === FUNDED_SIGNALS_FROM) {
-        marketTicks.set(id, t)
+      if (FUNDED_FEEDS.includes(p.id)) {
+        fundedTicks.push({ ...t, strategy: p.id })
         if (t.signal)
           candidates.push({ strategy: p.id, market: id, signal: t.signal, reanchor: t.reanchor })
-      } else if (p.kind !== 'lab' && !marketTicks.has(id)) marketTicks.set(id, t)
+      } else if (p.kind !== 'lab' && !fundedTicks.some((x) => x.market === id))
+        fundedTicks.push({ ...t, strategy: p.id })
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
     state.strategies[p.id] = r.strategy
@@ -431,40 +434,45 @@ async function tick() {
         )
   }
 
-  // The funded tests: $10K, $50K, $100K and $200K accounts, the same rules,
-  // fed only by John's London v1 (src/lib/race/funded.ts).
-  if (args.includes('--funded-reset') && fundedAccounts(state).length) {
+  // The funded tests (src/lib/race/funded.ts): v1 only and v1 + breakouts, each
+  // in $10K, $50K, $100K and $200K accounts with the same rules.
+  if (
+    args.includes('--funded-reset') &&
+    FUNDED_TESTS.some((t) => fundedAccounts(state, t.id).length)
+  ) {
     const bak = `${FILE}.bak-${stamp()}-funded`
     copyFileSync(FILE, bak)
     console.log(`  Funded tests reset (the old ones are kept in ${bak})`)
-    state = withFunded(state, [])
+    for (const t of FUNDED_TESTS) state = withFunded(state, [], t.id)
   }
-  // A size not running yet starts empty now; the running ones keep their history.
-  const sizes = addFundedSizes(fundedAccounts(state), Date.now(), candidates)
-  for (const a of sizes.added)
-    console.log(
-      `  Funded test ${sizeLabel(a.startMoney)} started with $${a.startMoney.toLocaleString('en-US')}; it trades signals that come after now`,
-    )
   const lastPrices = state.prices
-  const steppedFunded = sizes.accounts.map((acc) => {
-    const label = `${FUNDED.name} ${sizeLabel(acc.startMoney)}`
-    const f = stepFunded(acc, [...marketTicks.values()], candidates, nowSec, blockNew, lastPrices)
-    closed += f.closed.length
-    opened += f.opened.length
-    for (const c of f.closed)
-      console.log(`  CLOSE ${label} ${c.market} ${c.reason} ${money(c.pnl)}`)
-    for (const t of f.opened) {
-      const inst = getInstrument(t.market)
-      const size = sizingOf({ inst, ...t, target: t.takeProfit })
+  for (const test of FUNDED_TESTS) {
+    // A size not running yet starts empty now; the running ones keep their history.
+    const sizes = addFundedSizes(fundedAccounts(state, test.id), Date.now(), candidates)
+    for (const a of sizes.added)
       console.log(
-        `  OPEN  ${label} ${t.market} ${t.direction} at ${t.entry} (signal from ${t.strategy}): ${sizingLine(inst, size)}`,
+        `  ${fundedLabel(a.startMoney, test.id)} started with $${a.startMoney.toLocaleString('en-US')}; it trades signals that come after now`,
       )
-    }
-    for (const x of f.passed)
-      console.log(`  PASS  ${label} ${x.market} (${x.strategy}): ${x.reason}`)
-    return f.funded
-  })
-  state = withFunded(state, steppedFunded)
+    const stepped = sizes.accounts.map((acc) => {
+      const label = fundedLabel(acc.startMoney, test.id)
+      const f = stepFunded(acc, fundedTicks, candidates, nowSec, blockNew, lastPrices, test.feeds)
+      closed += f.closed.length
+      opened += f.opened.length
+      for (const c of f.closed)
+        console.log(`  CLOSE ${label} ${c.market} ${c.reason} ${money(c.pnl)}`)
+      for (const t of f.opened) {
+        const inst = getInstrument(t.market)
+        const size = sizingOf({ inst, ...t, target: t.takeProfit })
+        console.log(
+          `  OPEN  ${label} ${t.market} ${t.direction} at ${t.entry} (signal from ${t.strategy}): ${sizingLine(inst, size)}`,
+        )
+      }
+      for (const x of f.passed)
+        console.log(`  PASS  ${label} ${x.market} (${x.strategy}): ${x.reason}`)
+      return f.funded
+    })
+    state = withFunded(state, stepped, test.id)
+  }
 
   // Daily close: the first check at or after 12:45 AST on a weekday closes every open trade.
   const daily = applyDailyClose(state, nowSec, feeRate)
@@ -475,17 +483,19 @@ async function tick() {
   if (daily.missing.length)
     console.log(`  still open after the daily close (no price): ${daily.missing.join(', ')}`)
   const closePrices = state.prices
-  state = withFunded(
-    state,
-    fundedAccounts(state).map((acc) => {
-      const f = checkFunded(acc, closePrices, nowSec)
-      if (f.status !== acc.status)
-        console.log(
-          `  ${FUNDED.name} ${sizeLabel(f.startMoney)} ${f.status.toUpperCase()}: ${f.statusNote}`,
-        )
-      return f
-    }),
-  )
+  for (const test of FUNDED_TESTS)
+    state = withFunded(
+      state,
+      fundedAccounts(state, test.id).map((acc) => {
+        const f = checkFunded(acc, closePrices, nowSec)
+        if (f.status !== acc.status)
+          console.log(
+            `  ${fundedLabel(f.startMoney, test.id)} ${f.status.toUpperCase()}: ${f.statusNote}`,
+          )
+        return f
+      }),
+      test.id,
+    )
 
   state.tickCount += 1
   state.ticks = [
@@ -502,10 +512,12 @@ async function tick() {
       `  ${s.name.padEnd(34)} $${s.money.toFixed(2).padStart(9)}  ${money(s.pnl)}  open ${s.open.length}  closed ${s.closed.length}`,
     )
   }
-  for (const acc of fundedAccounts(state)) {
+  for (const acc of FUNDED_TESTS.flatMap((t) =>
+    fundedAccounts(state, t.id).map((a) => ({ ...a, label: fundedLabel(a.startMoney, t.id) })),
+  )) {
     const v = fundedView(acc, state.prices, nowSec)
     console.log(
-      `  ${`${FUNDED.name} ${sizeLabel(acc.startMoney)}`.padEnd(34)} $${v.money.toFixed(2).padStart(9)}  ${money(v.result)}  open ${v.openCount}  closed ${acc.closed.length}  ${v.status}, day loss $${v.dayLoss.toFixed(2)} of $${v.dayLimit.toFixed(2)}, ${v.days} of ${FUNDED.minDays} days`,
+      `  ${acc.label.padEnd(34)} $${v.money.toFixed(2).padStart(9)}  ${money(v.result)}  open ${v.openCount}  closed ${acc.closed.length}  ${v.status}, day loss $${v.dayLoss.toFixed(2)} of $${v.dayLimit.toFixed(2)}, ${v.days} of ${FUNDED.minDays} days`,
     )
   }
   console.log(`Saved ${FILE} (play money only)`)

@@ -31,8 +31,16 @@ import {
   type Evidence,
   type SortKey,
 } from '@/lib/race/compare'
-import { FUNDED, FUNDED_SIZES, fundedOf, fundedView, sizeLabel } from '@/lib/race/funded'
+import {
+  FUNDED,
+  FUNDED_SIZES,
+  FUNDED_TESTS,
+  fundedOf,
+  fundedView,
+  sizeLabel,
+} from '@/lib/race/funded'
 import { useFundedSize } from '@/lib/hooks/useFundedSize'
+import { SizeSwitch } from '@/components/home/SizeSwitch'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
@@ -109,7 +117,7 @@ export default function ComparePage() {
         Which strategy is worth backing.
       </p>
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-        The funded test first, then every strategy side by side: how it does live and what its past
+        The funded tests first, then every strategy side by side: how it does live and what its past
         tests showed. The rules behind each one are on{' '}
         <Link href="/strategies" style={{ color: 'var(--indigo)', padding: '14px 0' }}>
           Strategies
@@ -582,7 +590,7 @@ const fetcher = async (url: string) => {
   return res.json() as Promise<{ state: RaceState | null; installed: boolean }>
 }
 
-/** The funded test (src/lib/race/funded.ts): the account Today follows. */
+/** The two funded tests (src/lib/race/funded.ts), side by side for one size: the accounts Today follows. */
 function FundedLive() {
   const { data } = useSWR('/api/race', fetcher, { refreshInterval: 60_000 })
   const [now] = useState(() => Date.now())
@@ -590,161 +598,177 @@ function FundedLive() {
   const state = data?.state ?? null
   if (!state) return null
   const nowSec = Math.floor(now / 1000)
-  const f = fundedOf(state, size)
-  const v = f ? fundedView(f, state.prices, nowSec) : null
+  const tests = FUNDED_TESTS.map((t) => {
+    const f = fundedOf(state, size, t.id)
+    return { ...t, f, v: f ? fundedView(f, state.prices, nowSec) : null }
+  })
   const nameOf = (id: string) => state.strategies[id]?.name ?? id
   const cell: React.CSSProperties = { minWidth: 0, textAlign: 'right' }
-  const cols = '3.4em minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.9fr) 4.2em'
+  // Fixed px number columns: the header (11px) and the rows (13px) line up, and $200,000 never runs into the P&L.
+  const cols = 'minmax(0, 1fr) 64px 60px 38px 46px'
   return (
     <section style={{ ...card, marginTop: 16 }} aria-labelledby="funded-title">
       <div style={sectionHead}>
         <h2 id="funded-title" style={h2}>
-          {FUNDED.name}: four sizes
+          {`${FUNDED.name}s: ${FUNDED_TESTS.map((t) => t.label).join(' and ')}`}
         </h2>
       </div>
       {/* One string: JSX text with entities can lose a space here (docs/dashboard.md, Gotcha). */}
       <p style={small}>
-        {`Four play accounts, ${FUNDED_SIZES.map(sizeLabel).join(', ')}, with the same rules: each takes only John's London v1 signals (GBP/USD and gold) at the same moment, with v1's own exits, and every limit is the same share of its size. ${FUNDED.sizing.riskPct}% risk per trade, rounded down to 0.01 lot, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${FUNDED.dailyLossPct}% of the start (counted from the day's opening balance) or money ${FUNDED.maxLossPct}% under the start fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${FUNDED.worstCasePct}% of the start. Every other strategy trades only in its own play account, compared below. Tap a size for its trades; Today shows the same size.`}
+        {`Two tests with the same rules, each in four sizes (${FUNDED_SIZES.map(sizeLabel).join(', ')}). v1 only takes John's London v1 signals (GBP/USD and gold). v1 + breakouts takes those first, then the London breakout's (GBP/USD, EUR/GBP and gold); each trade keeps the exits of the strategy that opened it. ${FUNDED.sizing.riskPct}% risk per trade, rounded down to 0.01 lot, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${FUNDED.dailyLossPct}% of the start (counted from the day's opening balance) or money ${FUNDED.maxLossPct}% under the start fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${FUNDED.worstCasePct}% of the start. Every other strategy trades only in its own play account, compared below. Today shows the same size.`}
       </p>
-      <div role="group" aria-label="Funded test sizes" style={{ marginTop: 12, fontSize: 13 }}>
+      <div style={{ marginTop: 12 }}>
+        <SizeSwitch value={size} onChange={setSize} />
+      </div>
+      <div
+        role="table"
+        aria-label={`Funded tests at ${sizeLabel(size)}`}
+        style={{ marginTop: 10, fontSize: 13 }}
+      >
         <div
-          aria-hidden
+          role="row"
           style={{
             display: 'grid',
             gridTemplateColumns: cols,
-            gap: 6,
-            padding: '0 10px 4px',
+            gap: 4,
+            padding: '0 8px 4px',
             fontSize: 11,
             color: 'var(--text-secondary)',
           }}
         >
-          <span>Size</span>
-          <span style={cell}>Balance</span>
-          <span style={cell}>P&amp;L</span>
-          <span style={cell}>Day loss</span>
-          <span style={cell}>Status</span>
+          <span role="columnheader">Test</span>
+          <span role="columnheader" style={cell}>
+            Balance
+          </span>
+          <span role="columnheader" style={cell}>
+            P&amp;L
+          </span>
+          <span role="columnheader" style={cell}>
+            Day loss
+          </span>
+          <span role="columnheader" style={cell}>
+            Status
+          </span>
         </div>
-        {FUNDED_SIZES.map((s) => {
-          const a = fundedOf(state, s)
-          const av = a ? fundedView(a, state.prices, nowSec) : null
-          const on = s === size
-          return (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={on}
-              aria-label={
-                av
-                  ? `${sizeLabel(s)}: balance ${money(a!.balance)}, ${money(av.result, { sign: true })}, day loss ${((av.dayLoss / s) * 100).toFixed(1)}% of ${FUNDED.dailyLossPct}%, ${av.status}`
-                  : `${sizeLabel(s)}: starts at the next race check`
-              }
-              onClick={() => setSize(s)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: cols,
-                gap: 6,
-                alignItems: 'center',
-                width: '100%',
-                minHeight: 44,
-                padding: '0 10px',
-                marginTop: 4,
-                borderRadius: 8,
-                border: `1px solid ${on ? 'var(--text-primary)' : 'var(--border)'}`,
-                background: on ? 'var(--bg-hover)' : 'transparent',
-                color: 'var(--text-primary)',
-                font: 'inherit',
-                fontVariantNumeric: 'tabular-nums',
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              <b style={{ fontWeight: 600 }}>{sizeLabel(s)}</b>
-              {a && av ? (
-                <>
-                  <span style={cell}>{money(a.balance)}</span>
-                  <span style={{ ...cell, color: color(av.result) }}>
-                    {money(av.result, { sign: true })}
-                  </span>
-                  <span style={cell}>{`${((av.dayLoss / s) * 100).toFixed(1)}%`}</span>
-                  <span
-                    style={{
-                      ...cell,
-                      color:
-                        av.status === 'failed'
-                          ? 'var(--red)'
-                          : av.status === 'passed'
-                            ? 'var(--green)'
-                            : 'var(--text-secondary)',
-                    }}
-                  >
-                    {av.status === 'active'
-                      ? 'Active'
-                      : av.status === 'passed'
-                        ? 'Passed'
-                        : 'Failed'}
-                  </span>
-                </>
-              ) : (
-                <span style={{ ...cell, gridColumn: '2 / -1', color: 'var(--text-secondary)' }}>
-                  Starts at the next check
+        {tests.map(({ id, label, f, v }) => (
+          <div
+            key={id}
+            role="row"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: cols,
+              gap: 4,
+              alignItems: 'center',
+              minHeight: 44,
+              padding: '0 8px',
+              marginTop: 4,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <b role="rowheader" style={{ fontWeight: 600 }}>
+              {label}
+            </b>
+            {f && v ? (
+              <>
+                <span role="cell" style={cell}>
+                  {money(f.balance)}
                 </span>
-              )}
-            </button>
-          )
-        })}
+                <span role="cell" style={{ ...cell, color: color(v.result) }}>
+                  {money(v.result, { sign: true })}
+                </span>
+                <span role="cell" style={cell}>{`${((v.dayLoss / size) * 100).toFixed(1)}%`}</span>
+                <span
+                  role="cell"
+                  style={{
+                    ...cell,
+                    color:
+                      v.status === 'failed'
+                        ? 'var(--red)'
+                        : v.status === 'passed'
+                          ? 'var(--green)'
+                          : 'var(--text-secondary)',
+                  }}
+                >
+                  {v.status === 'active' ? 'Active' : v.status === 'passed' ? 'Passed' : 'Failed'}
+                </span>
+              </>
+            ) : (
+              <span
+                role="cell"
+                style={{ ...cell, gridColumn: '2 / -1', color: 'var(--text-secondary)' }}
+              >
+                Starts at the next check
+              </span>
+            )}
+          </div>
+        ))}
         <p style={{ ...small, marginTop: 6 }}>
           {`Balance counts closed trades; P&L adds the open ones at the last check. Day loss is the share of the start lost since the day began (the limit is ${FUNDED.dailyLossPct}%).`}
         </p>
       </div>
-      {!f || !v ? (
-        <p style={{ fontSize: 13, marginTop: 12 }}>
-          {`The ${sizeLabel(size)} account starts with ${money(size)} at the next race check.`}
-        </p>
-      ) : (
-        <>
-          <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 16 }}>
-            {`${sizeLabel(size)}, started ${when(f.startedAt / 1000)}`}
-          </h3>
-          <p style={{ fontSize: 13, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
-            <b>{money(v.money, { cents: true })}</b>{' '}
-            <span style={{ color: color(v.result) }}>
-              {money(v.result, { sign: true, cents: true })}
-            </span>
-            {` · ${v.status} · ${v.days} of ${FUNDED.minDays} trading days · day loss ${money(v.dayLoss)} of ${money(v.dayLimit)}`}
-          </p>
-          {v.statusNote && (
-            <p style={{ ...small, color: v.status === 'failed' ? 'var(--red)' : 'var(--green)' }}>
-              {v.status === 'failed' ? 'Failed' : 'Passed'}: {v.statusNote}.
-            </p>
+      {tests.map(({ id, label, f, v }) => (
+        <div
+          key={id}
+          style={{ marginTop: 16, paddingTop: 12, borderTop: '0.5px solid var(--border)' }}
+        >
+          {!f || !v ? (
+            <>
+              <h3 style={{ fontSize: 14, fontWeight: 600 }}>{`${label}, ${sizeLabel(size)}`}</h3>
+              <p style={{ fontSize: 13, marginTop: 4 }}>
+                {`Starts with ${money(size)} at the next race check.`}
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 style={{ fontSize: 14, fontWeight: 600 }}>
+                {`${label}, ${sizeLabel(size)}, started ${when(f.startedAt / 1000)}`}
+              </h3>
+              <p style={{ fontSize: 13, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+                <b>{money(v.money, { cents: true })}</b>{' '}
+                <span style={{ color: color(v.result) }}>
+                  {money(v.result, { sign: true, cents: true })}
+                </span>
+                {` · ${v.status} · ${v.days} of ${FUNDED.minDays} trading days · day loss ${money(v.dayLoss)} of ${money(v.dayLimit)}`}
+              </p>
+              {v.statusNote && (
+                <p
+                  style={{ ...small, color: v.status === 'failed' ? 'var(--red)' : 'var(--green)' }}
+                >
+                  {v.status === 'failed' ? 'Failed' : 'Passed'}: {v.statusNote}.
+                </p>
+              )}
+              <TradeList
+                title={`Open trades (${f.open.length}), P&L at the last check`}
+                trades={f.open.map((t) => ({
+                  key: `${t.market}-${t.entryTime}`,
+                  market: t.market,
+                  direction: t.direction,
+                  time: t.entryTime,
+                  how: `opened from ${nameOf(t.strategy)}`,
+                  pnl: openPnl(t, state.prices[t.market]),
+                  size: sizeOf(t),
+                }))}
+                empty="No open trades."
+              />
+              <TradeList
+                title={`Closed trades (${f.closed.length}), fees included`}
+                trades={[...f.closed].reverse().map((t) => ({
+                  key: `${t.market}-${t.entryTime}${t.part1Of ? '-part' : ''}`,
+                  market: t.market,
+                  direction: t.direction,
+                  time: t.exitTime,
+                  how: `${liveHow(t)}, from ${nameOf(t.strategy)}`,
+                  pnl: t.pnl,
+                  size: sizeOf(t),
+                }))}
+                empty="No closed trades yet."
+              />
+            </>
           )}
-          <TradeList
-            title={`Open trades (${f.open.length}), P&L at the last check`}
-            trades={f.open.map((t) => ({
-              key: `${t.market}-${t.entryTime}`,
-              market: t.market,
-              direction: t.direction,
-              time: t.entryTime,
-              how: `opened from ${nameOf(t.strategy)}`,
-              pnl: openPnl(t, state.prices[t.market]),
-              size: sizeOf(t),
-            }))}
-            empty="No open trades."
-          />
-          <TradeList
-            title={`Closed trades (${f.closed.length}), fees included`}
-            trades={[...f.closed].reverse().map((t) => ({
-              key: `${t.market}-${t.entryTime}${t.part1Of ? '-part' : ''}`,
-              market: t.market,
-              direction: t.direction,
-              time: t.exitTime,
-              how: `${liveHow(t)}, from ${nameOf(t.strategy)}`,
-              pnl: t.pnl,
-              size: sizeOf(t),
-            }))}
-            empty="No closed trades yet."
-          />
-        </>
-      )}
+        </div>
+      ))}
     </section>
   )
 }

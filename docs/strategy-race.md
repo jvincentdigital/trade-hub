@@ -341,7 +341,7 @@ risking 2% of its own balance.
 - **Close now** names one size (`funded|...` is the $10K, `funded-50k|...`
   and so on for the others) and closes the trade in that account only. The
   12:45 close and `race-close-all.ts` close every size.
-- `make funded-reset` resets all four.
+- `make funded-reset` resets all four (both tests since 2026-11-12).
 
 The tick log shows its lines with the name `Funded test <size>`, for example:
 
@@ -350,6 +350,58 @@ The tick log shows its lines with the name `Funded test <size>`, for example:
   CLOSE Funded test $50K GBP-USD target +$520.90
   PASS  Funded test $10K pax-gold (johns-london-v1): against the open GBP-USD short (one pound/dollar bet per account)
   Funded test $200K                  $200000.00  +$0.00  open 0  closed 0  active, day loss $0.00 of $10000.00, 0 of 4 days
+```
+
+### Second test: v1 + breakouts (John, 2026-11-12)
+
+On the morning of 2026-11-12 the London breakout (Lab) sold gold at 03:00
+AST and went into profit, while the funded test (v1 only) took nothing. John
+asked for a second funded test next to the first, so the two can be compared:
+
+- **v1 only** (test A, `funded` + `fundedSizes` in race.json, unchanged):
+  John's London v1 signals only (`FUNDED_SIGNALS_FROM`).
+- **v1 + breakouts** (test B, `fundedB` in race.json): the same rules and the
+  same four sizes, fed by John's London v1 AND the London breakout, in that
+  order (`FUNDED_B_SIGNALS_FROM` in `funded.ts`, one constant). On a check
+  where both signal one market (GBP/USD, gold), v1's is offered first and
+  opens; the breakout's is passed ("a GBP-USD trade is already open (from
+  johns-london-v1)").
+
+How it is built:
+
+- `FUNDED_TESTS` lists both tests (`id`, `label`, `feeds`). `stepFunded`
+  takes the feed list as its last parameter (v1 only by default) and offers
+  the candidates in feed order; signals from any other strategy are ignored
+  and not marked used. `fundedAccounts`, `fundedOf`, `withFunded` and
+  `fundedAccountId` take the test (`'v1'` by default).
+- **Each trade keeps its own strategy's exits.** The tick hands the funded
+  tests every feed strategy's own market ticks, tagged with the strategy
+  (`FundedTick`): a v1 trade uses v1's tick (closed candles, half at TP1, the
+  forced close, the news close, the lone-wick rule), a breakout trade the
+  breakout's (its plain 2R stop and target, as in its Lab account). A trade
+  with no tick of its own strategy gets another strategy's as price and path
+  only (no news close, first target or deadline). An untagged tick counts as
+  every strategy's own (the tests use those).
+- **Start**: the first tick that runs this code starts B empty in all four
+  sizes, with every signal out there at that moment marked used, so it only
+  trades signals that come after it starts. A keeps all its history. The log
+  says "Funded test v1 + breakouts $10K started with $10,000 ...".
+- **Limits** are per test and per size: B has its own day loss, 3 new a day,
+  worst case and max loss; A's limits never block B or the other way round.
+- **Close now** ids: `funded-b-10k|...`, `funded-b-50k|...` and so on close
+  the trade in that test and size only. The 12:45 close, `race-close-all.ts`
+  and `make funded-reset` cover both tests.
+- **Pages**: Today has a "v1 only | v1 + breakouts" switch above the size
+  switch on the summary card (`TestSwitch` in `SizeSwitch.tsx`, saved as
+  `trade-hub-funded-test`, `useFundedTest.ts`). Compare shows both tests for
+  the chosen size: one table with a Test column, then each test's open and
+  closed trades.
+
+Tick log names: `Funded test v1 + breakouts <size>`, for example:
+
+```
+  OPEN  Funded test v1 + breakouts $10K pax-gold short at 3947.91 (signal from london-breakout): 0.12 lots ...
+  PASS  Funded test v1 + breakouts $10K GBP-USD (london-breakout): a GBP-USD trade is already open (from johns-london-v1)
 ```
 
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)

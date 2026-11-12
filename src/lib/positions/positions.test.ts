@@ -101,11 +101,33 @@ describe('funded test and demo rows', () => {
     }
     const [p] = fundedPositions(big, 50_000)
     expect(p.closeId).toBe('funded-50k|bitcoin|100')
-    expect(p.account).toBe('$50K')
+    expect(p.account).toBe('$50K v1 only')
     expect(p.units).toBe(1)
     expect(fundedPositions(big)[0].closeId).toBe('funded|bitcoin|100') // the $10K by default
     expect(fundedPositions(big, 200_000)).toEqual([]) // not started yet
     expect(settledSoFar(big, 50_000)).toBeCloseTo(120 - 0.01)
+  })
+
+  it('shows the chosen test: v1 + breakouts rows carry that test in their Close now id', () => {
+    const both = {
+      ...state,
+      fundedB: [
+        {
+          ...createFunded(0, [], 50_000),
+          balance: 50_300,
+          open: [{ ...open, strategy: 'london-breakout', units: 2 }],
+        },
+      ],
+    }
+    const [p] = fundedPositions(both, 50_000, 'breakouts')
+    expect(p.closeId).toBe('funded-b-50k|bitcoin|100')
+    expect(p.account).toBe('$50K v1 + breakouts')
+    expect(p.units).toBe(2)
+    expect(settledSoFar(both, 50_000, 'breakouts')).toBeCloseTo(300 - 0.01)
+    // v1 only at $50K has not started here; its $10K is unchanged
+    expect(fundedPositions(both, 50_000)).toEqual([])
+    expect(fundedPositions(both)[0].closeId).toBe('funded|bitcoin|100')
+    expect(fundedPositions(both, 10_000, 'breakouts')).toEqual([])
   })
 
   it('header totals: every target hit and every stop hit', () => {
