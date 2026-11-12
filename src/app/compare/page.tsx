@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, RefreshCw, Scale, TriangleAlert } from 'luci
 import { DemoBadge } from '@/components/paper/DemoBadge'
 import { fetchCryptoCandles, fetchForexOHLC } from '@/lib/data'
 import { FEE_RATE, LEVERAGE } from '@/lib/paper/engine'
-import { getInstrument, INSTRUMENTS, type PriceMap } from '@/lib/paper/instruments'
+import { formatQuote, getInstrument, INSTRUMENTS, type PriceMap } from '@/lib/paper/instruments'
 import { backtest } from '@/lib/rules/engine'
 import { ruleInstrumentIds } from '@/lib/rules/data'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
@@ -41,10 +41,13 @@ import {
 } from '@/lib/race/funded'
 import { useFundedSize } from '@/lib/hooks/useFundedSize'
 import { SizeSwitch } from '@/components/home/SizeSwitch'
-import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
+import { sizeText, sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
+import type { Call } from '@/lib/race/callSchema'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
 import { MoneyInput } from '@/components/ui/MoneyInput'
+import { Checklist } from '@/components/home/Checklist'
+import { CHECKLIST_NOTE, type TradeChecks } from '@/lib/race/checklist'
 
 const RULES = BUILT_IN_RULES.map((rule) => ({
   rule,
@@ -505,6 +508,7 @@ function TradeList({
   title,
   trades,
   empty,
+  checklist = false,
 }: {
   title: string
   trades: {
@@ -516,8 +520,14 @@ function TradeList({
     pnl: number
     /** Size line: lots or coins, $ per pip, risk, goal, R:R. */
     size?: string
+    /** Live race trades: the confidence checklist at entry. */
+    checks?: TradeChecks
+    /** John's calls: what he said when he called it. */
+    note?: string
   }[]
   empty: string
+  /** Live race trades: show each one's checklist (older ones say "not checked"). */
+  checklist?: boolean
 }) {
   return (
     <div style={{ marginTop: 12 }}>
@@ -527,7 +537,11 @@ function TradeList({
       ) : (
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {trades.map((t) => (
-            <li key={t.key} style={tradeRow}>
+            <li
+              key={t.key}
+              // Taller rows with a checklist: the side and P&L stay level with the market.
+              style={checklist ? { ...tradeRow, alignItems: 'flex-start' } : tradeRow}
+            >
               <span
                 style={{
                   color: t.direction === 'long' ? 'var(--green)' : 'var(--red)',
@@ -537,13 +551,19 @@ function TradeList({
               >
                 {t.direction === 'long' ? 'BUY' : 'SELL'}
               </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 {sym(t.market)}{' '}
                 <span style={{ color: 'var(--text-secondary)' }}>
                   {t.how}, {when(t.time)}
                 </span>
                 {t.size && <span style={sizeLine}>{t.size}</span>}
-              </span>
+                {t.note && <span style={sizeLine}>Your note: {t.note}</span>}
+                {checklist && (
+                  <div style={{ marginTop: 4 }}>
+                    <Checklist checks={t.checks} fontSize={11} note={false} />
+                  </div>
+                )}
+              </div>
               <span style={{ color: color(t.pnl), fontVariantNumeric: 'tabular-nums' }}>
                 {money(t.pnl, { sign: true, cents: true })}
               </span>
@@ -551,6 +571,7 @@ function TradeList({
           ))}
         </ul>
       )}
+      {checklist && trades.some((t) => t.checks) && <p style={small}>{CHECKLIST_NOTE}</p>}
     </div>
   )
 }
@@ -749,8 +770,10 @@ function FundedLive() {
                   how: `opened from ${nameOf(t.strategy)}`,
                   pnl: openPnl(t, state.prices[t.market]),
                   size: sizeOf(t),
+                  checks: t.checks,
                 }))}
                 empty="No open trades."
+                checklist
               />
               <TradeList
                 title={`Closed trades (${f.closed.length}), fees included`}
@@ -762,8 +785,10 @@ function FundedLive() {
                   how: `${liveHow(t)}, from ${nameOf(t.strategy)}`,
                   pnl: t.pnl,
                   size: sizeOf(t),
+                  checks: t.checks,
                 }))}
                 empty="No closed trades yet."
+                checklist
               />
             </>
           )}
@@ -785,6 +810,7 @@ const EVIDENCE_STYLE: Record<Evidence, React.CSSProperties> = {
   passed: { color: 'var(--green)', background: 'var(--green-dim)' },
   live: { color: 'var(--text-secondary)', background: 'var(--bg-hover)' },
   lost: { color: 'var(--red)', background: 'var(--red-dim)' },
+  calls: { color: 'var(--indigo)', background: 'var(--indigo-dim)' },
 }
 
 function EvidenceTag({ evidence }: { evidence: Evidence }) {
@@ -959,6 +985,7 @@ function CompareItem({
 
 function CompareDetail({ row: r }: { row: CompareRow }) {
   const s = r.stats
+  const calls = r.calls
   const cells: [string, string, string?][] = [
     ['Live P&L', money(r.pnl, { sign: true, cents: true }), color(r.pnl)],
     ['Closed trades', String(s.trades)],
@@ -987,8 +1014,11 @@ function CompareDetail({ row: r }: { row: CompareRow }) {
         {r.past.text}
       </p>
       <p style={small}>
-        {`Live since ${when(r.since / 1000)}: ${money(r.money, { cents: true })} now, ${r.open.length} open.`}
+        {calls && !calls.length
+          ? `No calls yet: tell Claude a trade in chat and it shows up here. ${money(r.money, { cents: true })} now.`
+          : `Live since ${when(r.since / 1000)}: ${money(r.money, { cents: true })} now, ${r.open.length} open.`}
       </p>
+      {calls && <WaitingOrders calls={calls} />}
       <TradeList
         title={`Open trades (${r.open.length}), P&L at the last check`}
         trades={r.open.map((t) => ({
@@ -996,11 +1026,14 @@ function CompareDetail({ row: r }: { row: CompareRow }) {
           market: t.market,
           direction: t.direction,
           time: t.entryTime,
-          how: 'opened',
+          how: calls ? `filled at ${formatQuote(t.entry, getInstrument(t.market))}` : 'opened',
           pnl: t.pnl,
           size: sizeOf(t),
+          checks: t.checks,
+          note: calls ? t.note : undefined,
         }))}
         empty="No open trades."
+        checklist
       />
       <TradeList
         title={`Closed trades (${r.closed.length}), fees included`}
@@ -1009,12 +1042,72 @@ function CompareDetail({ row: r }: { row: CompareRow }) {
           market: t.market,
           direction: t.direction,
           time: t.exitTime,
-          how: liveHow(t),
+          how: calls ? callHow(t) : liveHow(t),
           pnl: t.pnl,
           size: sizeOf(t),
+          checks: t.checks,
+          note: calls ? t.note : undefined,
         }))}
         empty="No closed trades yet."
+        checklist
       />
+    </div>
+  )
+}
+
+/** John's calls: a target close names its price (a call can have several targets). */
+const callHow = (t: ClosedLiveTrade) =>
+  t.reason === 'target'
+    ? `hit target ${formatQuote(t.exit, getInstrument(t.market))}${t.part1Of ? `, ${Math.round(t.part1Of * 100)}% closed` : ''}`
+    : liveHow(t)
+
+/** John's calls: limit orders still waiting to fill, newest call first. */
+function WaitingOrders({ calls }: { calls: Call[] }) {
+  const waiting = [...calls]
+    .reverse()
+    .flatMap((c) => c.orders.filter((o) => o.status === 'pending').map((o) => ({ c, o })))
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>
+        Waiting to fill ({waiting.length})
+      </p>
+      {waiting.length === 0 ? (
+        <p style={small}>No orders waiting.</p>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {waiting.map(({ c, o }) => {
+            const inst = getInstrument(c.market)
+            const px = (p: number) => formatQuote(p, inst)
+            const size = sizeText(
+              inst,
+              sizingOf({ inst, units: o.units, entry: o.entry, usdPerQuote: 1 }),
+            )
+            return (
+              <li key={`${c.id}-${o.entry}`} style={tradeRow}>
+                <span
+                  style={{
+                    color: c.direction === 'long' ? 'var(--green)' : 'var(--red)',
+                    fontWeight: 600,
+                    width: 34,
+                  }}
+                >
+                  {c.direction === 'long' ? 'BUY' : 'SELL'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {sym(c.market)}{' '}
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    limit {px(o.entry)}, until {when(c.expiresAt)}
+                  </span>
+                  <span style={sizeLine}>
+                    {`${size} · stop ${px(c.stop)} · ${c.targets.length > 1 ? 'targets' : 'target'} ${c.targets.map(px).join(', ')}`}
+                  </span>
+                  {c.note && <span style={sizeLine}>Your note: {c.note}</span>}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

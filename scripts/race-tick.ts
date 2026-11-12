@@ -31,7 +31,10 @@
  *
  * Close now taps from Today (stored in the relay worker) are booked first, at
  * the minute of the tap (src/lib/race/closeRequests.ts), and cleared after
- * the save. After saving, the state is PUT to the race relay worker (docs/live.md) when
+ * the save. Then John's calls (src/lib/race/johnsCalls.ts, made with
+ * scripts/race-call.ts): his limit orders fill and his trades close on
+ * Kraken's 1-minute candles since the last look; the entry window and the
+ * 12:45 close do not apply to them. After saving, the state is PUT to the race relay worker (docs/live.md) when
  * ~/.local/share/trade-hub/race.env exists (RACE_PUT_URL + RACE_WRITE_KEY).
  * A failed push only logs a line; the tick itself still counts.
  */
@@ -57,7 +60,9 @@ import {
   newsCloseDue,
   RACE_ONLY_MARKETS,
   type LabBot,
+  type LabSignal,
 } from '../src/lib/race/labBots'
+import { tradeChecks, withChecks } from '../src/lib/race/checklist'
 import { newsWindows, type Window } from '../src/lib/lab/news'
 import {
   entriesToday,
@@ -89,6 +94,8 @@ import {
   summarize,
   syncRaceState,
   tradeRisk,
+  type FundedTrade,
+  type LiveTrade,
   type MarketTick,
   type RaceState,
 } from '../src/lib/race/live'
@@ -114,6 +121,7 @@ import {
   type Minute,
 } from '../src/lib/race/closeRequests'
 import { KRAKEN_PAIRS } from '../src/lib/kraken'
+import { callLive, JOHNS_CALLS, stepCalls, withJohnsCalls } from '../src/lib/race/johnsCalls'
 
 const args = process.argv.slice(2)
 const startArg = args.includes('--start') ? Number(args[args.indexOf('--start') + 1]) : 1000
@@ -219,6 +227,15 @@ async function tick() {
   )
   state = synced.state
   for (const c of synced.changes) console.log(`  ${c}`)
+  // John's calls: his own $10,000 account, added at the first check that runs this code.
+  const withCalls = withJohnsCalls(state)
+  state = withCalls.state
+  if (withCalls.added)
+    console.log(
+      `  ${JOHNS_CALLS.name} joined the race with $${JOHNS_CALLS.startMoney.toLocaleString('en-US')}`,
+    )
+  const callsOpen = state.strategies[JOHNS_CALLS.id].open
+  const liveCalls = (state.calls ?? []).filter((c) => callLive(c, callsOpen))
 
   // Every market: its path candles. Rules: their own size. London breakout: 15m and 1h.
   const jobs = new Map<string, { id: string; tf: CandleTf }>()
@@ -234,6 +251,8 @@ async function tick() {
       if (p.kind === 'lab') want(id, p.bot.candles === 'kraken-ny4h' ? '1h' : p.bot.tf)
       if (p.kind === 'johns') want(id, '15m')
     }
+  // John's calls: the 1-hour candles for each fill's checklist.
+  for (const c of liveCalls) want(c.market, '1h')
   const data = new Map<string, OHLCCandle[]>()
   const skipped = new Set<string>()
   for (const [n, [k, { id, tf }]] of [...jobs.entries()].entries()) {
@@ -348,6 +367,19 @@ async function tick() {
     return latestSignal({ ...p.rule, timeframe: tf }, candles)
   }
 
+  // The confidence checklist (src/lib/race/checklist.ts), added to each trade
+  // after it opened: info only, it never blocks or changes a trade.
+  const checkOf = (t: LiveTrade, signal: Signal | null | undefined) =>
+    tradeChecks({
+      market: t.market,
+      entry: t.entry,
+      stop: t.stop,
+      entryTime: t.entryTime,
+      moveStart: (signal as LabSignal | null | undefined)?.moveStart,
+      news: johnsNews,
+      h1: ecb(t.market) ? [] : closedOnly(data.get(key(t.market, '1h')) ?? [], 1, nowSec),
+    })
+
   let checked = 0
   let opened = 0
   let closed = 0
@@ -369,6 +401,48 @@ async function tick() {
     for (const id of r.dropped) console.log(`  Close request for a trade that is not open: ${id}`)
     for (const id of r.waiting) console.log(`  Close request waits for its minute: ${id}`)
     clearIds = [...r.booked.map((b) => b.id), ...r.dropped]
+  }
+
+  // John's calls: fills, stops and targets on the 1-minute candles since each call's last look.
+  if (liveCalls.length) {
+    const minutes = new Map<string, Minute[]>()
+    for (const m of new Set(liveCalls.map((c) => c.market))) {
+      const since = Math.min(...liveCalls.filter((c) => c.market === m).map((c) => c.checkedTo))
+      await sleep(1100) // Kraken's public limit: about one call a second
+      try {
+        minutes.set(m, await fetchMinutes(KRAKEN_PAIRS[m], since))
+      } catch (e) {
+        console.log(`  ${m} 1-minute candles not loaded: ${(e as Error).message}`)
+      }
+    }
+    const pricesNow = state.prices
+    const r = stepCalls({
+      account: state.strategies[JOHNS_CALLS.id],
+      calls: state.calls ?? [],
+      minutes: (m) => minutes.get(m),
+      nowSec,
+      usdPerQuote: (m) => usdPerQuoteFor(getInstrument(m), pricesNow[m] ?? 0, pricesNow),
+      checks: (t) => checkOf(t, null),
+    })
+    state.strategies[JOHNS_CALLS.id] = r.account
+    state.calls = r.calls
+    checked += liveCalls.length
+    opened += r.filled.length
+    closed += r.closed.length
+    for (const n of r.notes) console.log(`  ${JOHNS_CALLS.name} ${n}`)
+    for (const t of r.filled) {
+      const inst = getInstrument(t.market)
+      const size = sizingLine(inst, sizingOf({ inst, ...t, target: t.takeProfit }))
+      console.log(
+        `  FILL  ${JOHNS_CALLS.name} #${t.call?.id} ${t.market} ${t.direction} at ${t.entry}: ${size}`,
+      )
+    }
+    for (const c of r.closed)
+      console.log(
+        `  CLOSE ${JOHNS_CALLS.name} #${c.call?.id} ${c.market} ${c.reason} at ${c.exit}${c.part1Of ? ` (${Math.round(c.part1Of * 100)}% of it)` : ''}: ${money(c.pnl)}`,
+      )
+    for (const x of r.cancelled)
+      console.log(`  CANCEL ${JOHNS_CALLS.name} #${x.call} order at ${x.entry}: ${x.why}`)
   }
   // The funded tests take the signals of their feeds only (FUNDED_TESTS in
   // src/lib/race/funded.ts: v1 only, and v1 + London breakout), each on its own
@@ -410,7 +484,12 @@ async function tick() {
         fundedTicks.push({ ...t, strategy: p.id })
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
-    state.strategies[p.id] = r.strategy
+    state.strategies[p.id] = {
+      ...r.strategy,
+      open: withChecks(r.strategy.open, r.opened, (t) =>
+        checkOf(t, ticks.find((m) => m.market === t.market)?.signal),
+      ),
+    }
     checked += ticks.length
     closed += r.closed.length
     opened += r.opened.length
@@ -469,7 +548,12 @@ async function tick() {
       }
       for (const x of f.passed)
         console.log(`  PASS  ${label} ${x.market} (${x.strategy}): ${x.reason}`)
-      return f.funded
+      const signalOf = (t: FundedTrade) =>
+        candidates.find((c) => c.strategy === t.strategy && c.market === t.market)?.signal
+      return {
+        ...f.funded,
+        open: withChecks(f.funded.open, f.opened, (t) => checkOf(t, signalOf(t))),
+      }
     })
     state = withFunded(state, stepped, test.id)
   }

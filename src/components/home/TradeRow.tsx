@@ -10,6 +10,7 @@ import type { OpenPosition, PositionMetrics, PositionStatus } from '@/lib/positi
 import { MINUS, rowLine, signedShort, track, usdShort, whyLevels } from '@/lib/positions/today'
 import { fmtLots, perMoney, qty, rrText, sizingOf } from '@/lib/sizing/sizing'
 import { hasIntraday } from '@/lib/feeds'
+import { Checklist } from './Checklist'
 import { MiniChart } from './MiniChart'
 import { pct, usd } from './format'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from './ui'
@@ -364,6 +365,12 @@ function Panel(props: {
           <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Why these levels.</b>{' '}
           {whyLevels(pos, rule)}
         </p>
+        {pos.source === 'race' && (
+          <div style={{ display: 'grid', gap: 4 }}>
+            <p style={{ fontSize: FS.sm, fontWeight: 600 }}>Checklist at entry</p>
+            <Checklist checks={pos.checks} fontSize={FS.sm} />
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>

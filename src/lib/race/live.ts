@@ -6,6 +6,8 @@ import { getInstrument } from '../paper/instruments'
 import { usdPerQuoteFor } from '../sizing/sizing'
 import { newTradeBlock, RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
 import { dailyCloseDue } from './session'
+import { tradeChecksSchema } from './checklist'
+import { callSchema, JOHNS_CALLS, tradeCallSchema } from './callSchema'
 
 // "Live from today" race: a forward test. Every hour a tick looks at fresh
 // candles. Each strategy trades ONE play account across all its markets (one
@@ -43,6 +45,10 @@ export const liveTradeSchema = z.object({
   deadline: z.number().optional(),
   /** John's London v1 on GBP/USD: a stop or target counts only when confirmed (the lone-wick rule in exitsOf). */
   confirm: z.boolean().optional(),
+  /** The confidence checklist at entry (./checklist.ts), info only; none on trades from before 2026-11-12. */
+  checks: tradeChecksSchema.optional(),
+  /** John's calls (./johnsCalls.ts): the call it filled from and its targets still ahead. */
+  call: tradeCallSchema.optional(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
 
@@ -152,6 +158,8 @@ export const raceStateSchema = z.object({
   fundedB: z.array(fundedSchema).optional(),
   /** Unix seconds of the check that did the last 12:45 AST daily close (./session.ts). */
   dailyCloseAt: z.number().optional(),
+  /** John's calls (./johnsCalls.ts): every call he made, oldest first, with its limit orders. */
+  calls: z.array(callSchema).optional(),
 })
 export type RaceState = z.infer<typeof raceStateSchema>
 
@@ -717,6 +725,8 @@ export function closeAll(
   timeSec: number,
   feeRate: (market: string) => number,
   reason: 'manual' | 'session' = 'manual',
+  /** Lab accounts left as they are (the daily close skips John's calls). */
+  skip: readonly string[] = [],
 ): { state: RaceState; closed: (ClosedLiveTrade & { strategy: string })[]; missing: string[] } {
   const closed: (ClosedLiveTrade & { strategy: string })[] = []
   const missing = new Set<string>()
@@ -740,6 +750,7 @@ export function closeAll(
   }
   const strategies = Object.fromEntries(
     Object.entries(state.strategies).map(([id, s]) => {
+      if (skip.includes(id)) return [id, s]
       const r = closeAccount(s.name, s.open, s.balance)
       return [id, { ...s, balance: r.balance, open: r.open, closed: [...s.closed, ...r.done] }]
     }),
@@ -771,6 +782,7 @@ export function closeAll(
  * first check at or after 12:45 AST on a weekday, every open trade closes at
  * that check's price, reason 'session'. A race that has never done one starts
  * counting from this check, so the rule begins at the next 12:45, not at once.
+ * John's calls keep running: they are his own trades (./johnsCalls.ts).
  */
 export function applyDailyClose(
   state: RaceState,
@@ -780,7 +792,7 @@ export function applyDailyClose(
   if (state.dailyCloseAt == null)
     return { state: { ...state, dailyCloseAt: nowSec }, closed: [], missing: [] }
   if (!dailyCloseDue(nowSec, state.dailyCloseAt)) return { state, closed: [], missing: [] }
-  const r = closeAll(state, state.prices, nowSec, feeRate, 'session')
+  const r = closeAll(state, state.prices, nowSec, feeRate, 'session', [JOHNS_CALLS.id])
   return { ...r, state: { ...r.state, dailyCloseAt: nowSec } }
 }
 

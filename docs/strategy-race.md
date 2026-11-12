@@ -475,6 +475,81 @@ same fallback prices (`src/lib/race/closeRequests.ts`, `docs/live.md`).
 The past-results leaderboard (part 1) does not use these rules: it still
 backtests every market, crypto included, to rank the rules.
 
+## John's calls (John, 2026-11-12)
+
+A $10,000 Lab account, `johns-calls`, for trades John calls himself. He says
+the trade in chat; Claude records it on the Mac Mini; the race tracks it
+live next to the strategies, with the same fees, stops, targets and
+checklist. On Compare it is the row "John's calls", tagged **Your calls**;
+Today does not show it (Today follows the funded test). The account joins
+empty at the first race check that runs this code.
+
+**Making a call** (`scripts/race-call.ts`, pure part `src/lib/race/johnsCalls.ts`):
+
+```bash
+make race-call MARKET=pax-gold SIDE=long ENTRIES=3905,3895,3885 STOP=3855 \
+  TARGETS=4134,4200 NOTE="what John said"   # RISK=2 SPLIT=50,50 EXPIRES=72 are the defaults
+make race-call-list
+make race-call-cancel ID=1    # waiting orders off; trades that filled keep running
+```
+
+The values come from the environment (make passes them on), so a note with
+quotes is fine. The script takes the race lock, checks the call, saves it in
+`race.json` (`calls`) and pushes like the tick (RACE_FILE set: never pushed).
+A call is refused, with every reason listed, when:
+
+- the market is not one the race prices live from Kraken (`NOT_LIVE`
+  markets USD/JPY, NZD/USD, GBP/JPY, and US30, have no live 1-minute price);
+- the stop is not below every entry (long) or above every entry (short), or
+  a target is not on the other side of every entry, or targets are not
+  nearest first;
+- RISK is not above 0 and at most 10, SPLIT does not give one % per target
+  adding up to 100, EXPIRES is not above 0;
+- an entry's share of the risk buys less than 0.01 lot;
+- every open and waiting call together would risk more than 10% of the
+  balance, or the free margin cannot hold it if every entry fills.
+
+**Sizes.** RISK (2% by default) is what the whole call loses if every entry
+fills and the stop is hit. Each entry gets an equal share of it (2% over 3
+entries: about 0.67% each), rounded DOWN to the market's lot step (0.01 lot:
+1 oz of gold, 1,000 forex units; crypto exact), so it never risks more. SPLIT
+is the % of each entry closed at each target, by default half at the first
+and the rest at the last; each share is rounded down to the lot step too and
+the last target takes what is left (1 oz of gold cannot be halved, so it all
+closes at the last target). With $10,000 the gold example above is 1 + 1 + 2
+oz, $150 at the stop.
+
+**Fills and exits** (`stepCalls`, every race check). The tick loads Kraken's
+1-minute candles for each market with a live call (the same feed as Close
+now and `race-close-all`) and walks every closed minute since the call's
+last look:
+
+1. Only minutes that start after the call count (the call's own minute
+   started before it): a touch before the call never fills.
+2. A buy limit fills when a minute's low reaches it (a sell limit: the high),
+   at the limit, or at the minute's open when the open was already past it.
+   A buy limit above the price fills at the next minute's open. The entry
+   fee is charged like any race trade (paid at the close).
+3. One stop for every entry. A minute that reaches the stop closes every open
+   trade of the call there, ones that filled in that minute too (the price
+   went through their entry to get there). A minute that opens past the stop
+   closes them at that open. Orders still waiting are then cancelled.
+4. Targets count only on minutes after the fill, nearest first; the stop wins
+   a minute that reaches both.
+5. Orders still waiting at EXPIRES (72 hours by default) are cancelled.
+   Trades that filled keep running until their stop, their last target or
+   Close now (`race-call-cancel` only takes waiting orders off).
+6. Forex minutes while the real market is shut are skipped, as in the race.
+
+**Not for John's calls:** the 02:00 to 12:30 AST entry window and the 12:45
+daily close (`applyDailyClose` leaves the account alone). They are his own
+trades: he decides when. The strategies' new-trade rules (Bitcoin only among
+crypto, one pound/dollar bet, at most 2 dollar bets, at most 5 open) do not
+apply either: one call is one idea, its ladder is several trades. `NOT_LIVE`
+markets stay blocked. Close now works on these trades (a trade id is
+`johns-calls|<market>|<entry time>`; two fills in one minute get entry times
+one second apart), and `race-close-all` closes them with everything else.
+
 ## Starting over
 
 `make race-reset` (or `make race-reset START=1000`) on the Mac Mini:
@@ -650,6 +725,8 @@ hourly job is not installed yet".
 | `src/lib/race/funded.ts`        | Pure: the funded test (limits, `stepFunded`, `checkFunded`, `fundedView`)                                    |
 | `src/lib/race/session.ts`       | Pure: entry window, 12:45 AST close, FTMO's Prague day                                                       |
 | `src/lib/race/closeRequests.ts` | Pure: Close now ids and booking (`bookCloseRequests`)                                                        |
+| `src/lib/race/johnsCalls.ts`    | Pure: John's calls (`planCall`, `stepCalls`, `cancelCall`); shapes in `callSchema.ts`                        |
+| `scripts/race-call.ts`          | Make, list or cancel a call (`make race-call`, `race-call-list`, `race-call-cancel`)                         |
 | `src/lib/race/store.ts`         | Server: reads the race and close requests (worker or local files)                                            |
 | `src/lib/sizing/sizing.ts`      | Pure: units, lots, $ per pip or per $1, risk, goal, R:R, text                                                |
 | `scripts/race-reset`            | Back up race.json, fresh race, first tick, push                                                              |

@@ -8,7 +8,7 @@
 # Convention: keep targets simple. If a target needs more than a few lines of
 # shell, put the logic in scripts/ and call it from here.
 
-.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset funded-reset claude-picks lab lab-report
+.PHONY: build test run start lint typecheck deploy logs status docs help extract-strategies race-tick race-reset funded-reset claude-picks lab lab-report race-call race-call-cancel race-call-list
 
 PROJECT_NAME := trade-hub
 
@@ -79,6 +79,15 @@ race-tick: ## Strategy race: one live tick for every strategy's play account (st
 
 race-close-all: ## Strategy race: close every open trade by hand at the first 1-minute price at or after AT (usage: make race-close-all AT=2026-11-11T17:04:31Z [DRY=1])
 	npx tsx scripts/race-close-all.ts --at $(AT) $(if $(DRY),--dry-run)
+
+race-call: ## John's calls: record a trade John called (usage: make race-call MARKET=pax-gold SIDE=long ENTRIES=3905,3895 STOP=3855 TARGETS=4134,4200 [RISK=2] [SPLIT=50,50] [NOTE="..."] [EXPIRES=72])
+	npx tsx scripts/race-call.ts
+
+race-call-cancel: ## John's calls: cancel a call's waiting orders, filled trades keep running (usage: make race-call-cancel ID=1)
+	npx tsx scripts/race-call.ts --cancel "$(ID)"
+
+race-call-list: ## John's calls: every call, its orders and what filled
+	npx tsx scripts/race-call.ts --list
 
 funded-reset: ## Funded tests: back up race.json, start both (v1 only, v1 + breakouts) fresh in all four sizes at this tick (Lab accounts untouched)
 	npx tsx scripts/race-tick.ts --funded-reset

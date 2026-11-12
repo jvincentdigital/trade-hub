@@ -42,6 +42,8 @@ export interface LabEntry {
   part1?: number
   /** Close time of the candle the signal came from. */
   signalTime: number
+  /** John's Fib: the candle of its 1 (start of the move). */
+  oneIdx?: number
 }
 
 export type ExitWhy = 'stop' | 'target' | 'target1+stop' | 'time' | 'news' | 'end'

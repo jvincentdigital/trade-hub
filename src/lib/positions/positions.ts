@@ -10,6 +10,7 @@ import {
   type FundedTestId,
 } from '../race/funded'
 import { tradeId } from '../race/closeRequests'
+import type { TradeChecks } from '../race/checklist'
 
 // Open trades from the funded test (the race account Today follows, fed by
 // every strategy's signals) and the demo account in one shape, plus the
@@ -40,6 +41,8 @@ export interface OpenPosition {
   closeId?: string
   /** Funded trades: which size and test it is in ("$50K v1 only"), for the Close now confirm. */
   account?: string
+  /** Race trades: the confidence checklist at entry; none on trades from before it. */
+  checks?: TradeChecks
 }
 
 export type PositionStatus = 'Near target' | 'Near stop' | 'Running' | 'No stop' | 'No price'
@@ -145,6 +148,7 @@ export function fundedPositions(
     usdPerQuote: t.usdPerQuote,
     openedAt: t.entryTime * 1000,
     ...(t.note ? { note: t.note } : {}),
+    ...(t.checks ? { checks: t.checks } : {}),
   }))
 }
 
