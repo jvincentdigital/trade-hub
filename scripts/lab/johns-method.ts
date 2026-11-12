@@ -175,7 +175,7 @@ function checkFreeze(): JmFreezeRecord {
 
 // ── Reporting ─────────────────────────────────────────────────────────────
 
-const f = (x: number | null | undefined, d = 5) =>
+const f = (x: number | null | undefined, d = 7) =>
   x == null || !Number.isFinite(x) ? '' : x.toFixed(d)
 const iso = (t: number | null | undefined) => (t == null || !Number.isFinite(t) ? '' : isoMinute(t))
 
