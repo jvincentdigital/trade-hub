@@ -42,7 +42,9 @@ import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { stepStrategy, syncRaceState, type MarketTick } from '../src/lib/race/live'
 import { entryWindowBlock } from '../src/lib/race/session'
 import { clearKrakenCache } from '../src/lib/kraken'
-import { fetchMarket, FILE, load, push, save, waitLock } from './race-io'
+import { closedOnly } from '../src/lib/race/candles'
+import { tradeChecks, withChecks } from '../src/lib/race/checklist'
+import { fetchMarket, FILE, load, loadRedNews, push, save, waitLock } from './race-io'
 
 const args = process.argv.slice(2)
 const DRY = args.includes('--dry-run')
@@ -185,6 +187,10 @@ async function main() {
     return
   }
 
+  // Red news for the checklist on each new pick (info only, src/lib/race/checklist.ts).
+  const red = await loadRedNews()
+  const news = red.note.includes('news filter off') ? null : red.events
+
   // ── Open under the race lock, on the freshest state ──
   const release = await waitLock(5 * 60_000)
   if (!release) {
@@ -239,7 +245,13 @@ async function main() {
     })
     const blockNew = entryWindowBlock(nowSec)
     const r = stepStrategy(own, ticks, nowSec, state.sizing, blockNew)
-    state.strategies[CLAUDE_PICKS.id] = r.strategy
+    const h1Of = (id: string) => markets.find((m) => m.market === id)?.h1 ?? []
+    state.strategies[CLAUDE_PICKS.id] = {
+      ...r.strategy,
+      open: withChecks(r.strategy.open, r.opened, (t) =>
+        tradeChecks({ ...t, news, h1: closedOnly(h1Of(t.market), 1, nowSec) }),
+      ),
+    }
     state.prices = {
       ...state.prices,
       ...Object.fromEntries(markets.map((m) => [m.market, m.price])),

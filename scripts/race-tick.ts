@@ -57,7 +57,9 @@ import {
   newsCloseDue,
   RACE_ONLY_MARKETS,
   type LabBot,
+  type LabSignal,
 } from '../src/lib/race/labBots'
+import { tradeChecks, withChecks } from '../src/lib/race/checklist'
 import { newsWindows, type Window } from '../src/lib/lab/news'
 import {
   entriesToday,
@@ -87,6 +89,8 @@ import {
   summarize,
   syncRaceState,
   tradeRisk,
+  type FundedTrade,
+  type LiveTrade,
   type MarketTick,
   type RaceState,
 } from '../src/lib/race/live'
@@ -346,6 +350,19 @@ async function tick() {
     return latestSignal({ ...p.rule, timeframe: tf }, candles)
   }
 
+  // The confidence checklist (src/lib/race/checklist.ts), added to each trade
+  // after it opened: info only, it never blocks or changes a trade.
+  const checkOf = (t: LiveTrade, signal: Signal | null | undefined) =>
+    tradeChecks({
+      market: t.market,
+      entry: t.entry,
+      stop: t.stop,
+      entryTime: t.entryTime,
+      moveStart: (signal as LabSignal | null | undefined)?.moveStart,
+      news: johnsNews,
+      h1: ecb(t.market) ? [] : closedOnly(data.get(key(t.market, '1h')) ?? [], 1, nowSec),
+    })
+
   let checked = 0
   let opened = 0
   let closed = 0
@@ -407,7 +424,12 @@ async function tick() {
       } else if (p.kind !== 'lab' && !marketTicks.has(id)) marketTicks.set(id, t)
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
-    state.strategies[p.id] = r.strategy
+    state.strategies[p.id] = {
+      ...r.strategy,
+      open: withChecks(r.strategy.open, r.opened, (t) =>
+        checkOf(t, ticks.find((m) => m.market === t.market)?.signal),
+      ),
+    }
     checked += ticks.length
     closed += r.closed.length
     opened += r.opened.length
@@ -462,7 +484,12 @@ async function tick() {
     }
     for (const x of f.passed)
       console.log(`  PASS  ${label} ${x.market} (${x.strategy}): ${x.reason}`)
-    return f.funded
+    const signalOf = (t: FundedTrade) =>
+      candidates.find((c) => c.strategy === t.strategy && c.market === t.market)?.signal
+    return {
+      ...f.funded,
+      open: withChecks(f.funded.open, f.opened, (t) => checkOf(t, signalOf(t))),
+    }
   })
   state = withFunded(state, steppedFunded)
 

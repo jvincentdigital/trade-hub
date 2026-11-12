@@ -6,6 +6,7 @@ import { getInstrument } from '../paper/instruments'
 import { usdPerQuoteFor } from '../sizing/sizing'
 import { newTradeBlock, RACE_SIZING, sizeRaceTrade, sizingSchema, type RaceSizing } from './account'
 import { dailyCloseDue } from './session'
+import { tradeChecksSchema } from './checklist'
 
 // "Live from today" race: a forward test. Every hour a tick looks at fresh
 // candles. Each strategy trades ONE play account across all its markets (one
@@ -43,6 +44,8 @@ export const liveTradeSchema = z.object({
   deadline: z.number().optional(),
   /** John's London v1 on GBP/USD: a stop or target counts only when confirmed (the lone-wick rule in exitsOf). */
   confirm: z.boolean().optional(),
+  /** The confidence checklist at entry (./checklist.ts), info only; none on trades from before 2026-11-12. */
+  checks: tradeChecksSchema.optional(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
 
