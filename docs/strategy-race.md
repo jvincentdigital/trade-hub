@@ -352,6 +352,58 @@ The tick log shows its lines with the name `Funded test <size>`, for example:
   Funded test $200K                  $200000.00  +$0.00  open 0  closed 0  active, day loss $0.00 of $10000.00, 0 of 4 days
 ```
 
+## John's Method: a watch-only Lab account (2026-11-12)
+
+John's method from his screen video (`docs/johns-method.md`) races as one
+quiet Lab account, `lab-johns-method`, "Lab: John's Method (watch only)". It
+never feeds the funded tests (they stay v1 only). **Watch only:** no version
+passed its design years (`docs/johns-method-freeze.md`: "the design years did
+not confirm"), so the one-time exam on 2019 to 2024 never ran. It races the
+plain base on John's own charts: the Fib on the 4-hour, entries on the 1-hour
+(H4-H1), expiry X1, the capped halves (C). The pick rule's only candidate,
+D-H4 X3, needs about 5 weeks of daily candles on the New York close, which
+Kraken's 720 hourly candles (30 days) cannot build.
+
+Code: `src/lib/race/johnsMethodLive.ts` (pure, tested in
+`johnsMethodLive.test.ts`), stepped by `race-tick.ts` after the other accounts.
+
+- **Signals** come from the backtest's own tracker (`findSignals`) on closed
+  Kraken 1-hour candles, with the 4-hour built from them on the 17:00 New York
+  close. Each check rebuilds the setups from the oldest candle in the feed
+  plus 5 days of warm-up. On design-year history (6 markets, 120 days, hourly
+  checks) that found 69 of the backtest's 71 signals and 6 more; with the
+  backtest's own start it found all 71 and nothing else.
+- **One look per signal**, acted on at the price now if its candle closed at
+  most 2 hours ago (SPEC 2.6 check 2), with the spec's checks at that price:
+  cost floor, both targets ahead, plan at least 1.5R, no chase.
+- **The halves**: half 1 risks 1% to the stop S. Half 2 (1%) opens at the next
+  check after a closed candle reaches 0.886 without passing 1. A signal candle
+  that already reached 0.886 opens both halves as one 2% part.
+- **The double down**: two strong 1-hour candles in a row his way (each body
+  at least half a 1-hour ATR, the first one starting at or after the fill).
+  It tops the trade up to 2% in all, measured to the new stop S2 behind the
+  pullback, and moves every part's stop to S2. One add at most.
+- **The ladder ends** when a candle trades past 1, after 24 candles, when 0 is
+  reached or after the double down. A ladder event missed by more than 2
+  hours is not acted on. Each part stores the ladder (`jm` on the trade).
+- **Exits** on closed 15-minute candles, like every account: the stop, half
+  off at 0, the rest at -0.272, and the time limit, the open after the 120th
+  hourly candle from the fill (about 5 trading days).
+- **Account rules**: the race's four rules for new trades, plus the spec's
+  dollar rule (never both sides of the dollar). At most 5 trades, 10% open
+  risk, the margin cap. A half or an add joins its trade, so it does not
+  count as a new trade.
+- **Any hour**: no 02:00 to 12:30 window and no 12:45 close
+  (`applyDailyClose(..., [JOHNS_METHOD.id])`); the weekend still stops new
+  parts. Close now and `race-close-all.ts` still close it.
+- **Markets**: EUR/USD, GBP/USD, AUD/USD, USD/CHF, USD/CAD and gold. USD/JPY
+  and NZD/USD are out (once-a-day ECB rates, `NOT_LIVE`).
+- **Not live**: swap (the race charges none), the spec's spread on stop checks
+  (the race checks plain prices), the daily lines (report only, and 250 daily
+  candles are not in the feed). Red news is only written on a part's note.
+- **Compare** groups its parts into one trade by signal, and counts its days
+  from `joinedAt` (set by `syncRaceState` for any account that joins later).
+
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)
 
 John: "after the New York session ends, close all the trades and take the

@@ -1,5 +1,6 @@
 import { CLAUDE_PICKS } from './claudePicks'
 import { JOHNS_LONDON } from './johnsLondonLive'
+import { JOHNS_METHOD } from './johnsMethodLive'
 import { LAB_BOTS, LAB_MAX_DAYS } from './labBots'
 import { LONDON_BREAKOUT } from './londonBreakout'
 
@@ -11,6 +12,11 @@ export const EXTRA_STRATEGIES: Record<string, { candles: string; rr: string; why
     candles: '15-minute',
     rr: '1.5x to 2.5x, half at 0, rest at -0.272',
     why: JOHNS_LONDON.why,
+  },
+  [JOHNS_METHOD.id]: {
+    candles: '4-hour Fib, 1-hour entries',
+    rr: 'at least 1.5x, half at 0, rest at -0.272',
+    why: JOHNS_METHOD.why,
   },
   ...Object.fromEntries(
     LAB_BOTS.map((b) => [

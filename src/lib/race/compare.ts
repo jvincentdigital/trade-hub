@@ -1,4 +1,5 @@
 import { JOHNS_LONDON } from './johnsLondonLive'
+import { JOHNS_METHOD } from './johnsMethodLive'
 import { LAB_BOTS } from './labBots'
 import { LONDON_BREAKOUT } from './londonBreakout'
 import { summarize, tradeRisk, type ClosedLiveTrade, type LiveTrade, type RaceState } from './live'
@@ -39,13 +40,17 @@ const lab = (test: string, older: string): PastTest => ({
 /**
  * Past tests we have (sources in ~/jvd-outputs/2026-11-11: london-strategy
  * FINAL.md and HOLDOUT.md for v1, strategy-lab REPORT.md for the lab bots).
- * A strategy not listed here (the 11 originals, and any new one such as
- * John's video method once it joins the race) is "Testing live only".
+ * A strategy not listed here (the 11 originals, and any new one) is
+ * "Testing live only".
  */
 export const PAST_TESTS: Record<string, PastTest> = {
   [JOHNS_LONDON.id]: {
     evidence: 'passed',
     text: 'Passed its one-time test on a clean year it had never seen (November 2024 to November 2025): $10,000 became $16,896 on 97 trades, 58% won, +0.28R a trade, worst drop 9.6%. One good year is a good sign, not proof. Source: London strategy report, 2026-11-11.',
+  },
+  [JOHNS_METHOD.id]: {
+    evidence: 'lost',
+    text: "Watch only: it did not pass its design years, so its one-time test on 2019 to 2024 was never run. This version (4-hour Fib, 1-hour entries, two halves and the double down), on $10,000: November 2024 to November 2025 +5.4R on 117 trades, worst drop 27.9%; November 2025 to November 2026 -41.2R on 119 trades, $10,000 to $4,226, worst drop 58.1%. Source: John's Method report, 2026-11-12.",
   },
   'lab-rsi-us30': lab('+$4,986 on 59 trades', '-$5,649 on 462 trades'),
   'lab-fib-eurusd-4h': lab('+$2,648 on 37 trades', '-$8,588 on 305 trades'),
@@ -82,8 +87,9 @@ export interface TradeResult {
   r: number | null
 }
 
-const tradeKey = (t: Pick<LiveTrade, 'market' | 'entryTime' | 'signalTime'>) =>
-  `${t.market}|${t.entryTime}|${t.signalTime}`
+// John's Method's halves and double down open at different times: one trade by its signal.
+const tradeKey = (t: Pick<LiveTrade, 'market' | 'entryTime' | 'signalTime' | 'jm'>) =>
+  t.jm ? `${t.market}|jm|${t.signalTime}` : `${t.market}|${t.entryTime}|${t.signalTime}`
 
 /**
  * Closed parts grouped into whole trades, oldest exit first. A trade with a
@@ -179,7 +185,8 @@ export interface CompareRow {
 /** One row per strategy account in the race. */
 export function compareRows(state: RaceState, nowMs: number): CompareRow[] {
   return summarize(state).map((s) => {
-    const since = Math.max(state.startedAt, JOINED_AT[s.ruleId] ?? 0)
+    const joined = state.strategies[s.ruleId]?.joinedAt ?? JOINED_AT[s.ruleId] ?? 0
+    const since = Math.max(state.startedAt, joined)
     return {
       id: s.ruleId,
       name: s.name,

@@ -15,6 +15,27 @@ import { dailyCloseDue } from './session'
 
 const sideSchema = z.enum(['long', 'short'])
 
+/**
+ * John's Method (Lab, ./johnsMethodLive.ts): the ladder a part belongs to.
+ * Every open part of one trade carries the same copy; the step keeps them in
+ * line. `half2`, `add` and `ladder` are 'none' / 'alive' until decided, then
+ * the outcome in plain words.
+ */
+export const jmPartSchema = z.object({
+  part: z.enum(['half1', 'both', 'half2', 'add']),
+  one: z.number(),
+  zero: z.number(),
+  l886: z.number(),
+  /** The trade's first stop (S); the add moves every part's `stop` to S2. */
+  S: z.number(),
+  /** Start of the 1-hour candle the first part filled in. */
+  fillHour: z.number(),
+  half2: z.string(),
+  add: z.string(),
+  ladder: z.string(),
+})
+export type JmPart = z.infer<typeof jmPartSchema>
+
 export const liveTradeSchema = z.object({
   market: z.string(),
   direction: sideSchema,
@@ -43,6 +64,8 @@ export const liveTradeSchema = z.object({
   deadline: z.number().optional(),
   /** John's London v1 on GBP/USD: a stop or target counts only when confirmed (the lone-wick rule in exitsOf). */
   confirm: z.boolean().optional(),
+  /** John's Method (Lab): its ladder (jmPartSchema). */
+  jm: jmPartSchema.optional(),
 })
 export type LiveTrade = z.infer<typeof liveTradeSchema>
 
@@ -82,6 +105,8 @@ export const raceStrategySchema = z.object({
   /** Newest signal candle already acted on, per market, so one signal makes one trade. */
   lastSignal: z.record(z.string(), z.number()),
   closed: z.array(closedLiveTradeSchema),
+  /** Milliseconds: when an account that joined a running race got its money (syncRaceState). */
+  joinedAt: z.number().optional(),
 })
 export type RaceStrategy = z.infer<typeof raceStrategySchema>
 
@@ -177,10 +202,16 @@ export function createRaceState(
 export function syncRaceState(
   state: RaceState,
   rules: { id: string; name: string }[],
+  now = Date.now(),
 ): { state: RaceState; changes: string[] } {
   const missing = rules.filter((r) => !state.strategies[r.id])
   if (!missing.length) return { state, changes: [] }
-  const fresh = createRaceState(missing, state.startMoney).strategies
+  const fresh = Object.fromEntries(
+    Object.entries(createRaceState(missing, state.startMoney).strategies).map(([id, s]) => [
+      id,
+      { ...s, joinedAt: now },
+    ]),
+  )
   return {
     state: { ...state, strategies: { ...state.strategies, ...fresh } },
     changes: missing.map((r) => `${r.name} joined the race`),
@@ -710,6 +741,8 @@ export function closeAll(
   timeSec: number,
   feeRate: (market: string) => number,
   reason: 'manual' | 'session' = 'manual',
+  /** Accounts left as they are (John's Method holds for days: no 12:45 close). */
+  keepOpen: readonly string[] = [],
 ): { state: RaceState; closed: (ClosedLiveTrade & { strategy: string })[]; missing: string[] } {
   const closed: (ClosedLiveTrade & { strategy: string })[] = []
   const missing = new Set<string>()
@@ -733,6 +766,7 @@ export function closeAll(
   }
   const strategies = Object.fromEntries(
     Object.entries(state.strategies).map(([id, s]) => {
+      if (keepOpen.includes(id)) return [id, s]
       const r = closeAccount(s.name, s.open, s.balance)
       return [id, { ...s, balance: r.balance, open: r.open, closed: [...s.closed, ...r.done] }]
     }),
@@ -760,11 +794,13 @@ export function applyDailyClose(
   state: RaceState,
   nowSec: number,
   feeRate: (market: string) => number,
+  /** Accounts the daily close leaves alone (closeAll's keepOpen). */
+  keepOpen: readonly string[] = [],
 ): ReturnType<typeof closeAll> {
   if (state.dailyCloseAt == null)
     return { state: { ...state, dailyCloseAt: nowSec }, closed: [], missing: [] }
   if (!dailyCloseDue(nowSec, state.dailyCloseAt)) return { state, closed: [], missing: [] }
-  const r = closeAll(state, state.prices, nowSec, feeRate, 'session')
+  const r = closeAll(state, state.prices, nowSec, feeRate, 'session', keepOpen)
   return { ...r, state: { ...r.state, dailyCloseAt: nowSec } }
 }
 

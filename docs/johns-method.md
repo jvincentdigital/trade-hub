@@ -27,3 +27,5 @@ Guards:
 - Design mode refuses any date before 2024-11-11. Warm-up candles from 2023-09-01 are read for indicators only; earlier rows are skipped on their time field.
 - Exam mode (`--exam`) refuses to start unless `docs/johns-method-freeze.md` is committed, the tree is clean, nothing but that file changed since the code commit, and SPEC.md and the eight 1-hour files match their hashes.
 - The truncation test (600 cuts, everything after each cut scrambled) checks that no decision reads a later candle.
+
+Live race: the base on H4-H1, X1, capped (C) races as a watch-only Lab account, `src/lib/race/johnsMethodLive.ts`. See `docs/strategy-race.md`, "John's Method: a watch-only Lab account".

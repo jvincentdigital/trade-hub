@@ -25,7 +25,9 @@
  * US30 from Yahoo's public chart feed, a red-news filter from Forex Factory's
  * free weekly feed, cached next to the race file) and John's London v1
  * (src/lib/race/johnsLondonLive.ts: closed 15m candles only, for signals and
- * exits, GBP/USD exits confirmed against lone wicks). A lock (race.json.lock) keeps two runs from
+ * exits, GBP/USD exits confirmed against lone wicks) and John's Method, a quiet
+ * watch-only Lab account (src/lib/race/johnsMethodLive.ts: closed 1h candles,
+ * 4h built on the New York close, any hour, no 12:45 close). A lock (race.json.lock) keeps two runs from
  * writing at once: a tick that finds it taken waits up to 3 minutes, then
  * prints one line and stops.
  *
@@ -43,7 +45,7 @@ import type { Rule, RuleTimeframe } from '../src/lib/rules/schema'
 import { getInstrument, INSTRUMENTS, type PriceMap } from '../src/lib/paper/instruments'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '../src/lib/sizing/sizing'
 import { FEE_RATE, LEVERAGE } from '../src/lib/paper/engine'
-import { closedOnly, forexClosed, TF_HOURS } from '../src/lib/race/candles'
+import { closedOnly, dropClosedForex, forexClosed, TF_HOURS } from '../src/lib/race/candles'
 import { minStopForFullRisk } from '../src/lib/race/account'
 import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { feedOf } from '../src/lib/feeds'
@@ -67,6 +69,7 @@ import {
   type JohnsLondonMarket,
 } from '../src/lib/race/johnsLondonLive'
 import { nyCloseBars } from '../src/lib/lab/load'
+import { JOHNS_METHOD, stepJohnsMethod, type JmMarketInput } from '../src/lib/race/johnsMethodLive'
 import {
   addFundedSizes,
   checkFunded,
@@ -126,6 +129,8 @@ type Plan = { id: string; name: string; markets: string[] } & (
   | { kind: 'lab'; bot: LabBot }
   /** John's London v1 (src/lib/race/johnsLondonLive.ts, SPEC.md section 6). */
   | { kind: 'johns' }
+  /** John's Method, watch only (src/lib/race/johnsMethodLive.ts); stepped after the others. */
+  | { kind: 'jm' }
 )
 
 const PLANS: Plan[] = [
@@ -160,6 +165,12 @@ const PLANS: Plan[] = [
     id: JOHNS_LONDON.id,
     name: JOHNS_LONDON.name,
     markets: [...JOHNS_LONDON.markets],
+  },
+  {
+    kind: 'jm',
+    id: JOHNS_METHOD.id,
+    name: JOHNS_METHOD.name,
+    markets: [...JOHNS_METHOD.markets],
   },
 ]
 
@@ -231,6 +242,7 @@ async function tick() {
       }
       if (p.kind === 'lab') want(id, p.bot.candles === 'kraken-ny4h' ? '1h' : p.bot.tf)
       if (p.kind === 'johns') want(id, '15m')
+      if (p.kind === 'jm') want(id, '1h')
     }
   const data = new Map<string, OHLCCandle[]>()
   const skipped = new Set<string>()
@@ -253,7 +265,9 @@ async function tick() {
   state.prices = { ...state.prices, ...prices }
 
   // Red news for the lab bots' filter (Forex Factory's free weekly feed, cached).
-  const red = PLANS.some((p) => p.kind === 'johns' || (p.kind === 'lab' && p.bot.news !== 'off'))
+  const red = PLANS.some(
+    (p) => p.kind === 'johns' || p.kind === 'jm' || (p.kind === 'lab' && p.bot.news !== 'off'),
+  )
     ? await loadRedNews()
     : { events: [], note: '' }
   if (red.note) console.log(`  ${red.note}`)
@@ -279,7 +293,7 @@ async function tick() {
   if (blockNew) console.log(`  No new trades now: ${blockNew}`)
   const riskPct = state.sizing.riskPct
   const signalFor = (p: Plan, id: string): Signal | null => {
-    if (p.kind === 'picks') return null
+    if (p.kind === 'picks' || p.kind === 'jm') return null
     const inst = getInstrument(id)
     if (shut && inst?.market === 'forex') return null
     if (p.kind === 'lab') {
@@ -375,6 +389,7 @@ async function tick() {
   const candidates: FundedCandidate[] = []
   const marketTicks = new Map<string, MarketTick>()
   for (const p of PLANS) {
+    if (p.kind === 'jm') continue
     const ticks: MarketTick[] = []
     for (const id of p.markets) {
       const path = data.get(key(id, pathTf(id)))
@@ -431,6 +446,49 @@ async function tick() {
         )
   }
 
+  // John's Method, watch only: its own step (halves, double down, 120-candle
+  // limit), closed candles only, gold's weekend prints left out like forex.
+  {
+    const inputs: JmMarketInput[] = []
+    for (const id of JOHNS_METHOD.markets) {
+      const raw = data.get(key(id, '1h'))
+      const path = data.get(key(id, pathTf(id)))
+      const inst = getInstrument(id)
+      if (!raw?.length || !path?.length || !inst) continue
+      inputs.push({
+        market: id,
+        h1: dropClosedForex(closedOnly(raw, 1, nowSec)),
+        path: dropClosedForex(closedOnly(path, 0.25, nowSec)),
+        price: prices[id] ?? 0,
+        usdPerQuote: usdPerQuoteFor(inst, prices[id], prices),
+        feeRate: FEE_RATE[inst.market],
+        leverage: LEVERAGE[inst.market],
+      })
+    }
+    const r = stepJohnsMethod(
+      state.strategies[JOHNS_METHOD.id],
+      inputs,
+      nowSec,
+      shut ? 'the market is closed for the weekend' : null,
+      red.events,
+    )
+    state.strategies[JOHNS_METHOD.id] = r.strategy
+    checked += inputs.length
+    closed += r.closed.length
+    opened += r.opened.length
+    for (const n of r.notes) console.log(`  JOHN'S METHOD ${n.market}: ${n.note}`)
+    for (const c of r.closed)
+      console.log(`  CLOSE ${JOHNS_METHOD.name} ${c.market} ${c.reason} ${money(c.pnl)}`)
+    for (const t of r.opened) {
+      const inst = getInstrument(t.market)
+      const size = sizingOf({ inst, ...t, target: t.takeProfit })
+      console.log(
+        `  OPEN  ${JOHNS_METHOD.name} ${t.market} ${t.direction} at ${t.entry} (${t.note}): ${sizingLine(inst, size)}`,
+      )
+    }
+    for (const x of r.passed) console.log(`  PASS  ${JOHNS_METHOD.name} ${x.market}: ${x.reason}`)
+  }
+
   // The funded tests: $10K, $50K, $100K and $200K accounts, the same rules,
   // fed only by John's London v1 (src/lib/race/funded.ts).
   if (args.includes('--funded-reset') && fundedAccounts(state).length) {
@@ -467,7 +525,8 @@ async function tick() {
   state = withFunded(state, steppedFunded)
 
   // Daily close: the first check at or after 12:45 AST on a weekday closes every open trade.
-  const daily = applyDailyClose(state, nowSec, feeRate)
+  // John's Method holds for days (any hour): the daily close leaves it alone.
+  const daily = applyDailyClose(state, nowSec, feeRate, [JOHNS_METHOD.id])
   state = daily.state
   closed += daily.closed.length
   for (const c of daily.closed)
