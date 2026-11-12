@@ -8,6 +8,7 @@ import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
 import { FUNDED, fundedOf, fundedView } from '@/lib/race/funded'
 import { useFundedSize } from '@/lib/hooks/useFundedSize'
+import { useFundedTest } from '@/lib/hooks/useFundedTest'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
 import { getInstrument } from '@/lib/paper/instruments'
 import {
@@ -37,7 +38,7 @@ import { EXTRA_STRATEGIES } from '@/lib/race/extras'
 import { HowSheet } from '@/components/home/HowSheet'
 import { LondonStrip } from '@/components/home/LondonStrip'
 import { FAILED_TEXT, Summary } from '@/components/home/Summary'
-import { SizeSwitch } from '@/components/home/SizeSwitch'
+import { SizeSwitch, TestSwitch } from '@/components/home/SizeSwitch'
 import { TradeRow, rowId } from '@/components/home/TradeRow'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from '@/components/home/ui'
 
@@ -107,9 +108,10 @@ function Today() {
   const account = usePaperAccount()
   const { prices } = useLivePrices()
   const [tab, setTab] = useState<Tab>('all')
-  // Which funded size the card and the rows show (John, 2026-11-12).
+  // Which funded test and size the card and the rows show (John, 2026-11-12).
   const [size, setSize] = useFundedSize()
-  const shownFunded = fundedOf(state, size)
+  const [test, setTest] = useFundedTest()
+  const shownFunded = fundedOf(state, size, test)
   const [now, setNow] = useState(() => Date.now())
   const nav = useUrlState()
   const { trade, how, close } = nav
@@ -121,11 +123,11 @@ function Today() {
 
   const rows = useMemo(() => {
     // The funded test's trades (the account Today follows) and the demo account's.
-    const all = [...fundedPositions(state, size), ...demoPositions(account, prices)]
+    const all = [...fundedPositions(state, size, test), ...demoPositions(account, prices)]
     return sortPositions(
       all.map((pos) => ({ pos, m: measure(pos, priceFor(pos, prices, state?.prices)) })),
     )
-  }, [state, size, account, prices])
+  }, [state, size, test, account, prices])
   const { candles, isLoading: candlesLoading } = useCandleMap(rows.map((r) => r.pos.market))
   // The race feed failed and there is nothing to show: say so, not "no trades".
   const failed = !!raceError && rows.length === 0
@@ -159,8 +161,8 @@ function Today() {
     : 0
   const startMoney = size
   const closedToday = useMemo(
-    () => closedTodayLine(closedTrades(state, account, size), now),
-    [state, account, size, now],
+    () => closedTodayLine(closedTrades(state, account, size, test), now),
+    [state, account, size, test, now],
   )
   const groups = useMemo(() => {
     const by = new Map<string, Row[]>()
@@ -270,7 +272,7 @@ function Today() {
               strategyCount || BUILT_IN_RULES.length,
             )}
             pnl={openPnl}
-            settled={settledSoFar(state, size)}
+            settled={settledSoFar(state, size, test)}
             since={shownFunded ? clock(shownFunded.startedAt, now) : null}
             funded={challenge}
             clockOf={(sec) => clock(sec * 1000, now)}
@@ -282,16 +284,27 @@ function Today() {
             needsLook={look.length > 0}
             closedToday={closedToday}
             startMoney={startMoney}
+            test={test}
             riskPct={FUNDED.sizing.riskPct}
             sizeSwitch={
-              <SizeSwitch
-                value={size}
-                onChange={(s) => {
-                  if (s === size) return
-                  close('trade')
-                  setSize(s)
-                }}
-              />
+              <div style={{ display: 'grid', gap: 6 }}>
+                <TestSwitch
+                  value={test}
+                  onChange={(t) => {
+                    if (t === test) return
+                    close('trade')
+                    setTest(t)
+                  }}
+                />
+                <SizeSwitch
+                  value={size}
+                  onChange={(s) => {
+                    if (s === size) return
+                    close('trade')
+                    setSize(s)
+                  }}
+                />
+              </div>
             }
           />
         </div>
@@ -451,6 +464,7 @@ function Today() {
           )?.pos ?? rows.find((r) => r.pos.source === 'race')?.pos
         }
         startMoney={startMoney}
+        test={test}
       />
     </div>
   )

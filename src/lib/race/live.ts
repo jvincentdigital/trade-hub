@@ -149,6 +149,13 @@ export const raceStateSchema = z.object({
    * $10,000 stays in `funded`, so older readers of race.json keep working.
    */
   fundedSizes: z.array(fundedSchema).optional(),
+  /**
+   * The second funded test, "v1 + breakouts" (John, 2026-11-12): the same
+   * rules and four sizes, fed by John's London v1 and the London breakout
+   * (FUNDED_B_SIGNALS_FROM in ./funded.ts). Started empty by the first tick
+   * that runs this code.
+   */
+  fundedB: z.array(fundedSchema).optional(),
   /** Unix seconds of the check that did the last 12:45 AST daily close (./session.ts). */
   dailyCloseAt: z.number().optional(),
   /** John's calls (./johnsCalls.ts): every call he made, oldest first, with its limit orders. */
@@ -748,14 +755,23 @@ export function closeAll(
       return [id, { ...s, balance: r.balance, open: r.open, closed: [...s.closed, ...r.done] }]
     }),
   )
-  const closeFunded = (f: FundedState): FundedState => {
-    const r = closeAccount(`Funded test $${f.startMoney / 1000}K`, f.open, f.balance)
-    return { ...f, balance: r.balance, open: r.open, closed: [...f.closed, ...r.done] }
-  }
-  const funded = state.funded && closeFunded(state.funded)
-  const fundedSizes = state.fundedSizes?.map(closeFunded)
+  const closeFunded =
+    (test = '') =>
+    (f: FundedState): FundedState => {
+      const r = closeAccount(`Funded test ${test}$${f.startMoney / 1000}K`, f.open, f.balance)
+      return { ...f, balance: r.balance, open: r.open, closed: [...f.closed, ...r.done] }
+    }
+  const funded = state.funded && closeFunded()(state.funded)
+  const fundedSizes = state.fundedSizes?.map(closeFunded())
+  const fundedB = state.fundedB?.map(closeFunded('v1 + breakouts '))
   return {
-    state: { ...state, strategies, funded, ...(fundedSizes ? { fundedSizes } : {}) },
+    state: {
+      ...state,
+      strategies,
+      funded,
+      ...(fundedSizes ? { fundedSizes } : {}),
+      ...(fundedB ? { fundedB } : {}),
+    },
     closed,
     missing: [...missing],
   }

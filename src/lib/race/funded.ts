@@ -15,6 +15,7 @@ import {
 } from './live'
 import { nextPragueDayStart, pragueDate, pragueDayStart } from './session'
 import { JOHNS_LONDON } from './johnsLondonLive'
+import { LONDON_BREAKOUT } from './londonBreakout'
 
 // The funded test (John, 2026-11-11): "instead of every account having
 // $10,000, it would be a total account of $10,000". One play account with the
@@ -22,8 +23,10 @@ import { JOHNS_LONDON } from './johnsLondonLive'
 // ~/jvd-outputs/2026-11-11/funded-accounts/), so we can see whether a
 // strategy would pass one. Since the evening of 2026-11-11 it takes the
 // signals of ONE strategy only, John's London v1 (FUNDED_SIGNALS_FROM): it
-// passed its clean-year test. Every strategy, v1 too, keeps its own Lab
-// account. Play money only. Pure, tested.
+// passed its clean-year test. Since 2026-11-12 a second test, "v1 + breakouts"
+// (FUNDED_B_SIGNALS_FROM), runs next to it with the same rules and sizes, fed
+// by v1 and the London breakout, so the two can be compared. Every strategy,
+// v1 too, keeps its own Lab account. Play money only. Pure, tested.
 
 /**
  * The only race strategy whose signals the funded test takes (John,
@@ -33,6 +36,29 @@ import { JOHNS_LONDON } from './johnsLondonLive'
  * the lone-wick rule on GBP/USD), taken from v1's market tick.
  */
 export const FUNDED_SIGNALS_FROM: string = JOHNS_LONDON.id
+
+/**
+ * The second funded test, "v1 + breakouts" (John, 2026-11-12): the same
+ * rules and sizes, fed by John's London v1 AND the London breakout, in this
+ * order. On a check where both signal, v1's is offered first, so on a market
+ * both trade (GBP/USD, gold) v1's trade wins and the breakout's is passed.
+ * Each trade keeps the exits of the strategy whose signal opened it.
+ */
+export const FUNDED_B_SIGNALS_FROM: readonly string[] = [JOHNS_LONDON.id, LONDON_BREAKOUT.id]
+
+/** The two funded tests, compared side by side on Today and /compare. */
+export type FundedTestId = 'v1' | 'breakouts'
+export const FUNDED_TESTS: readonly {
+  id: FundedTestId
+  label: string
+  feeds: readonly string[]
+}[] = [
+  { id: 'v1', label: 'v1 only', feeds: [FUNDED_SIGNALS_FROM] },
+  { id: 'breakouts', label: 'v1 + breakouts', feeds: FUNDED_B_SIGNALS_FROM },
+]
+export const fundedTest = (id: FundedTestId) => FUNDED_TESTS.find((t) => t.id === id)!
+/** Every strategy some funded test takes signals from. */
+export const FUNDED_FEEDS: readonly string[] = [...new Set(FUNDED_TESTS.flatMap((t) => t.feeds))]
 
 export const FUNDED = {
   name: 'Funded test',
@@ -75,28 +101,52 @@ export const FUNDED_SIZES = [10_000, 50_000, 100_000, 200_000] as const
 /** "$10K", "$200K". */
 export const sizeLabel = (startMoney: number) => `$${startMoney / 1000}K`
 
-/** The account in a Close now id: "funded" for the $10K (its id since 2026-11-11), "funded-50k" for the others. */
-export const fundedAccountId = (startMoney: number) =>
-  startMoney === FUNDED.startMoney ? 'funded' : `funded-${startMoney / 1000}k`
+/** "Funded test $10K" (v1 only), "Funded test v1 + breakouts $10K": the name in logs. */
+export const fundedLabel = (startMoney: number, test: FundedTestId = 'v1') =>
+  `${FUNDED.name}${test === 'v1' ? '' : ` ${fundedTest(test).label}`} ${sizeLabel(startMoney)}`
 
-type FundedParts = Pick<RaceState, 'funded' | 'fundedSizes'>
+/**
+ * The account in a Close now id. v1 only: "funded" for the $10K (its id since
+ * 2026-11-11), "funded-50k" for the others. v1 + breakouts: "funded-b-10k" and so on.
+ */
+export const fundedAccountId = (startMoney: number, test: FundedTestId = 'v1') =>
+  test === 'breakouts'
+    ? `funded-b-${startMoney / 1000}k`
+    : startMoney === FUNDED.startMoney
+      ? 'funded'
+      : `funded-${startMoney / 1000}k`
 
-/** Every funded account in the state, smallest first. */
-export const fundedAccounts = (state: FundedParts | null | undefined): FundedState[] =>
-  [state?.funded, ...(state?.fundedSizes ?? [])]
+type FundedParts = Pick<RaceState, 'funded' | 'fundedSizes' | 'fundedB'>
+
+/** Every account of one funded test in the state (v1 only unless said), smallest first. */
+export const fundedAccounts = (
+  state: FundedParts | null | undefined,
+  test: FundedTestId = 'v1',
+): FundedState[] =>
+  (test === 'breakouts' ? (state?.fundedB ?? []) : [state?.funded, ...(state?.fundedSizes ?? [])])
     .filter((f): f is FundedState => !!f)
     .sort((a, b) => a.startMoney - b.startMoney)
 
-/** The funded account of one size, if it has started. */
-export const fundedOf = (state: FundedParts | null | undefined, startMoney: number) =>
-  fundedAccounts(state).find((f) => f.startMoney === startMoney)
+/** The funded account of one size and test, if it has started. */
+export const fundedOf = (
+  state: FundedParts | null | undefined,
+  startMoney: number,
+  test: FundedTestId = 'v1',
+) => fundedAccounts(state, test).find((f) => f.startMoney === startMoney)
 
-/** The accounts written back: the $10K into `funded`, the rest into `fundedSizes`. */
-export function withFunded<S extends FundedParts>(state: S, accounts: FundedState[]): S {
-  const small = accounts.find((f) => f.startMoney === FUNDED.startMoney)
-  const rest = accounts
-    .filter((f) => f.startMoney !== FUNDED.startMoney)
-    .sort((a, b) => a.startMoney - b.startMoney)
+/**
+ * The accounts of one test written back. v1 only: the $10K into `funded`, the
+ * rest into `fundedSizes`. v1 + breakouts: all four into `fundedB`.
+ */
+export function withFunded<S extends FundedParts>(
+  state: S,
+  accounts: FundedState[],
+  test: FundedTestId = 'v1',
+): S {
+  const sorted = [...accounts].sort((a, b) => a.startMoney - b.startMoney)
+  if (test === 'breakouts') return { ...state, fundedB: sorted.length ? sorted : undefined }
+  const small = sorted.find((f) => f.startMoney === FUNDED.startMoney)
+  const rest = sorted.filter((f) => f.startMoney !== FUNDED.startMoney)
   return { ...state, funded: small, fundedSizes: rest.length ? rest : undefined }
 }
 
@@ -141,7 +191,7 @@ export function roundToLot(market: string, units: number): number {
 
 export const signalKey = (strategy: string, market: string) => `${strategy}:${market}`
 
-/** A signal from one race strategy, offered to the funded test (only FUNDED_SIGNALS_FROM's are taken). */
+/** A signal from one race strategy, offered to the funded test (only its feeds' are taken). */
 export interface FundedCandidate {
   /** The race strategy id. */
   strategy: string
@@ -300,41 +350,62 @@ export interface FundedStep {
 }
 
 /**
- * One check for the funded test:
+ * A market tick for the funded tests. `strategy` names the race strategy it
+ * came from: its exits, news close and first target belong to that
+ * strategy's trades. Untagged, it is a plain tick that counts as every
+ * strategy's own (the tests use those).
+ */
+export type FundedTick = MarketTick & { strategy?: string }
+
+/** Price and path only: another strategy's news close, first target, deadline and lone-wick flag left out. */
+const plainTick = (m: FundedTick): FundedTick => ({
+  ...m,
+  closeNow: false,
+  target1: undefined,
+  deadline: undefined,
+  confirm: undefined,
+})
+
+/**
+ * One check for a funded test:
  * 1. Each open trade closes if a later path candle of its market hit its stop
- *    or target (as in the Lab); then the challenge is checked.
- * 2. Every candidate signal newer than the last one used from that strategy
- *    and market is offered in the given order. The first that passes every
- *    rule opens at the price now, risking 2% of the balance.
+ *    or target (as in the Lab), on the tick of the strategy that opened it;
+ *    then the challenge is checked.
+ * 2. The signals of each strategy in `feeds`, in that order, newer than the
+ *    last one used from that strategy and market, are offered. The first that
+ *    passes every rule opens at the price now, risking 2% of the balance, with
+ *    its own strategy's exits. Signals from other strategies are ignored.
  */
 export function stepFunded(
   f: FundedState,
-  markets: MarketTick[],
+  markets: FundedTick[],
   candidates: FundedCandidate[],
   nowSec: number,
   /** Why no new trade may open now (entryWindowBlock in ./session.ts). */
   blockNew: string | null = null,
   /** The race's last price per market, for open trades on markets not in `markets`. */
   lastPrices: Record<string, number> = {},
+  /** The strategies whose signals it takes, in order (FUNDED_TESTS). */
+  feeds: readonly string[] = [FUNDED_SIGNALS_FROM],
 ): FundedStep {
-  const byMarket = new Map(markets.map((m) => [m.market, m]))
   const prices = { ...lastPrices, ...Object.fromEntries(markets.map((m) => [m.market, m.price])) }
+  /** The strategy's own tick for the market, else another strategy's as a plain one. */
+  const tickOf = (strategy: string, market: string): FundedTick | undefined => {
+    const here = markets.filter((m) => m.market === market)
+    const own = here.find((m) => m.strategy === strategy) ?? here.find((m) => m.strategy == null)
+    return own ?? (here[0] && plainTick(here[0]))
+  }
   let balance = f.balance
   const open: FundedTrade[] = []
   const closed: ClosedFundedTrade[] = []
   for (const t of f.open) {
-    const m = byMarket.get(t.market)
+    const m = tickOf(t.strategy, t.market)
     if (!m) {
       open.push(t)
       continue
     }
-    // The same exits as the Lab accounts (tradeExits in ./live.ts). The tick is
-    // v1's, so its news close only applies to v1's own trades.
-    const r = tradeExits(
-      t,
-      t.strategy === FUNDED_SIGNALS_FROM ? m : { ...m, closeNow: false },
-      nowSec,
-    )
+    // The same exits as the Lab accounts (tradeExits in ./live.ts).
+    const r = tradeExits(t, m, nowSec)
     for (const c of r.closed) {
       balance += c.pnl
       closed.push(c)
@@ -346,8 +417,9 @@ export function stepFunded(
   const lastSignal = { ...f.lastSignal }
   const opened: FundedTrade[] = []
   const passed: FundedStep['passed'] = []
-  for (const c of candidates) {
-    if (c.strategy !== FUNDED_SIGNALS_FROM) continue // other strategies trade only in the Lab
+  // Feed order first (v1 before the breakout), then the order given.
+  const offered = feeds.flatMap((s) => candidates.filter((c) => c.strategy === s))
+  for (const c of offered) {
     const k = signalKey(c.strategy, c.market)
     if (c.signal.time <= (lastSignal[k] ?? 0)) continue
     lastSignal[k] = c.signal.time
@@ -360,7 +432,7 @@ export function stepFunded(
       no(blockNew)
       continue
     }
-    const m = byMarket.get(c.market)
+    const m = tickOf(c.strategy, c.market)
     if (!m) continue
     const levels = entryLevels(c.signal, m.price, c.reanchor)
     const t1 = m.target1
@@ -439,7 +511,7 @@ export function stepFunded(
       margin: valueUsd / m.leverage,
       entryFee: fee,
       ...(c.note ? { note: c.note } : {}),
-      // v1's own exits, from its market tick (as stepStrategy does).
+      // Its own strategy's exits, from that strategy's market tick (as stepStrategy does).
       ...(m.target1 != null ? { target1: m.target1, part1: 0.5 } : {}),
       ...(m.deadline != null ? { deadline: m.deadline } : {}),
       ...(m.confirm ? { confirm: true } : {}),

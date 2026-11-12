@@ -96,8 +96,9 @@ Mac race check ─(write key)─> GET /close-requests ─> books each one ─> s
 ```
 
 - `POST /api/race/close` (`src/app/api/race/close/route.ts`) takes
-  `{ "id": "<account>|<market>|<entry time>" }` (`funded|GBP-USD|1794406500`,
-  or a Lab strategy id instead of `funded`). It checks the passcode cookie
+  `{ "id": "<account>|<market>|<entry time>" }` (`funded|GBP-USD|1794406500`;
+  `funded-50k` and so on for the other v1 only sizes, `funded-b-10k` and so
+  on for v1 + breakouts; or a Lab strategy id instead of `funded`). It checks the passcode cookie
   itself too (`unlocked` in `src/lib/lock.ts`, the same check `src/proxy.ts`
   uses), takes JSON only (with the SameSite=Lax cookie, a cross-site form
   can't send it), and refuses a trade that is not open (404).

@@ -1,5 +1,5 @@
 /**
- * Close every open race trade by hand, all four funded tests' too (John, 2026-11-11: "close all the
+ * Close every open race trade by hand, both funded tests (all four sizes each) too (John, 2026-11-11: "close all the
  * trades and take the profit"). Each trade closes at the open of the first
  * 1-minute Kraken candle at or after --at (the minute after he asked, so no
  * hindsight). Markets the race prices from daily ECB rates (USD/JPY, NZD/USD)
@@ -17,7 +17,7 @@ import { FEE_RATE } from '../src/lib/paper/engine'
 import { getInstrument } from '../src/lib/paper/instruments'
 import { KRAKEN_PAIRS } from '../src/lib/kraken'
 import { closeAll } from '../src/lib/race/live'
-import { FUNDED, fundedAccounts, sizeLabel } from '../src/lib/race/funded'
+import { FUNDED_TESTS, fundedAccounts, fundedLabel } from '../src/lib/race/funded'
 import type { Minute } from '../src/lib/race/closeRequests'
 import { fetchMinutes, load, money, push, save, waitLock, FILE } from './race-io'
 
@@ -41,8 +41,10 @@ async function main() {
       ...Object.values(state.strategies).flatMap((s) =>
         s.open.map((t) => ({ ...t, strategy: s.name })),
       ),
-      ...fundedAccounts(state).flatMap((f) =>
-        f.open.map((t) => ({ ...t, strategy: `${FUNDED.name} ${sizeLabel(f.startMoney)}` })),
+      ...FUNDED_TESTS.flatMap((test) =>
+        fundedAccounts(state, test.id).flatMap((f) =>
+          f.open.map((t) => ({ ...t, strategy: fundedLabel(f.startMoney, test.id) })),
+        ),
       ),
     ]
     const markets = [...new Set(open.map((t) => t.market))]

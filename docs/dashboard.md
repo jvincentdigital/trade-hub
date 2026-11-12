@@ -26,8 +26,17 @@ chosen one filled) picks which account the card, the race rows, Closed today
 and the How sheet show. The choice is saved in localStorage
 (`trade-hub-funded-size`, `useFundedSize.ts`, read and written in
 try/catch; $10K when nothing valid is saved) and the Compare tab uses the same
-one. Close now's confirm says "Only in the $50K funded test. The other sizes
-keep their trade."
+one.
+
+**Since 2026-11-12 there are two funded tests**, v1 only and v1 + breakouts
+(`docs/strategy-race.md` "Second test"). A "v1 only | v1 + breakouts" switch
+sits above the size switch (`TestSwitch` in `SizeSwitch.tsx`, two 44 px
+buttons, saved as `trade-hub-funded-test` by `useFundedTest.ts` in
+try/catch; v1 only when nothing valid is saved). Test and size together pick
+the account the card, the rows, Closed today and the How sheet show; the
+card's title names both ("Funded test $10K, v1 + breakouts"). Close now's
+confirm says "Only in the $50K v1 + breakouts funded test. The other sizes
+and the other test keep their trade."
 
 ## What the page shows
 

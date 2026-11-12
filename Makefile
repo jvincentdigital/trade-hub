@@ -89,7 +89,7 @@ race-call-cancel: ## John's calls: cancel a call's waiting orders, filled trades
 race-call-list: ## John's calls: every call, its orders and what filled
 	npx tsx scripts/race-call.ts --list
 
-funded-reset: ## Funded test: back up race.json, start a fresh $10,000 funded test at this tick (Lab accounts untouched)
+funded-reset: ## Funded tests: back up race.json, start both (v1 only, v1 + breakouts) fresh in all four sizes at this tick (Lab accounts untouched)
 	npx tsx scripts/race-tick.ts --funded-reset
 
 race-reset: ## Strategy race: back up race.json, start over at 2% risk per trade, first tick, push (usage: make race-reset [START=1000])
