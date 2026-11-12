@@ -1,16 +1,16 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Bitcoin, TrendingUp, BookOpen, Star, Trophy, Wallet } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, BookOpen, Scale, Wallet } from 'lucide-react'
 
+// Crypto and Watchlist are off the nav (John, 2026-11-12); /crypto and
+// /watchlist still open when typed. Race became Compare (/race redirects).
 const nav = [
   { href: '/', label: 'Today', icon: LayoutDashboard },
-  { href: '/crypto', label: 'Crypto', icon: Bitcoin },
   { href: '/forex', label: 'Forex', icon: TrendingUp },
   { href: '/strategies', label: 'Strategies', icon: BookOpen },
-  { href: '/watchlist', label: 'Watchlist', icon: Star },
   { href: '/demo', label: 'Demo', icon: Wallet },
-  { href: '/race', label: 'Race', icon: Trophy },
+  { href: '/compare', label: 'Compare', icon: Scale },
 ]
 
 // Detail pages (/crypto/bitcoin) keep their section highlighted; gold lives under Forex.

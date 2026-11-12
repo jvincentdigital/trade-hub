@@ -1,6 +1,8 @@
 # Strategy race
 
-Added 2026-11-10. Page: `/race` ("Race", trophy icon in the nav).
+Added 2026-11-10. Page: `/compare` ("Compare", scale icon in the nav) since
+2026-11-12; it was `/race` ("Race"), which now redirects there. See "Compare
+page (2026-11-12)" below.
 
 **London open (2026-11-10 night):** real 15m/1h/4h forex candles from Kraken
 for GBP/USD, EUR/GBP, EUR/USD, USD/CAD, USD/CHF and AUD/USD, a computed
@@ -57,8 +59,8 @@ until 2026-11-10 night, see "Real candles" below.
 
 Since 2026-11-11 the live part is two things: the **funded test** (one
 account, the account Today follows; since that evening it takes only John's
-London v1's signals) and the **Lab** (every strategy's own account, below). The Race tab shows the funded
-test first, then the Lab list.
+London v1's signals) and the **Lab** (every strategy's own account, below). The Compare tab shows the funded
+test first, then every strategy side by side (below).
 
 `make race-tick` (= `npx tsx scripts/race-tick.ts`) runs one tick:
 
@@ -468,6 +470,53 @@ ignores zero-range candles (high === low), alone or inside a 2/3-candle pattern.
 `race.json` kept its format; a backup from before the first real-candle tick
 is at `~/.local/share/trade-hub/race.json.bak-2026-11-10-precandles`.
 
+## Compare page (2026-11-12)
+
+John (2026-11-12): "The race, I don't even know the purpose for that.
+Instead of race, make comparables with which strategies to invest". So the
+Race tab became **Compare** (`/compare`; `/race` redirects; the API stays
+`/api/race`). One line at the top says its job: "Which strategy is worth
+backing." Order:
+
+1. **Funded test, four sizes** (unchanged).
+2. **Every strategy, side by side**: one row per account in `race.json`
+   (the 11 originals, the 5 lab bots, John's London v1; a new account, such
+   as John's video method once it joins the race, shows up on its own).
+   Live numbers from `compareRows` in `src/lib/race/compare.ts`:
+   - **Live P&L**: balance plus open trades at the last check, less the
+     entry fees they still owe (same as the old Lab list).
+   - **Trades, win rate, average R, worst losing streak** count whole closed
+     trades: a first-target half and the rest are one trade (grouped by
+     market, entry time and signal time), and a trade whose rest is still
+     open is left out until it closes. Every closed part's `pnl` is net of
+     both fees, so all of these include fees. R = net P&L / the dollars
+     risked at the stop from entry. A $0 trade counts as a loss.
+   - **Max drop**: the balance after every booked close (first-target halves
+     too), largest fall from a high as a share of that high.
+   - **Days live**: from when the account got its money. The 5 lab bots and
+     v1 joined at the check of 2026-11-11 17:43:43 AST (`race.log`), kept in
+     `JOINED_AT`; the rest from `state.startedAt`. A race reset counts from
+     the reset.
+   - **Evidence tag** (`PAST_TESTS`): "Passed an unseen-data test" (v1: the
+     clean year, $10,000 to $16,896 on 97 trades, from
+     `~/jvd-outputs/2026-11-11/london-strategy/FINAL.md` and `HOLDOUT.md`),
+     "Lost its past test" (the 5 lab bots: made money in the lab's test
+     months, lost on 2019 to 2024, from `strategy-lab/REPORT.md`) and
+     "Testing live only" (everything else; the 11 originals have no fair
+     past test). London breakout's details add the lab's winter-loss note.
+   - **Sort**: Evidence (passed, live only, lost; inside each, best live
+     average R first, no trades last), Live P&L, Win rate (ties: more trades).
+   - **Layout**: on a phone each strategy is one compact row (name, P&L, tag,
+     trades, win rate, average R) that opens to every number, the past test
+     and its trades. From 768 px the numbers line up in columns under a
+     header inside a box that scrolls sideways if needed (`.cmp-*` in
+     `globals.css`).
+3. **Past results** (the old backtest leaderboard), last and folded. It
+   loads its candles only when opened, with the starting money box inside.
+
+Crypto and Watchlist left the sidebar and the phone bar the same day; their
+pages still open by URL.
+
 ## Gold joining a running race (2026-11-10)
 
 `syncRaceState` (in `live.ts`, run at the start of every tick) added any market
@@ -539,7 +588,9 @@ hourly job is not installed yet".
 
 | File                            | Role                                                                                                         |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `src/app/race/page.tsx`         | The page (leaderboard + live table)                                                                          |
+| `src/app/compare/page.tsx`      | The page: funded test, every strategy side by side, past results folded                                      |
+| `src/app/race/page.tsx`         | Redirects the old `/race` to `/compare`                                                                      |
+| `src/lib/race/compare.ts`       | Pure: the comparison's live stats, past-test evidence, sorting (`compare.test.ts`)                           |
 | `src/app/api/race/route.ts`     | Reads the local race file, reports whether the job is installed                                              |
 | `src/lib/race/account.ts`       | Pure: sizing (`sizeRaceTrade`), new-trade rules (`newTradeBlock`)                                            |
 | `src/lib/race/leaderboard.ts`   | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`                                           |

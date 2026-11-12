@@ -3,7 +3,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { HelpCircle } from 'lucide-react'
-import { useCandleMap, useCryptoPrices, useForexRates } from '@/lib/hooks/useMarketData'
+import { useCandleMap } from '@/lib/hooks/useMarketData'
 import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
 import { FUNDED, fundedOf, fundedView } from '@/lib/race/funded'
@@ -39,7 +39,6 @@ import { FAILED_TEXT, Summary } from '@/components/home/Summary'
 import { SizeSwitch } from '@/components/home/SizeSwitch'
 import { TradeRow, rowId } from '@/components/home/TradeRow'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from '@/components/home/ui'
-import { formatChange, changeColor } from '@/lib/utils/formatters'
 
 type Tab = 'all' | 'look' | 'strategy' | 'pound'
 type Row = { pos: OpenPosition; m: PositionMetrics }
@@ -434,7 +433,7 @@ function Today() {
               )}
             </div>
           </section>
-          <Markets />
+          <MoreLinks />
         </div>
       </div>
 
@@ -469,94 +468,37 @@ function Empty({ children }: { children: React.ReactNode }) {
   )
 }
 
-const small: React.CSSProperties = { fontSize: FS.xs, color: 'var(--text-secondary)' }
-
-function Markets() {
-  const { prices: all, isLoading } = useCryptoPrices()
-  const { rates } = useForexRates()
-  // Coins the feed has a price for; none when it failed (no "+0.00%" tiles).
-  const prices = all.filter((p) => p.price > 0)
-  const movers = [...prices]
-    .sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h))
-    .slice(0, 6)
-  const up = [...prices, ...rates].filter((m) => m.change24h > 0).length
-  const down = [...prices, ...rates].filter((m) => m.change24h < 0).length
+/**
+ * Links to the other pages. The crypto Markets card and the Crypto and
+ * Watchlist links are gone (John, 2026-11-12); those pages still open by URL.
+ */
+function MoreLinks() {
   const links = [
-    { href: '/crypto', label: 'Crypto' },
     { href: '/forex', label: 'Forex' },
     { href: '/gold', label: 'Gold' },
     { href: '/strategies', label: 'Strategies' },
-    { href: '/watchlist', label: 'Watchlist' },
   ]
   return (
-    <section style={{ ...card, padding: 16 }} aria-labelledby="markets-title">
-      <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}
-      >
-        <h2 id="markets-title" style={{ fontSize: FS.md, fontWeight: 600 }}>
-          Markets
-        </h2>
-        <span style={small}>
-          {up} up, {down} down in 24 h
-        </span>
-      </div>
-      <p style={{ ...small, marginTop: 2 }}>Biggest crypto moves</p>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-          gap: 6,
-          marginTop: 8,
-        }}
-      >
-        {isLoading && <p style={small}>Loading…</p>}
-        {!isLoading && !prices.length && <p style={small}>Prices not available right now.</p>}
-        {movers.map((m) => (
-          <Link
-            key={m.id}
-            href={`/crypto/${m.id}`}
-            style={{
-              minHeight: 44,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 8,
-              padding: '0 10px',
-              borderRadius: 8,
-              background: 'var(--bg-secondary)',
-              textDecoration: 'none',
-              color: 'var(--text-primary)',
-              fontSize: FS.sm,
-            }}
-          >
-            <b>{m.symbol}</b>
-            <span style={{ color: changeColor(m.change24h), fontSize: FS.xs }}>
-              {formatChange(m.change24h)}
-            </span>
-          </Link>
-        ))}
-      </div>
-      <nav aria-label="More" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-        {links.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            style={{
-              minHeight: 44,
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 14px',
-              borderRadius: 999,
-              border: '0.5px solid var(--border)',
-              color: 'var(--text-secondary)',
-              textDecoration: 'none',
-              fontSize: FS.sm,
-            }}
-          >
-            {l.label}
-          </Link>
-        ))}
-      </nav>
-    </section>
+    <nav aria-label="More" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {links.map((l) => (
+        <Link
+          key={l.href}
+          href={l.href}
+          style={{
+            minHeight: 44,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 14px',
+            borderRadius: 999,
+            border: '0.5px solid var(--border)',
+            color: 'var(--text-secondary)',
+            textDecoration: 'none',
+            fontSize: FS.sm,
+          }}
+        >
+          {l.label}
+        </Link>
+      ))}
+    </nav>
   )
 }

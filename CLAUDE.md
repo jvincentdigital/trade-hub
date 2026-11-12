@@ -43,14 +43,15 @@ src/
       crypto/candles/[id]/ #  GET  real 1h/4h/1d candles from Kraken (720 each)
       forex/rates/      #     GET  USD-based rates for 9 pairs
       scanner/          #     GET  MM Confluence v2 setup scanner (crypto-only)
-    crypto/             #   Crypto explorer (grid + detail panel w/ chart + patterns)
+    crypto/             #   Crypto explorer (grid + detail panel w/ chart + patterns); off the nav since 2026-11-12, opens by URL
     forex/              #   Forex pair cards + Gold card
     gold/               #   Gold (XAU/USD) detail, priced by PAX Gold (docs/gold.md)
     strategies/         #   Strategy rules + live scanner + trade plans (localStorage)
       _components/      #     StrategyRules.tsx, RuleEditor.tsx, SetupScanner.tsx
     demo/               #   Demo account: play-money paper trading
-    race/               #   Strategy race: past-results leaderboard + live forward test (docs/strategy-race.md, docs/london-open.md)
-    watchlist/          #   User-selected pairs (localStorage)
+    compare/            #   Compare (was Race): funded test, every strategy side by side, past results folded (docs/strategy-race.md, docs/london-open.md)
+    race/               #   Redirects the old /race to /compare
+    watchlist/          #   User-selected pairs (localStorage); off the nav since 2026-11-12, opens by URL
     error.tsx           #   Branded error boundary w/ reset
     not-found.tsx       #   Branded 404 page
     layout.tsx          #   Root layout + sidebar
