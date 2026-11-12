@@ -294,6 +294,10 @@ const STATUS = {
   failed: { text: 'Failed', color: 'var(--red)', background: 'var(--red-dim)' },
 } as const
 
+/** A round limit in a tile: "$20K" from $10,000 up, so "+$1,343 of +$20K" fits on a phone. */
+const limitShort = (n: number) =>
+  n >= 10_000 && n % 1000 === 0 ? `$${n / 1000}K` : usdShort(Math.round(n))
+
 /** The challenge: target, day loss, max loss and trading days, plus today's caps. */
 function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => string }) {
   const st = STATUS[v.status]
@@ -342,21 +346,21 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
       >
         <Meter
           label="Target"
-          value={`${signedShort(Math.round(v.result))} of +${usdShort(v.target)}`}
+          value={`${signedShort(Math.round(v.result))} of +${limitShort(v.target)}`}
           share={v.result / v.target}
           color="var(--green)"
           sub={`+${FUNDED.targetPct}% to pass`}
         />
         <Meter
           label="Day loss"
-          value={`${usdShort(Math.round(v.dayLoss))} of ${usdShort(Math.round(v.dayLimit))}`}
+          value={`${usdShort(Math.round(v.dayLoss))} of ${limitShort(v.dayLimit)}`}
           share={v.dayLoss / v.dayLimit}
           color={v.dayStopped ? 'var(--amber)' : 'var(--red)'}
           sub={`${pct(dayPct)} of ${FUNDED.dailyLossPct}% used`}
         />
         <Meter
           label="Max loss"
-          value={`${usdShort(Math.round(v.maxLoss))} of ${usdShort(v.maxLimit)}`}
+          value={`${usdShort(Math.round(v.maxLoss))} of ${limitShort(v.maxLimit)}`}
           share={v.maxLoss / v.maxLimit}
           color="var(--red)"
           sub={`${pct(maxPct)} of ${FUNDED.maxLossPct}% used`}
@@ -389,9 +393,7 @@ function Meter(props: { label: string; value: string; share: number; color: stri
       style={{ background: 'var(--bg-hover)', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}
     >
       <p style={{ ...secondary, fontSize: FS.xs }}>{props.label}</p>
-      <p style={{ ...num, fontSize: FS.sm, fontWeight: 600, whiteSpace: 'nowrap' }}>
-        {props.value}
-      </p>
+      <p style={{ ...num, fontSize: FS.sm, fontWeight: 600, textWrap: 'balance' }}>{props.value}</p>
       <span
         aria-hidden
         style={{
