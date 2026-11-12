@@ -1,3 +1,4 @@
+import { JOHNS_CALLS, type Call } from './callSchema'
 import { JOHNS_LONDON } from './johnsLondonLive'
 import { LAB_BOTS } from './labBots'
 import { LONDON_BREAKOUT } from './londonBreakout'
@@ -8,17 +9,18 @@ import { summarize, tradeRisk, type ClosedLiveTrade, type LiveTrade, type RaceSt
 // play results from closed trades (fees included, since every closed trade's
 // pnl is net) and what its past tests showed. Pure, tested.
 
-export type Evidence = 'passed' | 'live' | 'lost'
+export type Evidence = 'passed' | 'live' | 'lost' | 'calls'
 
 /** The tag each row shows, in plain words. */
 export const EVIDENCE_TEXT: Record<Evidence, string> = {
   passed: 'Passed an unseen-data test',
   live: 'Testing live only',
   lost: 'Lost its past test',
+  calls: 'Your calls',
 }
 
-/** Sort order for "Evidence": a pass first, no test next, a lost test last. */
-const EVIDENCE_RANK: Record<Evidence, number> = { passed: 0, live: 1, lost: 2 }
+/** Sort order for "Evidence": a pass first, no test next (John's calls too), a lost test last. */
+const EVIDENCE_RANK: Record<Evidence, number> = { passed: 0, calls: 1, live: 1, lost: 2 }
 
 export interface PastTest {
   evidence: Evidence
@@ -52,6 +54,10 @@ export const PAST_TESTS: Record<string, PastTest> = {
   'lab-ema1236-gold-4h': lab('+$1,953 on 32 trades', '-$3,388 on 310 trades'),
   'lab-fib-london-us30': lab('+$1,201 on 39 trades', '-$5,909 on 332 trades'),
   'lab-stophunt-gold-1h': lab('+$952 on 34 trades', '-$8,374 on 286 trades'),
+  [JOHNS_CALLS.id]: {
+    evidence: 'calls',
+    text: 'Your own trades: you call them in chat, Claude records them as limit orders and the race fills them on live prices after the call, with the same fees, stops, targets and checklist as the strategies. No past test. The 02:00 to 12:30 entry window and the 12:45 close do not apply to them.',
+  },
   [LONDON_BREAKOUT.id]: {
     ...NO_PAST_TEST,
     text: `${NO_PAST_TEST.text} The strategy lab saw it lose in winter months on past data (-$5,116 on both markets), and UK winter time started on 2026-10-25.`,
@@ -174,12 +180,21 @@ export interface CompareRow {
   since: number
   /** Days since then, as a decimal. */
   days: number
+  /** John's calls: every call he made, oldest first. */
+  calls?: Call[]
 }
 
 /** One row per strategy account in the race. */
 export function compareRows(state: RaceState, nowMs: number): CompareRow[] {
   return summarize(state).map((s) => {
-    const since = Math.max(state.startedAt, JOINED_AT[s.ruleId] ?? 0)
+    const mine = s.ruleId === JOHNS_CALLS.id
+    // John's calls count from his first call (its account joins empty, at the first check after the merge).
+    const calls = state.calls ?? []
+    const since = mine
+      ? calls.length
+        ? Math.min(...calls.map((c) => c.madeAt)) * 1000
+        : nowMs
+      : Math.max(state.startedAt, JOINED_AT[s.ruleId] ?? 0)
     return {
       id: s.ruleId,
       name: s.name,
@@ -191,6 +206,7 @@ export function compareRows(state: RaceState, nowMs: number): CompareRow[] {
       stats: liveStats(s.closed, state.startMoney, s.open),
       since,
       days: Math.max(0, (nowMs - since) / 86_400_000),
+      ...(mine ? { calls: state.calls ?? [] } : {}),
     }
   })
 }
