@@ -6,7 +6,8 @@ import { HelpCircle } from 'lucide-react'
 import { useCandleMap, useCryptoPrices, useForexRates } from '@/lib/hooks/useMarketData'
 import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
-import { FUNDED, fundedView } from '@/lib/race/funded'
+import { FUNDED, fundedOf, fundedView } from '@/lib/race/funded'
+import { useFundedSize } from '@/lib/hooks/useFundedSize'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
 import { getInstrument } from '@/lib/paper/instruments'
 import {
@@ -35,6 +36,7 @@ import { EXTRA_STRATEGIES } from '@/lib/race/extras'
 import { HowSheet } from '@/components/home/HowSheet'
 import { LondonStrip } from '@/components/home/LondonStrip'
 import { FAILED_TEXT, Summary } from '@/components/home/Summary'
+import { SizeSwitch } from '@/components/home/SizeSwitch'
 import { TradeRow, rowId } from '@/components/home/TradeRow'
 import { FS, button, card, clock, num, pnlText, secondary, tone } from '@/components/home/ui'
 import { formatChange, changeColor } from '@/lib/utils/formatters'
@@ -105,6 +107,9 @@ function Today() {
   const account = usePaperAccount()
   const { prices } = useLivePrices()
   const [tab, setTab] = useState<Tab>('all')
+  // Which funded size the card and the rows show (John, 2026-11-12).
+  const [size, setSize] = useFundedSize()
+  const shownFunded = fundedOf(state, size)
   const [now, setNow] = useState(() => Date.now())
   const nav = useUrlState()
   const { trade, how, close } = nav
@@ -116,11 +121,11 @@ function Today() {
 
   const rows = useMemo(() => {
     // The funded test's trades (the account Today follows) and the demo account's.
-    const all = [...fundedPositions(state), ...demoPositions(account, prices)]
+    const all = [...fundedPositions(state, size), ...demoPositions(account, prices)]
     return sortPositions(
       all.map((pos) => ({ pos, m: measure(pos, priceFor(pos, prices, state?.prices)) })),
     )
-  }, [state, account, prices])
+  }, [state, size, account, prices])
   const { candles, isLoading: candlesLoading } = useCandleMap(rows.map((r) => r.pos.market))
   // The race feed failed and there is nothing to show: say so, not "no trades".
   const failed = !!raceError && rows.length === 0
@@ -142,17 +147,17 @@ function Today() {
   )
   // Priced like the rows, so the challenge and the big number agree.
   const challenge = useMemo(() => {
-    if (!state?.funded) return null
+    if (!state || !shownFunded) return null
     const live = Object.fromEntries(
       funded.flatMap((r) => (r.m.price ? [[r.pos.market, r.m.price]] : [])),
     )
-    return fundedView(state.funded, { ...state.prices, ...live }, Math.floor(now / 1000))
-  }, [state, funded, now])
+    return fundedView(shownFunded, { ...state.prices, ...live }, Math.floor(now / 1000))
+  }, [state, shownFunded, funded, now])
   const strategyCount = state ? Object.keys(state.strategies).length : 0
-  const startMoney = FUNDED.startMoney
+  const startMoney = size
   const closedToday = useMemo(
-    () => closedTodayLine(closedTrades(state, account), now),
-    [state, account, now],
+    () => closedTodayLine(closedTrades(state, account, size), now),
+    [state, account, size, now],
   )
   const groups = useMemo(() => {
     const by = new Map<string, Row[]>()
@@ -262,8 +267,8 @@ function Today() {
               strategyCount || BUILT_IN_RULES.length,
             )}
             pnl={openPnl}
-            settled={settledSoFar(state)}
-            since={state?.funded ? clock(state.funded.startedAt, now) : null}
+            settled={settledSoFar(state, size)}
+            since={shownFunded ? clock(shownFunded.startedAt, now) : null}
             funded={challenge}
             clockOf={(sec) => clock(sec * 1000, now)}
             series={series}
@@ -275,6 +280,16 @@ function Today() {
             closedToday={closedToday}
             startMoney={startMoney}
             riskPct={FUNDED.sizing.riskPct}
+            sizeSwitch={
+              <SizeSwitch
+                value={size}
+                onChange={(s) => {
+                  if (s === size) return
+                  close('trade')
+                  setSize(s)
+                }}
+              />
+            }
           />
         </div>
 

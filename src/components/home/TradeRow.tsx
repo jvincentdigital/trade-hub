@@ -206,6 +206,7 @@ export function TradeRow(props: Props) {
             props.onCloseNow && (
               <CloseNow
                 name={`${inst?.symbol ?? pos.market} ${pos.side === 'long' ? 'buy' : 'sell'}`}
+                account={pos.account}
                 requestedAt={requested}
                 now={now}
                 onConfirm={props.onCloseNow}
@@ -470,6 +471,8 @@ function Panel(props: {
  */
 function CloseNow(props: {
   name: string
+  /** Funded size ("$50K"): the close is in that account only. */
+  account?: string
   requestedAt?: number
   now: number
   onConfirm: () => Promise<void>
@@ -526,6 +529,11 @@ function CloseNow(props: {
     >
       <p>
         <b style={{ fontWeight: 600 }}>Close this {props.name} now?</b>{' '}
+        {props.account && (
+          <span style={{ display: 'block', margin: '4px 0' }}>
+            {`Only in the ${props.account} funded test. The other sizes keep their trade.`}
+          </span>
+        )}
         <span style={secondary}>
           It closes at the price of this minute, booked at the next race check (every 15 minutes in
           the session). Play money.

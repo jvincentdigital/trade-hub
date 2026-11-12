@@ -28,7 +28,8 @@ import {
   type ClosedLiveTrade,
   type RaceState,
 } from '@/lib/race/live'
-import { FUNDED, fundedView } from '@/lib/race/funded'
+import { FUNDED, FUNDED_SIZES, fundedOf, fundedView, sizeLabel } from '@/lib/race/funded'
+import { useFundedSize } from '@/lib/hooks/useFundedSize'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
 import type { RuleTimeframe } from '@/lib/rules/schema'
 import type { OHLCCandle } from '@/lib/types/market'
@@ -605,30 +606,126 @@ const fetcher = async (url: string) => {
 function FundedLive() {
   const { data } = useSWR('/api/race', fetcher, { refreshInterval: 60_000 })
   const [now] = useState(() => Date.now())
+  const [size, setSize] = useFundedSize()
   const state = data?.state ?? null
   if (!state) return null
-  const f = state.funded
-  const v = f ? fundedView(f, state.prices, Math.floor(now / 1000)) : null
+  const nowSec = Math.floor(now / 1000)
+  const f = fundedOf(state, size)
+  const v = f ? fundedView(f, state.prices, nowSec) : null
   const nameOf = (id: string) => state.strategies[id]?.name ?? id
-  const floor = FUNDED.startMoney * (1 - FUNDED.maxLossPct / 100)
+  const cell: React.CSSProperties = { minWidth: 0, textAlign: 'right' }
+  const cols = '3.4em minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.9fr) 4.2em'
   return (
     <section style={{ ...card, marginTop: 16 }} aria-labelledby="funded-title">
       <div style={sectionHead}>
         <h2 id="funded-title" style={h2}>
-          {f ? `${FUNDED.name} since ${when(f.startedAt / 1000)}` : FUNDED.name}
+          {FUNDED.name}: four sizes
         </h2>
       </div>
       {/* One string: JSX text with entities can lose a space here (docs/dashboard.md, Gotcha). */}
       <p style={small}>
-        {`One ${money(FUNDED.startMoney)} play account that takes only John's London v1 signals (GBP/USD and gold), with v1's own exits. Every other strategy trades only in its Lab account below. ${FUNDED.sizing.riskPct}% risk per trade, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${money((FUNDED.startMoney * FUNDED.dailyLossPct) / 100)} (${FUNDED.dailyLossPct}% of the start, counted from the day's opening balance) or money under ${money(floor)} fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${money((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}. Today follows this account.`}
+        {`Four play accounts, ${FUNDED_SIZES.map(sizeLabel).join(', ')}, with the same rules: each takes only John's London v1 signals (GBP/USD and gold) at the same moment, with v1's own exits, and every limit is the same share of its size. ${FUNDED.sizing.riskPct}% risk per trade, rounded down to 0.01 lot, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${FUNDED.dailyLossPct}% of the start (counted from the day's opening balance) or money ${FUNDED.maxLossPct}% under the start fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${FUNDED.worstCasePct}% of the start. Every other strategy trades only in its Lab account below. Tap a size for its trades; Today shows the same size.`}
       </p>
+      <div role="group" aria-label="Funded test sizes" style={{ marginTop: 12, fontSize: 13 }}>
+        <div
+          aria-hidden
+          style={{
+            display: 'grid',
+            gridTemplateColumns: cols,
+            gap: 6,
+            padding: '0 10px 4px',
+            fontSize: 11,
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <span>Size</span>
+          <span style={cell}>Balance</span>
+          <span style={cell}>P&amp;L</span>
+          <span style={cell}>Day loss</span>
+          <span style={cell}>Status</span>
+        </div>
+        {FUNDED_SIZES.map((s) => {
+          const a = fundedOf(state, s)
+          const av = a ? fundedView(a, state.prices, nowSec) : null
+          const on = s === size
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={on}
+              aria-label={
+                av
+                  ? `${sizeLabel(s)}: balance ${money(a!.balance)}, ${money(av.result, { sign: true })}, day loss ${((av.dayLoss / s) * 100).toFixed(1)}% of ${FUNDED.dailyLossPct}%, ${av.status}`
+                  : `${sizeLabel(s)}: starts at the next race check`
+              }
+              onClick={() => setSize(s)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: cols,
+                gap: 6,
+                alignItems: 'center',
+                width: '100%',
+                minHeight: 44,
+                padding: '0 10px',
+                marginTop: 4,
+                borderRadius: 8,
+                border: `1px solid ${on ? 'var(--text-primary)' : 'var(--border)'}`,
+                background: on ? 'var(--bg-hover)' : 'transparent',
+                color: 'var(--text-primary)',
+                font: 'inherit',
+                fontVariantNumeric: 'tabular-nums',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <b style={{ fontWeight: 600 }}>{sizeLabel(s)}</b>
+              {a && av ? (
+                <>
+                  <span style={cell}>{money(a.balance)}</span>
+                  <span style={{ ...cell, color: color(av.result) }}>
+                    {money(av.result, { sign: true })}
+                  </span>
+                  <span style={cell}>{`${((av.dayLoss / s) * 100).toFixed(1)}%`}</span>
+                  <span
+                    style={{
+                      ...cell,
+                      color:
+                        av.status === 'failed'
+                          ? 'var(--red)'
+                          : av.status === 'passed'
+                            ? 'var(--green)'
+                            : 'var(--text-secondary)',
+                    }}
+                  >
+                    {av.status === 'active'
+                      ? 'Active'
+                      : av.status === 'passed'
+                        ? 'Passed'
+                        : 'Failed'}
+                  </span>
+                </>
+              ) : (
+                <span style={{ ...cell, gridColumn: '2 / -1', color: 'var(--text-secondary)' }}>
+                  Starts at the next check
+                </span>
+              )}
+            </button>
+          )
+        })}
+        <p style={{ ...small, marginTop: 6 }}>
+          {`Balance counts closed trades; P&L adds the open ones at the last check. Day loss is the share of the start lost since the day began (the limit is ${FUNDED.dailyLossPct}%).`}
+        </p>
+      </div>
       {!f || !v ? (
         <p style={{ fontSize: 13, marginTop: 12 }}>
-          Starts with {money(FUNDED.startMoney)} at the next race check.
+          {`The ${sizeLabel(size)} account starts with ${money(size)} at the next race check.`}
         </p>
       ) : (
         <>
-          <p style={{ fontSize: 13, marginTop: 12, fontVariantNumeric: 'tabular-nums' }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 16 }}>
+            {`${sizeLabel(size)}, started ${when(f.startedAt / 1000)}`}
+          </h3>
+          <p style={{ fontSize: 13, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
             <b>{money(v.money, { cents: true })}</b>{' '}
             <span style={{ color: color(v.result) }}>
               {money(v.result, { sign: true, cents: true })}
@@ -689,8 +786,9 @@ function Live({ start }: { start: number }) {
       </div>
       <p style={small}>
         The quiet Lab: each strategy still trades its own play account on its own signals, so we can
-        see which ones earn their place. Today shows only the funded test above. Every account opens
-        new trades only from 02:00 to 12:30 AST on weekdays and closes everything at 12:45 AST.
+        see which ones earn their place. Today shows only the funded tests above. Every account
+        opens new trades only from 02:00 to 12:30 AST on weekdays and closes everything at 12:45
+        AST.
       </p>
       <p style={small}>
         A forward test: each tick checks every strategy&apos;s signal on fresh closed candles and

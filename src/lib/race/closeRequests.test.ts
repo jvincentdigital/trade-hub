@@ -9,7 +9,7 @@ import {
   type CloseRequests,
   type Minute,
 } from './closeRequests'
-import { createFunded } from './funded'
+import { createFunded, fundedAccountId } from './funded'
 import { createRaceState, type FundedTrade, type LiveTrade } from './live'
 // The relay worker is plain JS (race-worker/), tested here with a fake KV.
 import worker from '../../../race-worker/worker.js'
@@ -183,6 +183,33 @@ describe('Close now: the request flow', () => {
     )
     expect(again.dropped).toEqual([fundedId])
     expect(again.booked).toHaveLength(0)
+  })
+
+  it('a funded close names one size and closes the trade in that account only', () => {
+    // The same v1 trade open in the $10K and the $50K (5x the units).
+    const st = race()
+    const t: FundedTrade = { ...gbp, strategy: 'london-breakout' }
+    st.fundedSizes = [{ ...createFunded(0, [], 50_000), open: [{ ...t, units: 100_000 }] }]
+    const id50 = tradeId(fundedAccountId(50_000), gbp)
+    expect(id50).toBe(`funded-50k|GBP-USD|${gbp.entryTime}`)
+    expect(CLOSE_ID.test(id50)).toBe(true)
+    expect(findOpen(st, id50)?.trade.units).toBe(100_000)
+    expect(findOpen(st, tradeId(fundedAccountId(100_000), gbp))).toBeNull() // not running
+    const mins = quiet(at(10, 0), at(10, 20), 1.305)
+    const r = bookCloseRequests(
+      st,
+      { [id50]: { id: id50, at: at(10, 14, 20) * 1000 } },
+      () => mins,
+      at(10, 0),
+      () => 0,
+    )
+    expect(r.booked.map((b) => b.account)).toEqual(['funded-50k'])
+    const fifty = r.state.fundedSizes![0]
+    expect(fifty.open).toHaveLength(0)
+    expect(fifty.balance).toBeCloseTo(50_000 + 100_000 * 0.005 - gbp.entryFee)
+    // the $10K keeps its trade
+    expect(r.state.funded?.open).toHaveLength(1)
+    expect(r.state.funded?.balance).toBe(10_000)
   })
 
   it('stop before the tap books the stop, not the tap', () => {

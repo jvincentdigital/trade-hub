@@ -1,5 +1,5 @@
 import { goalBar, signedShort, usdShort } from '@/lib/positions/today'
-import { FUNDED, type FundedView } from '@/lib/race/funded'
+import { FUNDED, sizeLabel, type FundedView } from '@/lib/race/funded'
 import { pct } from './format'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
 
@@ -37,8 +37,11 @@ interface Props {
   lookLine: string | null
   needsLook: boolean
   closedToday: string | null
+  /** The size shown ($10K, $50K, $100K or $200K): the card's numbers are that account's. */
   startMoney: number
   riskPct: number
+  /** The $10K | $50K | $100K | $200K switch (SizeSwitch). */
+  sizeSwitch?: React.ReactNode
 }
 
 /**
@@ -58,6 +61,7 @@ export function Summary(p: Props) {
   const shown = p.count > 0 || p.settled !== 0
   return (
     <section aria-label="Summary" style={{ ...card, padding: '16px 18px' }}>
+      {p.sizeSwitch && <div style={{ marginBottom: 14 }}>{p.sizeSwitch}</div>}
       <div
         style={{
           display: 'flex',
@@ -68,8 +72,7 @@ export function Summary(p: Props) {
       >
         <div style={{ minWidth: 0 }}>
           <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>
-            {FUNDED.name}
-            {p.since ? ` since ${p.since}` : ''}
+            {`${FUNDED.name} ${sizeLabel(p.startMoney)}${p.since ? `, started ${p.since}` : ''}`}
           </p>
           {!p.failed && (
             <p
@@ -109,7 +112,7 @@ export function Summary(p: Props) {
                   ? 'Loading your trades…'
                   : p.funded
                     ? 'No trades open right now.'
-                    : `Starts with ${usdShort(FUNDED.startMoney)} at the next race check.`}
+                    : `Starts with ${usdShort(p.startMoney)} at the next race check.`}
           </p>
         </div>
         {sparkReady(p.series) && p.sinceText && (
@@ -270,7 +273,7 @@ export function Summary(p: Props) {
         </p>
       )}
       <p style={{ ...secondary, fontSize: FS.sm, marginTop: 10 }}>
-        One{' '}
+        This{' '}
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {usdShort(p.startMoney)} play account
         </b>{' '}
@@ -278,8 +281,8 @@ export function Summary(p: Props) {
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {p.riskPct}% ({usdShort((p.startMoney * p.riskPct) / 100)})
         </b>{' '}
-        per trade, with FTMO-style limits. Each strategy&apos;s own account is in the Lab on the
-        Race tab.
+        per trade, with FTMO-style limits. All four sizes follow the same rules and signals. Each
+        strategy&apos;s own account is in the Lab on the Race tab.
       </p>
     </section>
   )
@@ -291,13 +294,17 @@ const STATUS = {
   failed: { text: 'Failed', color: 'var(--red)', background: 'var(--red-dim)' },
 } as const
 
+/** A round limit in a tile: "$20K" from $10,000 up, so "+$1,343 of +$20K" fits on a phone. */
+const limitShort = (n: number) =>
+  n >= 10_000 && n % 1000 === 0 ? `$${n / 1000}K` : usdShort(Math.round(n))
+
 /** The challenge: target, day loss, max loss and trading days, plus today's caps. */
 function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => string }) {
   const st = STATUS[v.status]
   // Both as a share of the start money, like FTMO: $500 is 5%, $1,000 is 10%.
   const dayPct = (v.dayLoss / v.dayLimit) * FUNDED.dailyLossPct
   const maxPct = ((v.maxLoss / v.maxLimit) * FUNDED.maxLossPct) as number
-  const summary = `${FUNDED.name}: ${pnlText(v.result)}, day loss used ${pct(dayPct)} of ${FUNDED.dailyLossPct}%, ${pct(maxPct)} of ${FUNDED.maxLossPct}% max, ${v.days} of ${FUNDED.minDays} days, target +${usdShort(v.target)}`
+  const summary = `${FUNDED.name} ${sizeLabel(v.startMoney)}: ${pnlText(v.result)}, day loss used ${pct(dayPct)} of ${FUNDED.dailyLossPct}%, ${pct(maxPct)} of ${FUNDED.maxLossPct}% max, ${v.days} of ${FUNDED.minDays} days, target +${usdShort(v.target)}`
   return (
     <div style={{ marginTop: 16 }} data-testid="challenge">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -339,21 +346,21 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
       >
         <Meter
           label="Target"
-          value={`${signedShort(Math.round(v.result))} of +${usdShort(v.target)}`}
+          value={`${signedShort(Math.round(v.result))} of +${limitShort(v.target)}`}
           share={v.result / v.target}
           color="var(--green)"
           sub={`+${FUNDED.targetPct}% to pass`}
         />
         <Meter
           label="Day loss"
-          value={`${usdShort(Math.round(v.dayLoss))} of ${usdShort(Math.round(v.dayLimit))}`}
+          value={`${usdShort(Math.round(v.dayLoss))} of ${limitShort(v.dayLimit)}`}
           share={v.dayLoss / v.dayLimit}
           color={v.dayStopped ? 'var(--amber)' : 'var(--red)'}
           sub={`${pct(dayPct)} of ${FUNDED.dailyLossPct}% used`}
         />
         <Meter
           label="Max loss"
-          value={`${usdShort(Math.round(v.maxLoss))} of ${usdShort(v.maxLimit)}`}
+          value={`${usdShort(Math.round(v.maxLoss))} of ${limitShort(v.maxLimit)}`}
           share={v.maxLoss / v.maxLimit}
           color="var(--red)"
           sub={`${pct(maxPct)} of ${FUNDED.maxLossPct}% used`}
@@ -368,7 +375,7 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
       </div>
       <p style={{ ...secondary, fontSize: FS.xs, marginTop: 8 }}>
         {/* One string: JSX text with entities can lose a space (docs/dashboard.md, Gotcha). */}
-        {`Today ${v.newToday} of ${FUNDED.maxNewPerDay} new trades, ${v.openCount} of ${FUNDED.sizing.maxOpen} open. The day resets at ${clockOf(v.nextDay)} (midnight in Prague). A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${usdShort((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}.`}
+        {`Today ${v.newToday} of ${FUNDED.maxNewPerDay} new trades, ${v.openCount} of ${FUNDED.sizing.maxOpen} open. The day resets at ${clockOf(v.nextDay)} (midnight in Prague). A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${usdShort((v.startMoney * FUNDED.worstCasePct) / 100)}.`}
       </p>
       {v.status === 'active' && v.dayStopped && (
         <p style={{ fontSize: FS.sm, marginTop: 6, color: 'var(--amber)' }}>
@@ -386,9 +393,7 @@ function Meter(props: { label: string; value: string; share: number; color: stri
       style={{ background: 'var(--bg-hover)', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}
     >
       <p style={{ ...secondary, fontSize: FS.xs }}>{props.label}</p>
-      <p style={{ ...num, fontSize: FS.sm, fontWeight: 600, whiteSpace: 'nowrap' }}>
-        {props.value}
-      </p>
+      <p style={{ ...num, fontSize: FS.sm, fontWeight: 600, textWrap: 'balance' }}>{props.value}</p>
       <span
         aria-hidden
         style={{

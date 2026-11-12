@@ -1,4 +1,6 @@
 import type { Signal } from '../rules/engine'
+import { getInstrument } from '../paper/instruments'
+import { FOREX_LOT, GOLD_LOT_OZ } from '../sizing/sizing'
 import { newTradeBlock, sizeRaceTrade, type RaceSizing } from './account'
 import {
   entryLevels,
@@ -9,6 +11,7 @@ import {
   type FundedState,
   type FundedTrade,
   type MarketTick,
+  type RaceState,
 } from './live'
 import { nextPragueDayStart, pragueDate, pragueDayStart } from './session'
 import { JOHNS_LONDON } from './johnsLondonLive'
@@ -58,6 +61,84 @@ export const FUNDED = {
   maxLossPct: 10,
 } as const
 
+// ── Four sizes (John, 2026-11-12) ────────────────────────────────────────
+// "In FTMO there's different amounts you can buy: 10,000, 50,000, 100,000,
+// 200,000. Test those strategies with those amounts, the same parameters."
+// Every size is its own account with the rules above; every dollar limit is
+// the same share of its start money, and the same v1 signal opens in all of
+// them at the same moment, each risking 2% of its own balance. The $10,000
+// is `funded` in race.json (its history since 2026-11-11), the others
+// `fundedSizes`.
+
+export const FUNDED_SIZES = [10_000, 50_000, 100_000, 200_000] as const
+
+/** "$10K", "$200K". */
+export const sizeLabel = (startMoney: number) => `$${startMoney / 1000}K`
+
+/** The account in a Close now id: "funded" for the $10K (its id since 2026-11-11), "funded-50k" for the others. */
+export const fundedAccountId = (startMoney: number) =>
+  startMoney === FUNDED.startMoney ? 'funded' : `funded-${startMoney / 1000}k`
+
+type FundedParts = Pick<RaceState, 'funded' | 'fundedSizes'>
+
+/** Every funded account in the state, smallest first. */
+export const fundedAccounts = (state: FundedParts | null | undefined): FundedState[] =>
+  [state?.funded, ...(state?.fundedSizes ?? [])]
+    .filter((f): f is FundedState => !!f)
+    .sort((a, b) => a.startMoney - b.startMoney)
+
+/** The funded account of one size, if it has started. */
+export const fundedOf = (state: FundedParts | null | undefined, startMoney: number) =>
+  fundedAccounts(state).find((f) => f.startMoney === startMoney)
+
+/** The accounts written back: the $10K into `funded`, the rest into `fundedSizes`. */
+export function withFunded<S extends FundedParts>(state: S, accounts: FundedState[]): S {
+  const small = accounts.find((f) => f.startMoney === FUNDED.startMoney)
+  const rest = accounts
+    .filter((f) => f.startMoney !== FUNDED.startMoney)
+    .sort((a, b) => a.startMoney - b.startMoney)
+  return { ...state, funded: small, fundedSizes: rest.length ? rest : undefined }
+}
+
+/**
+ * Starts every size not running yet, empty (the ones already running keep
+ * their history). A new size copies the used-signals list of a running one,
+ * so from this check on it takes exactly the signals that one takes; with
+ * none running, the signals out there now count as used (createFunded).
+ */
+export function addFundedSizes(
+  accounts: FundedState[],
+  nowMs: number,
+  seen: FundedCandidate[] = [],
+): { accounts: FundedState[]; added: FundedState[] } {
+  const base = accounts[0]
+  const added = FUNDED_SIZES.filter((s) => !accounts.some((f) => f.startMoney === s)).map(
+    (s): FundedState => {
+      const f = createFunded(nowMs, seen, s)
+      return base ? { ...f, lastSignal: { ...base.lastSignal } } : f
+    },
+  )
+  return {
+    accounts: [...accounts, ...added].sort((a, b) => a.startMoney - b.startMoney),
+    added,
+  }
+}
+
+/**
+ * The smallest size a broker takes, 0.01 lot: 1,000 units of forex, 1 oz of
+ * gold. Null for markets with no lots here (crypto, US30): exact sizes.
+ */
+export function lotStep(market: string): number | null {
+  const kind = getInstrument(market)?.market
+  return kind === 'forex' ? FOREX_LOT / 100 : kind === 'metals' ? GOLD_LOT_OZ / 100 : null
+}
+
+/** Units rounded DOWN to the market's lot step, so a trade never risks more than 2%. */
+export function roundToLot(market: string, units: number): number {
+  const step = lotStep(market)
+  return step ? Math.floor(units / step + 1e-9) * step : units
+}
+
 export const signalKey = (strategy: string, market: string) => `${strategy}:${market}`
 
 /** A signal from one race strategy, offered to the funded test (only FUNDED_SIGNALS_FROM's are taken). */
@@ -72,14 +153,19 @@ export interface FundedCandidate {
 }
 
 /**
- * A fresh $10,000 account. `seen` marks the signals already out there as used,
- * so it only trades signals that come after it starts (no stale entries).
+ * A fresh account ($10,000 unless another size is given). `seen` marks the
+ * signals already out there as used, so it only trades signals that come
+ * after it starts (no stale entries).
  */
-export function createFunded(nowMs: number, seen: FundedCandidate[] = []): FundedState {
+export function createFunded(
+  nowMs: number,
+  seen: FundedCandidate[] = [],
+  startMoney: number = FUNDED.startMoney,
+): FundedState {
   return {
-    startMoney: FUNDED.startMoney,
+    startMoney,
     startedAt: nowMs,
-    balance: FUNDED.startMoney,
+    balance: startMoney,
     open: [],
     closed: [],
     lastSignal: Object.fromEntries(
@@ -97,6 +183,8 @@ const usd = (n: number) =>
   `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export interface FundedView {
+  /** The account's size: every limit below is a share of it. */
+  startMoney: number
   status: FundedState['status']
   statusNote?: string
   statusAt?: number
@@ -134,6 +222,7 @@ export function fundedView(
   const money = fundedMoney(f, prices)
   const dayLoss = Math.max(0, dayStart - money)
   return {
+    startMoney: f.startMoney,
     status: f.status,
     statusNote: f.statusNote,
     statusAt: f.statusAt,
@@ -316,10 +405,18 @@ export function stepFunded(
       no(size.reason)
       continue
     }
-    // Worst case with this trade too: never past $475 (the $500 day limit with a margin).
-    const fee = size.valueUsd * m.feeRate
+    // Down to whole 0.01 lots, as a broker fills it: a small account rounds off more.
+    const units = roundToLot(c.market, size.units)
+    if (!(units > 0)) {
+      no(`${FUNDED.sizing.riskPct}% of the balance buys less than 0.01 lot at this stop`)
+      continue
+    }
+    const valueUsd = units * m.price * m.usdPerQuote
+    const riskUsd = units * Math.abs(m.price - levels.stop) * m.usdPerQuote
+    // Worst case with this trade too: never past 4.75% of the start ($475 on $10K, the 5% day limit with a margin).
+    const fee = valueUsd * m.feeRate
     const worst =
-      dayWorstCase({ ...acc, open }, nowSec) + size.riskUsd + fee + (fee * levels.stop) / m.price
+      dayWorstCase({ ...acc, open }, nowSec) + riskUsd + fee + (fee * levels.stop) / m.price
     const cap = (acc.startMoney * FUNDED.worstCasePct) / 100
     if (worst > cap) {
       no(
@@ -337,10 +434,10 @@ export function stepFunded(
       entry: m.price,
       stop: levels.stop,
       takeProfit: levels.takeProfit,
-      units: size.units,
+      units,
       usdPerQuote: m.usdPerQuote,
-      margin: size.margin,
-      entryFee: size.valueUsd * m.feeRate,
+      margin: valueUsd / m.leverage,
+      entryFee: fee,
       ...(c.note ? { note: c.note } : {}),
       // v1's own exits, from its market tick (as stepStrategy does).
       ...(m.target1 != null ? { target1: m.target1, part1: 0.5 } : {}),
