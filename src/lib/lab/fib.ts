@@ -170,6 +170,7 @@ export function johnsFib(c: OHLCCandle[], o: FibOptions): LabEntry[] {
                 target1,
                 part1: 0.5,
                 signalTime: b.time,
+                oneIdx: s.oneIdx,
               })
               entered = true
             }
@@ -193,6 +194,7 @@ export function johnsFib(c: OHLCCandle[], o: FibOptions): LabEntry[] {
                 target1,
                 part1: 0.5,
                 signalTime: b.time,
+                oneIdx: s.oneIdx,
               })
               entered = true
             }

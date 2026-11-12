@@ -170,6 +170,7 @@ export function johnsLondonCheck(i: JohnsLondonInput): JohnsLondonCheck {
       stop: plan.stop,
       takeProfit: tp2,
       target1: tp1,
+      moveStart: closed[sig.oneIdx].time,
     },
     note: `${what}: plan ${plan.rr.toFixed(2)}R, flat by ${hhmm(deadline)} UTC`,
     deadline,

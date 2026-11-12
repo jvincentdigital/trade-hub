@@ -149,6 +149,8 @@ export const LAB_MAX_DAYS: Record<Style, string> = {
 export interface LabSignal extends Signal {
   /** First target: half the position closes there (John's Fib). */
   target1?: number
+  /** Start of the setup's move (Fib 1's candle), for the checklist's calm check. */
+  moveStart?: number
 }
 
 export interface LabCheck {
@@ -224,6 +226,7 @@ export function labCheck(
       stop: last.stop,
       takeProfit: last.target,
       target1: last.target1,
+      ...(last.oneIdx != null ? { moveStart: closed[last.oneIdx].time } : {}),
     },
     note: `${last.direction} at the Fib level ${last.price} (touched on the ${new Date(closed[last.i].time * 1000).toISOString().slice(0, 16)}Z candle)`,
     deadline,
