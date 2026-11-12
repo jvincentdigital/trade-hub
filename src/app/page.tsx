@@ -31,6 +31,7 @@ import {
   pnlSeries,
   priceFor,
 } from '@/lib/positions/today'
+import { JOHNS_CALLS } from '@/lib/race/callSchema'
 import { POUND_AND_GOLD } from '@/lib/positions/london'
 import { EXTRA_STRATEGIES } from '@/lib/race/extras'
 import { HowSheet } from '@/components/home/HowSheet'
@@ -152,7 +153,10 @@ function Today() {
     )
     return fundedView(shownFunded, { ...state.prices, ...live }, Math.floor(now / 1000))
   }, [state, shownFunded, funded, now])
-  const strategyCount = state ? Object.keys(state.strategies).length : 0
+  // John's calls are his own trades, not a strategy: Today's count leaves them out.
+  const strategyCount = state
+    ? Object.keys(state.strategies).filter((id) => id !== JOHNS_CALLS.id).length
+    : 0
   const startMoney = size
   const closedToday = useMemo(
     () => closedTodayLine(closedTrades(state, account, size), now),

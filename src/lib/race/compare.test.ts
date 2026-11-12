@@ -136,6 +136,7 @@ describe('compare rows', () => {
       passed: 'Passed an unseen-data test',
       live: 'Testing live only',
       lost: 'Lost its past test',
+      calls: 'Your calls',
     })
   })
 
