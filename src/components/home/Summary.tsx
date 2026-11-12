@@ -1,5 +1,5 @@
 import { goalBar, signedShort, usdShort } from '@/lib/positions/today'
-import { FUNDED, type FundedView } from '@/lib/race/funded'
+import { FUNDED, sizeLabel, type FundedView } from '@/lib/race/funded'
 import { pct } from './format'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
 
@@ -37,8 +37,11 @@ interface Props {
   lookLine: string | null
   needsLook: boolean
   closedToday: string | null
+  /** The size shown ($10K, $50K, $100K or $200K): the card's numbers are that account's. */
   startMoney: number
   riskPct: number
+  /** The $10K | $50K | $100K | $200K switch (SizeSwitch). */
+  sizeSwitch?: React.ReactNode
 }
 
 /**
@@ -58,6 +61,7 @@ export function Summary(p: Props) {
   const shown = p.count > 0 || p.settled !== 0
   return (
     <section aria-label="Summary" style={{ ...card, padding: '16px 18px' }}>
+      {p.sizeSwitch && <div style={{ marginBottom: 14 }}>{p.sizeSwitch}</div>}
       <div
         style={{
           display: 'flex',
@@ -68,8 +72,7 @@ export function Summary(p: Props) {
       >
         <div style={{ minWidth: 0 }}>
           <p style={{ ...secondary, fontSize: FS.sm, fontWeight: 500 }}>
-            {FUNDED.name}
-            {p.since ? ` since ${p.since}` : ''}
+            {`${FUNDED.name} ${sizeLabel(p.startMoney)}${p.since ? `, started ${p.since}` : ''}`}
           </p>
           {!p.failed && (
             <p
@@ -109,7 +112,7 @@ export function Summary(p: Props) {
                   ? 'Loading your trades…'
                   : p.funded
                     ? 'No trades open right now.'
-                    : `Starts with ${usdShort(FUNDED.startMoney)} at the next race check.`}
+                    : `Starts with ${usdShort(p.startMoney)} at the next race check.`}
           </p>
         </div>
         {sparkReady(p.series) && p.sinceText && (
@@ -270,7 +273,7 @@ export function Summary(p: Props) {
         </p>
       )}
       <p style={{ ...secondary, fontSize: FS.sm, marginTop: 10 }}>
-        One{' '}
+        This{' '}
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {usdShort(p.startMoney)} play account
         </b>{' '}
@@ -278,8 +281,8 @@ export function Summary(p: Props) {
         <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {p.riskPct}% ({usdShort((p.startMoney * p.riskPct) / 100)})
         </b>{' '}
-        per trade, with FTMO-style limits. Each strategy&apos;s own account is in the Lab on the
-        Race tab.
+        per trade, with FTMO-style limits. All four sizes follow the same rules and signals. Each
+        strategy&apos;s own account is in the Lab on the Race tab.
       </p>
     </section>
   )
@@ -297,7 +300,7 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
   // Both as a share of the start money, like FTMO: $500 is 5%, $1,000 is 10%.
   const dayPct = (v.dayLoss / v.dayLimit) * FUNDED.dailyLossPct
   const maxPct = ((v.maxLoss / v.maxLimit) * FUNDED.maxLossPct) as number
-  const summary = `${FUNDED.name}: ${pnlText(v.result)}, day loss used ${pct(dayPct)} of ${FUNDED.dailyLossPct}%, ${pct(maxPct)} of ${FUNDED.maxLossPct}% max, ${v.days} of ${FUNDED.minDays} days, target +${usdShort(v.target)}`
+  const summary = `${FUNDED.name} ${sizeLabel(v.startMoney)}: ${pnlText(v.result)}, day loss used ${pct(dayPct)} of ${FUNDED.dailyLossPct}%, ${pct(maxPct)} of ${FUNDED.maxLossPct}% max, ${v.days} of ${FUNDED.minDays} days, target +${usdShort(v.target)}`
   return (
     <div style={{ marginTop: 16 }} data-testid="challenge">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -368,7 +371,7 @@ function Challenge({ v, clockOf }: { v: FundedView; clockOf: (sec: number) => st
       </div>
       <p style={{ ...secondary, fontSize: FS.xs, marginTop: 8 }}>
         {/* One string: JSX text with entities can lose a space (docs/dashboard.md, Gotcha). */}
-        {`Today ${v.newToday} of ${FUNDED.maxNewPerDay} new trades, ${v.openCount} of ${FUNDED.sizing.maxOpen} open. The day resets at ${clockOf(v.nextDay)} (midnight in Prague). A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${usdShort((FUNDED.startMoney * FUNDED.worstCasePct) / 100)}.`}
+        {`Today ${v.newToday} of ${FUNDED.maxNewPerDay} new trades, ${v.openCount} of ${FUNDED.sizing.maxOpen} open. The day resets at ${clockOf(v.nextDay)} (midnight in Prague). A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${usdShort((v.startMoney * FUNDED.worstCasePct) / 100)}.`}
       </p>
       {v.status === 'active' && v.dayStopped && (
         <p style={{ fontSize: FS.sm, marginTop: 6, color: 'var(--amber)' }}>

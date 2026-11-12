@@ -1,8 +1,8 @@
 import type { PaperAccount } from '../paper/schema'
 import { getInstrument, quoteToUsd, type PriceMap } from '../paper/instruments'
 import type { RaceState } from '../race/live'
-import { FUNDED } from '../race/funded'
-import { FUNDED_ACCOUNT, tradeId } from '../race/closeRequests'
+import { FUNDED, fundedAccountId, fundedOf, sizeLabel } from '../race/funded'
+import { tradeId } from '../race/closeRequests'
 
 // Open trades from the funded test (the race account Today follows, fed by
 // every strategy's signals) and the demo account in one shape, plus the
@@ -31,6 +31,8 @@ export interface OpenPosition {
   note?: string
   /** Race trades: the id a Close now request names it by. */
   closeId?: string
+  /** Funded trades: which size's account it is in ("$50K"), for the Close now confirm. */
+  account?: string
 }
 
 export type PositionStatus = 'Near target' | 'Near stop' | 'Running' | 'No stop' | 'No price'
@@ -108,17 +110,23 @@ export function measure(p: OpenPosition, price: number | undefined | null): Posi
 }
 
 /**
- * The funded test's open trades (one per market). `by` is the strategy whose
- * signal opened it, so the row and "Why these levels" read from its rule.
+ * One funded size's open trades (one per market; the $10K unless `size`
+ * says another). `by` is the strategy whose signal opened it, so the row and
+ * "Why these levels" read from its rule.
  */
-export function fundedPositions(state: RaceState | null | undefined): OpenPosition[] {
-  if (!state?.funded) return []
-  return state.funded.open.map((t) => ({
+export function fundedPositions(
+  state: RaceState | null | undefined,
+  size: number = FUNDED.startMoney,
+): OpenPosition[] {
+  const f = fundedOf(state, size)
+  if (!state || !f) return []
+  return f.open.map((t) => ({
     key: `funded:${t.market}`,
     source: 'race' as const,
     by: state.strategies[t.strategy]?.name ?? t.strategy,
     ruleId: t.strategy,
-    closeId: tradeId(FUNDED_ACCOUNT, t),
+    closeId: tradeId(fundedAccountId(size), t),
+    account: sizeLabel(size),
     market: t.market,
     side: t.direction,
     entry: t.entry,
@@ -206,8 +214,10 @@ export interface ClosedRow {
 export function closedTrades(
   state: RaceState | null | undefined,
   account: PaperAccount,
+  /** Which funded size's trades (the $10K unless another is given). */
+  size: number = FUNDED.startMoney,
 ): ClosedRow[] {
-  const race: ClosedRow[] = (state?.funded?.closed ?? []).map((t) => ({
+  const race: ClosedRow[] = (fundedOf(state, size)?.closed ?? []).map((t) => ({
     key: `funded:${t.market}:${t.exitTime}${t.part1Of ? ':part' : ''}`,
     by: FUNDED.name,
     market: t.market,
@@ -233,8 +243,11 @@ export function closedTrades(
  * minus the entry fees open trades still owe. Plus the open P&L, this is its
  * result (`fundedMoney` in race/funded.ts minus the start). 0 without one.
  */
-export function settledSoFar(state: RaceState | null | undefined): number {
-  const f = state?.funded
+export function settledSoFar(
+  state: RaceState | null | undefined,
+  size: number = FUNDED.startMoney,
+): number {
+  const f = fundedOf(state, size)
   if (!f) return 0
   return f.balance - f.startMoney - f.open.reduce((a, t) => a + t.entryFee, 0)
 }

@@ -92,6 +92,22 @@ describe('funded test and demo rows', () => {
     expect(measure(p, 55).pnl).toBeCloseTo(1) // 0.2 x $5
   })
 
+  it('shows the chosen funded size only, with that size in its Close now id', () => {
+    const big = {
+      ...state,
+      fundedSizes: [
+        { ...createFunded(0, [], 50_000), balance: 50_120, open: [{ ...open, units: 1 }] },
+      ],
+    }
+    const [p] = fundedPositions(big, 50_000)
+    expect(p.closeId).toBe('funded-50k|bitcoin|100')
+    expect(p.account).toBe('$50K')
+    expect(p.units).toBe(1)
+    expect(fundedPositions(big)[0].closeId).toBe('funded|bitcoin|100') // the $10K by default
+    expect(fundedPositions(big, 200_000)).toEqual([]) // not started yet
+    expect(settledSoFar(big, 50_000)).toBeCloseTo(120 - 0.01)
+  })
+
   it('header totals: every target hit and every stop hit', () => {
     const rows = [
       measure(long, 105),

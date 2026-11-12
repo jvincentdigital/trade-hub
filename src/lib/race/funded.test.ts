@@ -5,14 +5,21 @@ import { INSTRUMENTS } from '../paper/instruments'
 import { feedOf } from '../feeds'
 import { NOT_LIVE } from './account'
 import {
+  addFundedSizes,
   checkFunded,
   createFunded,
   dayWorstCase,
   lossAtStop,
   FUNDED,
   FUNDED_SIGNALS_FROM,
+  FUNDED_SIZES,
+  fundedAccounts,
+  fundedOf,
   fundedView,
+  lotStep,
+  roundToLot,
   stepFunded,
+  withFunded,
   type FundedCandidate,
 } from './funded'
 import {
@@ -138,7 +145,10 @@ describe('funded test: size and caps', () => {
       [V, 'GBP-USD'],
       [V, 'EUR-USD'],
     ])
-    for (const t of r.opened) expect(tradeRisk(t)).toBeCloseTo(200)
+    // 2% is $200; rounded down to whole 0.01 lots (1,000 units): GBP/USD 15,384 units -> 15,000 ($195), EUR/USD 17,391 -> 17,000 ($195.50)
+    expect(r.opened.map((t) => t.units)).toEqual([15_000, 17_000])
+    for (const t of r.opened) expect(tradeRisk(t)).toBeLessThanOrEqual(200)
+    expect(r.opened.map((t) => tradeRisk(t))).toEqual([expect.closeTo(195), expect.closeTo(195.5)])
     expect(r.passed).toEqual([{ strategy: V, market: 'bitcoin', reason: '2 trades already open' }])
     expect(FUNDED.sizing).toEqual({ riskPct: 2, maxOpen: 2, maxOpenRiskPct: 4 })
   })
@@ -146,7 +156,9 @@ describe('funded test: size and caps', () => {
   it('sizes from the current balance, like the Lab accounts', () => {
     const f = withClosed([closedT(500, NOW - 90_000)])
     const [t] = stepFunded(f, markets, [cand(V, 'GBP-USD')], NOW).opened
-    expect(tradeRisk(t)).toBeCloseTo(210) // 2% of $10,500
+    // 2% of $10,500 is $210: 16,153 units, rounded down to 16,000 (0.16 lot, $208)
+    expect(t.units).toBe(16_000)
+    expect(tradeRisk(t)).toBeCloseTo(208)
   })
 
   it('at most 3 new trades a day (FTMO day)', () => {
@@ -329,13 +341,13 @@ describe('funded test: FTMO limits', () => {
       'the day is down $400.00, 4% of the start or more: no new trades until the next FTMO day',
     )
     expect(r.funded.status).toBe('active')
-    // $399 down is under the $400 stop, but a 2% trade on top ($192) is over the $475 worst case
+    // $399 down is under the $400 stop, but a 2% trade on top ($192, rounded down to 0.14 lot: $182) is over the $475 worst case
     const under = withClosed([closedT(-399, NOW - 1800)])
     expect(fundedView(under, PRICE, NOW).dayStopped).toBe(false)
     expect(stepFunded(under, markets, [cand(V, 'GBP-USD')], NOW).passed[0].reason).toMatch(
-      /^worst case today would be -\$591\.02 .* over the \$475\.00 cap/,
+      /^worst case today would be -\$581\.00 .* over the \$475\.00 cap/,
     )
-    // $270 down: $270 + $194.60 (2% of $9,730) = $464.60 still fits
+    // $270 down: $270 + $182 (2% of $9,730 rounded down to 0.14 lot) = $452 still fits
     const room = withClosed([closedT(-270, NOW - 1800)])
     expect(stepFunded(room, markets, [cand(V, 'GBP-USD')], NOW).opened).toHaveLength(1)
     // the next FTMO day (19:00 AST) starts from the lower balance: free again
@@ -478,7 +490,7 @@ describe('funded test in the race file', () => {
     st.dailyCloseAt = ast(2026, 11, 11, 2)
     expect(raceStateSchema.parse(JSON.parse(JSON.stringify(st))).funded?.open).toHaveLength(1)
     const r = applyDailyClose(st, ast(2026, 11, 11, 12, 45), () => 0)
-    expect(r.closed.map((c) => [c.strategy, c.reason])).toEqual([['Funded test', 'session']])
+    expect(r.closed.map((c) => [c.strategy, c.reason])).toEqual([['Funded test $10K', 'session']])
     expect(r.state.funded?.open).toHaveLength(0)
     expect(r.state.funded?.balance).toBeCloseTo(10_000 + (200 / 0.013) * 0.005)
     expect(r.state.funded?.closed[0].strategy).toBe('a')
@@ -487,5 +499,170 @@ describe('funded test in the race file', () => {
   it('a race file from before the funded test still reads', () => {
     const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
     expect(raceStateSchema.safeParse(st).success).toBe(true)
+  })
+})
+
+describe('funded test: four sizes (John, 2026-11-12)', () => {
+  /** A `size` account with these closed trades, balance to match. */
+  const sized = (size: number, closed: ClosedFundedTrade[] = []): FundedState => ({
+    ...createFunded(0, [], size),
+    balance: size + closed.reduce((a, t) => a + t.pnl, 0),
+    closed,
+  })
+  const usd = (n: number) =>
+    `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  it('are $10K, $50K, $100K and $200K', () => {
+    expect(FUNDED_SIZES).toEqual([10_000, 50_000, 100_000, 200_000])
+  })
+
+  it.each(FUNDED_SIZES)('every limit scales with the start money: $%i', (size) => {
+    const v = fundedView(sized(size), PRICE, NOW)
+    expect(v.startMoney).toBe(size)
+    expect(v.target).toBeCloseTo(size * 0.1) // +10% to pass
+    expect(v.dayLimit).toBeCloseTo(size * 0.05) // 5% day loss fails
+    expect(v.maxLimit).toBeCloseTo(size * 0.1) // 10% max loss fails
+    // the 4% buffer: stopped at 4% down, not at 3.99%
+    const at4 = sized(size, [closedT(-size * 0.04, NOW - 1800)])
+    expect(fundedView(at4, PRICE, NOW).dayStopped).toBe(true)
+    const under = sized(size, [closedT(-size * 0.0399, NOW - 1800)])
+    expect(fundedView(under, PRICE, NOW).dayStopped).toBe(false)
+    // the worst-case cap is 4.75% of this size
+    expect(stepFunded(under, markets, [cand(V, 'GBP-USD')], NOW).passed[0].reason).toContain(
+      `over the ${usd(size * 0.0475)} cap (the ${usd(size * 0.05)} day limit with a margin)`,
+    )
+    // 5% down in a day fails, 10% under the start fails
+    const day = checkFunded(sized(size, [closedT(-size * 0.05, NOW - 1800)]), PRICE, NOW)
+    expect(day.status).toBe('failed')
+    expect(day.statusNote).toContain(`the limit is ${usd(size * 0.05)} (5% of ${usd(size)})`)
+    const d = (n: number) => ast(2026, 11, n, 9)
+    const slow = sized(
+      size,
+      [0, 1, 2, 3].map((i) => closedT(-size * 0.026, d(5 + i))),
+    )
+    expect(checkFunded(slow, PRICE, NOW).statusNote).toContain(
+      `money fell under ${usd(size * 0.9)}`,
+    )
+    // +10% in at least 4 trading days passes
+    const win = sized(
+      size,
+      [0, 1, 2, 3].map((i) => closedT(size * 0.025, d(5 + i))),
+    )
+    expect(checkFunded(win, PRICE, NOW).status).toBe('passed')
+  })
+
+  it('the same v1 signal opens in all four at the same moment, sized in proportion within 0.01-lot rounding', () => {
+    const { accounts } = addFundedSizes([], 0)
+    expect(accounts.map((f) => f.startMoney)).toEqual([...FUNDED_SIZES])
+    const signals = [cand(V, 'GBP-USD'), cand(V, 'pax-gold')]
+    const steps = accounts.map((f) => stepFunded(f, markets, signals, NOW))
+    for (const [i, r] of steps.entries()) {
+      const size = FUNDED_SIZES[i]
+      expect(r.opened.map((t) => [t.market, t.entryTime, t.signalTime])).toEqual([
+        ['GBP-USD', NOW, NOW - 600],
+        ['pax-gold', NOW, NOW - 600],
+      ])
+      for (const t of r.opened) {
+        const step = lotStep(t.market)!
+        const exact = (size * 0.02) / Math.abs(t.entry - t.stop)
+        expect(t.units % step).toBe(0) // whole 0.01 lots
+        expect(t.units).toBeLessThanOrEqual(exact) // never past 2%
+        expect(t.units).toBeGreaterThan(exact - step) // at most one step under
+        expect(tradeRisk(t)).toBeLessThanOrEqual(size * 0.02 + 1e-9)
+      }
+    }
+    // GBP/USD at 1.30, stop 1% away: 2% is 15,384.6 units per $10K. Small accounts round off more.
+    expect(steps.map((r) => r.opened[0].units)).toEqual([15_000, 76_000, 153_000, 307_000])
+    // Gold at $4,000, stop $40 away: 5 oz per $10K, whole ounces in every size.
+    expect(steps.map((r) => r.opened[1].units)).toEqual([5, 25, 50, 100])
+  })
+
+  it('a stop too far for 0.01 lot skips the trade in the small account only', () => {
+    // stop 30% away: 2% of $10K is 512 GBP/USD units, under 1,000 (0.01 lot)
+    const far = cand(V, 'GBP-USD', { stop: 1.3 * 0.7, takeProfit: 1.3 * 1.6 })
+    const small = stepFunded(createFunded(0), markets, [far], NOW)
+    expect(small.opened).toHaveLength(0)
+    expect(small.passed[0].reason).toBe('2% of the balance buys less than 0.01 lot at this stop')
+    const big = stepFunded(createFunded(0, [], 50_000), markets, [far], NOW)
+    expect(big.opened.map((t) => t.units)).toEqual([2_000]) // 2,564 units rounded down
+  })
+
+  it('rounds forex to 1,000 units and gold to 1 oz; crypto keeps its exact size', () => {
+    expect(roundToLot('GBP-USD', 15_384.6)).toBe(15_000)
+    expect(roundToLot('pax-gold', 5.99)).toBe(5)
+    expect(roundToLot('GBP-USD', 2_000 - 1e-7)).toBe(2_000) // float noise is not a lost lot
+    expect(roundToLot('bitcoin', 0.00153)).toBe(0.00153)
+    expect(lotStep('bitcoin')).toBeNull()
+  })
+
+  it('migration: the live $10K keeps its history; $50K, $100K and $200K start empty and take the next signals with it', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
+    const ten: FundedState = {
+      ...withClosed([closedT(120, NOW - 7200)], [trade('EUR-USD', { strategy: V })]),
+      startedAt: Date.UTC(2026, 10, 11, 21, 16),
+      lastSignal: { [`${V}:GBP-USD`]: NOW - 3600, [`${V}:pax-gold`]: NOW - 3600 },
+    }
+    st.funded = ten
+    const nowMs = NOW * 1000
+    const { accounts, added } = addFundedSizes(fundedAccounts(st), nowMs, [cand(V, 'GBP-USD')])
+    expect(added.map((f) => f.startMoney)).toEqual([50_000, 100_000, 200_000])
+    expect(accounts[0]).toBe(ten) // untouched
+    for (const f of added) {
+      expect(f).toMatchObject({ balance: f.startMoney, open: [], closed: [], status: 'active' })
+      expect(f.startedAt).toBe(nowMs)
+      expect(f.lastSignal).toEqual(ten.lastSignal) // same used signals as the $10K
+    }
+    const next = withFunded(st, accounts)
+    expect(next.funded).toBe(ten)
+    expect(next.fundedSizes?.map((f) => f.startMoney)).toEqual([50_000, 100_000, 200_000])
+    // the file reads back with all four, and an older reader still finds the $10K in `funded`
+    const back = raceStateSchema.parse(JSON.parse(JSON.stringify(next)))
+    expect(fundedAccounts(back).map((f) => f.startMoney)).toEqual([...FUNDED_SIZES])
+    expect(back.funded?.closed).toHaveLength(1)
+    expect(fundedOf(back, 100_000)?.balance).toBe(100_000)
+    // running again adds nothing
+    expect(addFundedSizes(fundedAccounts(back), nowMs + 1).added).toHaveLength(0)
+    // a signal the $10K already used opens nowhere; a newer one opens in all four
+    const old = cand(V, 'GBP-USD', { time: NOW - 3600 })
+    const fresh = cand(V, 'pax-gold', { time: NOW - 600 })
+    const r = fundedAccounts(back).map((f) => stepFunded(f, markets, [old, fresh], NOW))
+    expect(r.map((x) => x.opened.map((t) => t.market))).toEqual([
+      ['pax-gold'],
+      ['pax-gold'],
+      ['pax-gold'],
+      ['pax-gold'],
+    ])
+  })
+
+  it('a race file with no funded test starts all four empty, with the signals out there marked used', () => {
+    const seen = [cand(V, 'GBP-USD')]
+    const { added } = addFundedSizes([], 5, seen)
+    expect(added.map((f) => f.startMoney)).toEqual([...FUNDED_SIZES])
+    for (const f of added) {
+      expect(f.lastSignal).toEqual({ [`${V}:GBP-USD`]: NOW - 600 })
+      expect(stepFunded(f, markets, seen, NOW).opened).toHaveLength(0)
+    }
+  })
+
+  it('the 12:45 close books every size', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
+    const withTrade = (size: number): FundedState => ({
+      ...createFunded(0, [], size),
+      open: [trade('GBP-USD', { units: (size / 10_000) * 15_000 })],
+    })
+    const next = withFunded(st, FUNDED_SIZES.map(withTrade))
+    next.prices = { 'GBP-USD': 1.305 }
+    next.dailyCloseAt = ast(2026, 11, 11, 2)
+    const r = applyDailyClose(next, ast(2026, 11, 11, 12, 45), () => 0)
+    expect(r.closed.map((c) => c.strategy)).toEqual([
+      'Funded test $10K',
+      'Funded test $50K',
+      'Funded test $100K',
+      'Funded test $200K',
+    ])
+    for (const f of fundedAccounts(r.state)) {
+      expect(f.open).toHaveLength(0)
+      expect(f.balance).toBeCloseTo(f.startMoney + (f.startMoney / 10_000) * 15_000 * 0.005)
+    }
   })
 })

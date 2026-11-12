@@ -309,13 +309,45 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
   news, flat 30 minutes before) is part of v1's tested strategy, so it stays
   with v1's trades, in its Lab account and in the funded test.
 
-The tick log shows its lines with the name `Funded test`, for example:
+### Four sizes: $10K, $50K, $100K, $200K (John, 2026-11-12)
+
+John: "In FTMO there's different amounts you can buy: 10,000, 50,000,
+100,000, 200,000. Test those strategies with those amounts, the same
+parameters." So the funded test is four accounts (`FUNDED_SIZES` in
+`funded.ts`) with the rules above, where **every dollar limit is the same
+share of the size**: target +10%, day loss 5%, our day stop 4%, our worst
+case 4.75%, max loss 10% (on $200K: +$20,000, $10,000, $8,000, $9,500,
+$20,000). The same v1 signal opens in all four at the same check, each
+risking 2% of its own balance.
+
+- **0.01-lot rounding** (all four, the $10K too): units round DOWN to the
+  market's smallest step, 1,000 units of forex or 1 oz of gold
+  (`roundToLot`), so a trade never risks more than 2%. Small accounts lose
+  more to it: GBP/USD with a 30-pip stop is 0.66 lot on $10K ($198 at the
+  stop) but 13.33 lots on $200K ($3,999). A stop so far that 2% buys less
+  than 0.01 lot skips the trade in that size only ("2% of the balance buys
+  less than 0.01 lot at this stop"). Crypto and US30 keep exact sizes.
+- **In race.json** the $10K stays in `funded` (its history since 2026-11-11
+  17:16 AST, so older readers keep working) and the others are in
+  `fundedSizes`. `fundedAccounts(state)` lists all four, smallest first;
+  `withFunded` writes them back.
+- **Start**: the first tick that runs this code starts every missing size
+  empty (`addFundedSizes`, "Funded test $50K started ..." in the log). A new
+  size copies the used-signals list of the running $10K, so from that check
+  on it takes exactly the signals the $10K takes; the $10K keeps any trades
+  it already has, and the new ones show "started <time>".
+- **Close now** names one size (`funded|...` is the $10K, `funded-50k|...`
+  and so on for the others) and closes the trade in that account only. The
+  12:45 close and `race-close-all.ts` close every size.
+- `make funded-reset` resets all four.
+
+The tick log shows its lines with the name `Funded test <size>`, for example:
 
 ```
-  OPEN  Funded test GBP-USD short at 1.3123 (signal from johns-london-v1): 0.42 lots ...
-  CLOSE Funded test GBP-USD target +$104.18
-  PASS  Funded test pax-gold (johns-london-v1): against the open GBP-USD short (one pound/dollar bet per account)
-  Funded test                        $ 10184.20  +$184.20  open 1  closed 2  active, day loss $0.00 of $500.00, 2 of 4 days
+  OPEN  Funded test $10K GBP-USD short at 1.3123 (signal from johns-london-v1): 0.42 lots ...
+  CLOSE Funded test $50K GBP-USD target +$520.90
+  PASS  Funded test $10K pax-gold (johns-london-v1): against the open GBP-USD short (one pound/dollar bet per account)
+  Funded test $200K                  $200000.00  +$0.00  open 0  closed 0  active, day loss $0.00 of $10000.00, 0 of 4 days
 ```
 
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)

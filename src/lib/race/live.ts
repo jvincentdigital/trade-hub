@@ -91,7 +91,7 @@ export type FundedTrade = z.infer<typeof fundedTradeSchema>
 export const closedFundedTradeSchema = closedLiveTradeSchema.extend({ strategy: z.string() })
 export type ClosedFundedTrade = z.infer<typeof closedFundedTradeSchema>
 
-/** The funded test account (John, 2026-11-11): one $10,000 account, FTMO-style limits. */
+/** A funded test account (John, 2026-11-11): FTMO-style limits; four sizes since 2026-11-12. */
 export const fundedSchema = z.object({
   startMoney: z.number().positive(),
   /** Milliseconds. */
@@ -135,8 +135,14 @@ export const raceStateSchema = z.object({
   /** Latest price per market seen by the last tick, for open P&L. */
   prices: z.record(z.string(), z.number()),
   strategies: z.record(z.string(), raceStrategySchema),
-  /** The funded test account; started by the first tick that runs this code. */
+  /** The $10,000 funded test account; started by the first tick that runs this code. */
   funded: fundedSchema.optional(),
+  /**
+   * The $50,000, $100,000 and $200,000 funded tests (John, 2026-11-12): the
+   * same rules as `funded`, every limit scaled to the size (./funded.ts). The
+   * $10,000 stays in `funded`, so older readers of race.json keep working.
+   */
+  fundedSizes: z.array(fundedSchema).optional(),
   /** Unix seconds of the check that did the last 12:45 AST daily close (./session.ts). */
   dailyCloseAt: z.number().optional(),
 })
@@ -731,11 +737,17 @@ export function closeAll(
       return [id, { ...s, balance: r.balance, open: r.open, closed: [...s.closed, ...r.done] }]
     }),
   )
-  const f = state.funded
-  const fr = f && closeAccount('Funded test', f.open, f.balance)
-  const funded =
-    f && fr ? { ...f, balance: fr.balance, open: fr.open, closed: [...f.closed, ...fr.done] } : f
-  return { state: { ...state, strategies, funded }, closed, missing: [...missing] }
+  const closeFunded = (f: FundedState): FundedState => {
+    const r = closeAccount(`Funded test $${f.startMoney / 1000}K`, f.open, f.balance)
+    return { ...f, balance: r.balance, open: r.open, closed: [...f.closed, ...r.done] }
+  }
+  const funded = state.funded && closeFunded(state.funded)
+  const fundedSizes = state.fundedSizes?.map(closeFunded)
+  return {
+    state: { ...state, strategies, funded, ...(fundedSizes ? { fundedSizes } : {}) },
+    closed,
+    missing: [...missing],
+  }
 }
 
 /**

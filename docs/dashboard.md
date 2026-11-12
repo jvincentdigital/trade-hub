@@ -19,6 +19,16 @@ v1's rules (signal, entry, stop, targets) from its frozen settings. Its trades a
 Today; the 11 strategy accounts keep running as the Lab on the Race tab and
 no longer show here. Demo trades still show in the list.
 
+**Since 2026-11-12 the funded test runs in four sizes** ($10K, $50K, $100K,
+$200K, same rules, `docs/strategy-race.md` "Four sizes"). A size switch at
+the top of the summary card (`SizeSwitch.tsx`, four 44 px buttons, the
+chosen one filled) picks which account the card, the race rows, Closed today
+and the How sheet show. The choice is saved in localStorage
+(`trade-hub-funded-size`, `useFundedSize.ts`, read and written in
+try/catch; $10K when nothing valid is saved) and the Race tab uses the same
+one. Close now's confirm says "Only in the $50K funded test. The other sizes
+keep their trade."
+
 ## What the page shows
 
 Phone: everything in one column. Wide screens (1100 px and up): the summary
