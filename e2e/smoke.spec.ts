@@ -7,7 +7,7 @@ const routes: Array<{ path: string; heading: RegExp }> = [
   { path: '/strategies', heading: /strategies|setup scanner/i },
   { path: '/watchlist', heading: /watchlist/i },
   { path: '/demo', heading: /demo account/i },
-  { path: '/race', heading: /strategy race/i },
+  { path: '/compare', heading: /compare/i },
 ]
 
 for (const { path, heading } of routes) {

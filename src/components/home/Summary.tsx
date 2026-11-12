@@ -282,7 +282,7 @@ export function Summary(p: Props) {
           {p.riskPct}% ({usdShort((p.startMoney * p.riskPct) / 100)})
         </b>{' '}
         per trade, with FTMO-style limits. All four sizes follow the same rules and signals. Each
-        strategy&apos;s own account is in the Lab on the Race tab.
+        strategy&apos;s own account is on the Compare tab.
       </p>
     </section>
   )

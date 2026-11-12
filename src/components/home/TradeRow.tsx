@@ -448,10 +448,10 @@ function Panel(props: {
         </dl>
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8 }}>
           <Link
-            href={pos.source === 'demo' ? '/demo' : '/race'}
+            href={pos.source === 'demo' ? '/demo' : '/compare'}
             style={{ ...button, whiteSpace: 'nowrap' }}
           >
-            {pos.source === 'demo' ? 'Manage in Demo' : 'See it in the Race'}
+            {pos.source === 'demo' ? 'Manage in Demo' : 'See it in Compare'}
             <ChevronRight size={16} aria-hidden color="var(--text-secondary)" />
           </Link>
           {/* Hide only folds the row; Close now (below) closes the trade. */}

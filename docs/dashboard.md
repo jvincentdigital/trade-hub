@@ -16,8 +16,8 @@ Play money only. Nothing here talks to a broker.
 limits that takes only John's London v1 signals (GBP/USD and gold; since
 that evening, before it took every strategy's). The How sheet describes
 v1's rules (signal, entry, stop, targets) from its frozen settings. Its trades are the race rows on
-Today; the 11 strategy accounts keep running as the Lab on the Race tab and
-no longer show here. Demo trades still show in the list.
+Today; the 11 strategy accounts keep running as the Lab on the Compare tab
+(was Race) and no longer show here. Demo trades still show in the list.
 
 **Since 2026-11-12 the funded test runs in four sizes** ($10K, $50K, $100K,
 $200K, same rules, `docs/strategy-race.md` "Four sizes"). A size switch at
@@ -25,7 +25,7 @@ the top of the summary card (`SizeSwitch.tsx`, four 44 px buttons, the
 chosen one filled) picks which account the card, the race rows, Closed today
 and the How sheet show. The choice is saved in localStorage
 (`trade-hub-funded-size`, `useFundedSize.ts`, read and written in
-try/catch; $10K when nothing valid is saved) and the Race tab uses the same
+try/catch; $10K when nothing valid is saved) and the Compare tab uses the same
 one. Close now's confirm says "Only in the $50K funded test. The other sizes
 keep their trade."
 
@@ -138,9 +138,10 @@ column sits on the left and stays in view while the trades scroll on the right.
    fees, and what is not built (trailing stop, break-even, partial profits).
    The stop and target ranges are read from the built-in rules, and a real
    open forex trade is worked through as an example.
-7. **Markets**, compact: up/down count, the 6 biggest crypto moves (tap for the
-   coin; hidden with "Prices not available right now." when the feed fails),
-   and links to Crypto, Forex, Gold, Strategies, Watchlist.
+7. **Links** to Forex, Gold and Strategies. The crypto Markets card (up/down
+   count, biggest crypto moves) and the Crypto and Watchlist links went on
+   2026-11-12 (John: "crypto, I don't care"); `/crypto` and `/watchlist`
+   still open by URL.
 
 Looks: inline styles and the CSS variables in `globals.css`; only what changes
 with width (two columns, sticky side, row grid by container width, the sheet)

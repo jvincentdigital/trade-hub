@@ -191,3 +191,53 @@ body::before {
     display: none;
   }
 }
+
+/* Compare page (src/app/compare/page.tsx): each strategy is one compact row on
+   a phone; from 768px its numbers line up in columns under a header, and the
+   box scrolls sideways when the page is too narrow for them. */
+.cmp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 16px;
+  grid-template-areas:
+    'name name pnl chev'
+    'tag brief brief brief';
+  align-items: center;
+  gap: 4px 10px;
+}
+.cmp-col,
+.cmp-head {
+  display: none;
+}
+.cmp-narrow {
+  display: grid;
+}
+@media (min-width: 768px) {
+  .cmp-scroll {
+    overflow-x: auto;
+  }
+  .cmp-table {
+    min-width: 720px;
+  }
+  .cmp-row,
+  .cmp-head {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 96px repeat(6, 64px) 16px;
+    column-gap: 10px;
+    align-items: center;
+  }
+  .cmp-row {
+    grid-template-areas:
+      'name pnl c1 c2 c3 c4 c5 c6 chev'
+      'tag pnl c1 c2 c3 c4 c5 c6 chev';
+  }
+  .cmp-head {
+    grid-template-areas: 'name pnl c1 c2 c3 c4 c5 c6 chev';
+  }
+  .cmp-col {
+    display: block;
+  }
+  .cmp-brief,
+  .cmp-narrow {
+    display: none;
+  }
+}
