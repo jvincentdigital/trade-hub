@@ -34,7 +34,7 @@ export const JOHNS_LONDON = {
   /** The frozen picks: move of 2 ATRs, stop half an ATR past 1. */
   k: 2,
   b: 0.5,
-  why: "John's Fib on 15-minute candles, 07:00 to 15:00 London: after a move of 2x ATR within 12 candles, sell the pullback to 0.786 that does not break 1 (buy mirrored), at the candle close. Stop half an ATR past 1 (at least 10x the costs, plan 1.5R to 2.5R), half off at 0, the rest at -0.272. Flat by 16:30 London and 30 minutes before red news. At most 2 trades per market a day. GBP/USD stops and targets count only when a close or the next candle confirms them.",
+  why: "John's Fib on 15-minute candles, 07:00 to 15:00 London: after a move of 2x ATR within 12 candles, sell the pullback to 0.786 that does not break 1 (buy mirrored), at the candle close. Stop half an ATR past 1 (at least 10x the costs, plan 1.5R to 2.5R), half off at 0, the rest at -0.272. A trade holds until its stop or target, but closes before red news. At most 2 trades per market a day. GBP/USD stops and targets count only when a close or the next candle confirms them.",
 } as const
 
 export type JohnsLondonMarket = (typeof JOHNS_LONDON.markets)[number]
@@ -48,6 +48,12 @@ const MIN = 60
 export const CATCH_UP = 60 * MIN
 /** The newest closed candle must have closed less than this long ago. */
 export const FEED_MAX_AGE = 30 * MIN
+/**
+ * Trades hold past the London session since 2026-11-12, and out there the
+ * race checks only once an hour: a trade then closes when red news starts
+ * within the hour, so the close still comes before the news.
+ */
+export const NEWS_LOOKAHEAD = 60 * MIN
 
 export interface JohnsLondonInput {
   market: JohnsLondonMarket
@@ -70,13 +76,11 @@ export interface JohnsLondonCheck {
   signal: LabSignal | null
   /** Plain words for the log: why there is or is not a trade. */
   note: string
-  /** The forced close of a trade opened now: 16:30 London, or 30 minutes before red news. */
-  deadline?: number
   /** The stop the sizer uses: the real stop plus the race fee on both sides, so a stop-out costs 2%. */
   sizeStop?: number
   /** A signal looked at and passed: move the account's mark to it. */
   seen?: number
-  /** Inside a red-news block for this market: close its open trade now. */
+  /** Close this market's open trade now: inside a red-news block, or (outside the session) one starts within the hour. */
   closeNow: boolean
 }
 
@@ -114,16 +118,19 @@ export function johnsLondonCheck(i: JohnsLondonInput): JohnsLondonCheck {
   const { market, closed, nowSec, price, news } = i
   const m = londonMarket(LAB_ID[market])
   const windows = news ? newsWindows(news, m.currencies, 'block') : []
-  const closeNow = inWindow(windows, nowSec)
+  const day = Math.floor(nowSec / 86_400) * 86_400
+  const s = sessionFor(day)
+  const inNews = inWindow(windows, nowSec)
+  const inSession = isTradingDay(day) && nowSec >= s.start && nowSec < s.timeExit
+  const closeNow =
+    inNews || (!inSession && nextWindowStart(windows, nowSec) <= nowSec + NEWS_LOOKAHEAD)
   const none = (note: string, seen?: number): JohnsLondonCheck => ({
     signal: null,
     note,
     closeNow,
     ...(seen != null ? { seen } : {}),
   })
-  const day = Math.floor(nowSec / 86_400) * 86_400
   if (!isTradingDay(day)) return none('weekend, no London session')
-  const s = sessionFor(day)
   if (nowSec < s.start + M15) return none(`session starts ${hhmm(s.start)} UTC`)
   const feed = feedProblem(closed, nowSec)
   if (feed) return none(`${feed}: no new trade`)
@@ -142,9 +149,13 @@ export function johnsLondonCheck(i: JohnsLondonInput): JohnsLondonCheck {
   const atZero = since.some((c) => (long ? c.high >= sig.zero : c.low <= sig.zero))
   if (past1 || atZero) return pass(past1 ? 'price traded past 1 since' : 'price reached 0 since')
   if (!news) return pass('no red-news list this tick')
-  if (closeNow) return pass('red news block')
-  const deadline = Math.min(s.timeExit, nextWindowStart(windows, nowSec))
-  if (deadline - nowSec < V1.minLife) return pass('under 90 minutes to the forced close')
+  if (inNews) return pass('red news block')
+  // An entry rule as tested: the backtest's forced close (16:30 London, or 30
+  // minutes before red news) must be at least 90 minutes away. Live trades
+  // no longer close then (they hold), but entries stay as tested.
+  const forcedClose = Math.min(s.timeExit, nextWindowStart(windows, nowSec))
+  if (forcedClose - nowSec < V1.minLife)
+    return pass('under 90 minutes to 16:30 London or red news (entry rule as tested)')
   if (!inRaceHours(s, nowSec)) return pass("outside John's race hours")
   if (!(price > 0)) return pass('no price')
 
@@ -172,8 +183,7 @@ export function johnsLondonCheck(i: JohnsLondonInput): JohnsLondonCheck {
       target1: tp1,
       moveStart: closed[sig.oneIdx].time,
     },
-    note: `${what}: plan ${plan.rr.toFixed(2)}R, flat by ${hhmm(deadline)} UTC`,
-    deadline,
+    note: `${what}: plan ${plan.rr.toFixed(2)}R, holds until its stop or target`,
     sizeStop: long ? plan.stop - fees : plan.stop + fees,
     closeNow,
   }

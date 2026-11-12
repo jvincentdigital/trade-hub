@@ -56,7 +56,7 @@ export const PAST_TESTS: Record<string, PastTest> = {
   'lab-stophunt-gold-1h': lab('+$952 on 34 trades', '-$8,374 on 286 trades'),
   [JOHNS_CALLS.id]: {
     evidence: 'calls',
-    text: 'Your own trades: you call them in chat, Claude records them as limit orders and the race fills them on live prices after the call, with the same fees, stops, targets and checklist as the strategies. No past test. The 02:00 to 12:30 entry window and the 12:45 close do not apply to them.',
+    text: 'Your own trades: you call them in chat, Claude records them as limit orders and the race fills them on live prices after the call, with the same fees, stops, targets and checklist as the strategies. No past test. The 02:00 to 12:30 entry window does not apply to them.',
   },
   [LONDON_BREAKOUT.id]: {
     ...NO_PAST_TEST,

@@ -33,8 +33,10 @@
  * the minute of the tap (src/lib/race/closeRequests.ts), and cleared after
  * the save. Then John's calls (src/lib/race/johnsCalls.ts, made with
  * scripts/race-call.ts): his limit orders fill and his trades close on
- * Kraken's 1-minute candles since the last look; the entry window and the
- * 12:45 close do not apply to them. After saving, the state is PUT to the race relay worker (docs/live.md) when
+ * Kraken's 1-minute candles since the last look; the entry window does not
+ * apply to them. Every open trade holds until its stop or target (or Close
+ * now, or the close before red news): no daily close, no time limit
+ * (John, 2026-11-12). After saving, the state is PUT to the race relay worker (docs/live.md) when
  * ~/.local/share/trade-hub/race.env exists (RACE_PUT_URL + RACE_WRITE_KEY).
  * A failed push only logs a line; the tick itself still counts.
  */
@@ -87,7 +89,6 @@ import {
   type FundedTick,
 } from '../src/lib/race/funded'
 import {
-  applyDailyClose,
   createRaceState,
   MAX_TICK_LOG,
   stepStrategy,
@@ -286,11 +287,11 @@ async function tick() {
   /** John's London v1 extras for the market tick. */
   const johnsExtra = new Map<
     string,
-    Pick<MarketTick, 'target1' | 'deadline' | 'closeNow' | 'sizeStop' | 'seen'>
+    Pick<MarketTick, 'target1' | 'closeNow' | 'sizeStop' | 'seen'>
   >()
   const windowsOf = (bot: LabBot): Window[] => newsWindows(red.events, bot.currencies, bot.news)
-  /** Lab bot extras for the market tick: first target, deadline, close before news. */
-  const labExtra = new Map<string, Pick<MarketTick, 'target1' | 'deadline' | 'closeNow'>>()
+  /** Lab bot extras for the market tick: first target, close before news. */
+  const labExtra = new Map<string, Pick<MarketTick, 'target1' | 'closeNow'>>()
 
   const shut = forexClosed(nowSec)
   if (shut)
@@ -315,7 +316,6 @@ async function tick() {
       const r = labCheck(bot, closed, nowSec, prices[id], w)
       labExtra.set(`${p.id}|${id}`, {
         ...(r.signal?.target1 != null ? { target1: r.signal.target1 } : {}),
-        deadline: r.deadline,
         closeNow: newsCloseDue(bot, w, nowSec),
       })
       console.log(`  LAB ${bot.name}: ${r.note}`)
@@ -338,7 +338,6 @@ async function tick() {
       })
       johnsExtra.set(id, {
         ...(r.signal?.target1 != null ? { target1: r.signal.target1 } : {}),
-        ...(r.deadline != null ? { deadline: r.deadline } : {}),
         ...(r.sizeStop != null ? { sizeStop: r.sizeStop } : {}),
         ...(r.seen != null ? { seen: r.seen } : {}),
         closeNow: r.closeNow,
@@ -558,14 +557,7 @@ async function tick() {
     state = withFunded(state, stepped, test.id)
   }
 
-  // Daily close: the first check at or after 12:45 AST on a weekday closes every open trade.
-  const daily = applyDailyClose(state, nowSec, feeRate)
-  state = daily.state
-  closed += daily.closed.length
-  for (const c of daily.closed)
-    console.log(`  CLOSE ${c.strategy} ${c.market} at 12:45 (${c.exit}): ${money(c.pnl)}`)
-  if (daily.missing.length)
-    console.log(`  still open after the daily close (no price): ${daily.missing.join(', ')}`)
+  // The funded tests checked once more at the end of the check, after the new trades.
   const closePrices = state.prices
   for (const test of FUNDED_TESTS)
     state = withFunded(

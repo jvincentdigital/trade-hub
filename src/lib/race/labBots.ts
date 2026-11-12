@@ -3,7 +3,7 @@ import { latestSignal, type Signal } from '../rules/engine'
 import { BUILT_IN_RULES } from '../rules/presets'
 import { johnsFib } from '../lab/fib'
 import { inWindow, nextWindowStart, overlapsWindow, type NewsMode, type Window } from '../lab/news'
-import { deadlineFor, entryAllowed, inLondonSession, type Style } from '../lab/time'
+import { entryAllowed, inLondonSession, type Style } from '../lab/time'
 
 // The strategy lab's top 5 (docs/strategy-lab.md, "Top 5 in the live race"),
 // each as its own play-money race account at the race's start money. Picked
@@ -11,7 +11,9 @@ import { deadlineFor, entryAllowed, inLondonSession, type Style } from '../lab/t
 // out-of-sample trades, drawdown under 25%, a small in/out gap, at most 2 per
 // strategy family. The settings below are the ones each bot chose in-sample.
 // These are a forward test, not proven edges: every one of them has a
-// bootstrap interval that includes zero. Pure, tested. Play money only.
+// bootstrap interval that includes zero. Live, their trades hold until the
+// stop or target (John, 2026-11-12); the lab tested them with time exits, so
+// live results may differ. Pure, tested. Play money only.
 
 export type LabBotCandles =
   /** Kraken's own candles of that size (UTC boundaries). */
@@ -73,7 +75,7 @@ export const LAB_BOTS: LabBot[] = [
     currencies: ['EUR', 'USD'],
     kind: 'fib',
     fib: { k: 2, entry: 0.786 },
-    why: "John's Fib on 4-hour candles (New York close): after a move of 2x ATR within 12 candles, sell the pullback to 0.786 (buy mirrored); stop a quarter ATR past 1, half off at 0, the rest at -0.272; out after 5 days at most.",
+    why: "John's Fib on 4-hour candles (New York close): after a move of 2x ATR within 12 candles, sell the pullback to 0.786 (buy mirrored); stop a quarter ATR past 1, half off at 0, the rest at -0.272.",
     candleWords: '4-hour',
     rrWords: 'half at 0, rest at -0.272',
   },
@@ -106,7 +108,7 @@ export const LAB_BOTS: LabBot[] = [
     currencies: ['USD'],
     kind: 'fib',
     fib: { k: 4, entry: 0.886, londonOnly: true },
-    why: "John's Fib on the Dow, only 08:00-16:00 London time: after a move of 4x ATR within 12 candles, sell the pullback to 0.886 (buy mirrored); stop a quarter ATR past 1, half off at 0, the rest at -0.272. Day trade: flat by 17:00 New York, and closed before red US news.",
+    why: "John's Fib on the Dow, only 08:00-16:00 London time: after a move of 4x ATR within 12 candles, sell the pullback to 0.886 (buy mirrored); stop a quarter ATR past 1, half off at 0, the rest at -0.272. No new trade after 16:00 New York, and open trades close before red US news.",
     candleWords: '1-hour',
     rrWords: 'half at 0, rest at -0.272',
   },
@@ -138,13 +140,8 @@ export const RACE_ONLY_MARKETS: Record<
   US30: { label: 'US30 (Dow futures)', leverage: 20, feeRate: 0.000025, quote: 'USD' },
 }
 
-export const LAB_MAX_DAYS: Record<Style, string> = {
-  scalp: 'out by the end of its session',
-  day: 'flat by 17:00 New York',
-  swing: 'out after 5 days at most',
-  position: 'out after 30 days at most',
-  race: 'out after 10 days at most',
-}
+/** How long a lab bot's trade stays open live, in the words the pages show (John, 2026-11-12). */
+export const LAB_HOLD = 'holds until its stop or target'
 
 export interface LabSignal extends Signal {
   /** First target: half the position closes there (John's Fib). */
@@ -156,8 +153,6 @@ export interface LabSignal extends Signal {
 export interface LabCheck {
   signal: LabSignal | null
   note: string
-  /** Latest time a trade opened now may stay open. */
-  deadline: number
 }
 
 const TF_SEC = { '1h': 3600, '4h': 14_400 } as const
@@ -181,8 +176,7 @@ export function labCheck(
   price: number,
   windows: Window[],
 ): LabCheck {
-  const deadline = deadlineFor(bot.style, nowSec)
-  const none = (note: string): LabCheck => ({ signal: null, note, deadline })
+  const none = (note: string): LabCheck => ({ signal: null, note })
   if (!entryAllowed(bot.style, nowSec)) return none('after 16:00 New York: no new day trades')
   if (bot.news !== 'off' && windows.length) {
     const blocked =
@@ -199,7 +193,6 @@ export function labCheck(
       ? {
           signal: s,
           note: `${s.direction} signal on the ${new Date(s.time * 1000).toISOString().slice(0, 16)}Z candle`,
-          deadline,
         }
       : none('no signal')
   }
@@ -229,7 +222,6 @@ export function labCheck(
       ...(last.oneIdx != null ? { moveStart: closed[last.oneIdx].time } : {}),
     },
     note: `${last.direction} at the Fib level ${last.price} (touched on the ${new Date(closed[last.i].time * 1000).toISOString().slice(0, 16)}Z candle)`,
-    deadline,
   }
 }
 

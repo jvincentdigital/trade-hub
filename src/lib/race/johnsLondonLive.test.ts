@@ -140,32 +140,34 @@ describe("John's London v1 live: stop and targets at the price now", () => {
   })
 })
 
-// ── Deadline and news ─────────────────────────────────────────────────────
+// ── Holding and news ──────────────────────────────────────────────────────
 
-describe("John's London v1 live: deadline and red news", () => {
+describe("John's London v1 live: trades hold, red news", () => {
   const usd = (time: number): NewsEvent => ({ time, currency: 'USD', event: 'CPI' })
 
-  it('the deadline is the time exit, 16:30 London (16:30 UTC in UK winter)', () => {
-    expect(johnsLondonCheck(input()).deadline).toBe(DAY0 + 16.5 * 3600)
+  it('no closing time is handed over: the trade holds until its stop or target', () => {
+    const r = johnsLondonCheck(input())
+    expect(r.signal).not.toBeNull()
+    expect(r).not.toHaveProperty('deadline')
+    expect(r.note).toMatch(/holds until its stop or target$/)
   })
 
-  it('UK summer: 15:30 UTC', () => {
+  it('UK summer: the session runs an hour earlier in UTC', () => {
     const day = Date.UTC(2025, 5, 16) / 1000 // Monday, UK summer
     const bars = [...quiet(B, 26), ...sellSetup(B)] // signal bar 31 at 07:45, closes 08:00 UTC
     const r = johnsLondonCheck(
       input({ closed: candles(bars, day), nowSec: day + 32 * M15 + 60, price: B - 0.0002 }),
     )
     expect(r.signal).not.toBeNull()
-    expect(r.deadline).toBe(day + 15.5 * 3600)
   })
 
-  it('red news later today brings the deadline to 30 minutes before it', () => {
+  it('red news later today: the trade still opens when it is 90 minutes or more away', () => {
     const r = johnsLondonCheck(input({ news: [usd(T + 4 * 3600)] }))
     expect(r.signal).not.toBeNull()
-    expect(r.deadline).toBe(T + 4 * 3600 - 1800)
+    expect(r.closeNow).toBe(false)
   })
 
-  it('under 90 minutes to the forced close: no trade', () => {
+  it('under 90 minutes to red news: no trade (the entry rule as tested)', () => {
     const r = johnsLondonCheck(input({ news: [usd(T + 110 * 60)] }))
     expect(r.signal).toBeNull()
     expect(r.note).toMatch(/under 90 minutes/)
@@ -178,6 +180,20 @@ describe("John's London v1 live: deadline and red news", () => {
     expect(r.signal).toBeNull()
     expect(r.closeNow).toBe(true)
     expect(johnsLondonCheck(input()).closeNow).toBe(false)
+  })
+
+  it('outside the session (hourly checks) closeNow also fires when red news starts within the hour', () => {
+    // 18:07 UTC, after the 16:30 London session: FOMC at 19:00 UTC, its window starts 18:30.
+    const at = DAY0 + 18 * 3600 + 7 * 60
+    const r = johnsLondonCheck(input({ nowSec: at, news: [usd(DAY0 + 19 * 3600)] }))
+    expect(r.signal).toBeNull()
+    expect(r.closeNow).toBe(true)
+    // a window starting more than an hour away waits for a later check
+    expect(johnsLondonCheck(input({ nowSec: at, news: [usd(DAY0 + 20 * 3600)] })).closeNow).toBe(
+      false,
+    )
+    // inside the session (15-minute checks) only a window that has started closes, as tested
+    expect(johnsLondonCheck(input({ news: [usd(T + 50 * 60)] })).closeNow).toBe(false)
   })
 
   it('gold follows USD news only, GBP/USD follows GBP and USD', () => {
@@ -450,15 +466,30 @@ describe('race engine: confirmed exits (lone-wick rule, GBP/USD only)', () => {
     expect(r.closed.map((c) => c.reason)).toEqual(['stop'])
   })
 
-  it('the deadline comes first: a candle starting at or after it closes at its open', () => {
-    const s = openSell({ deadline: later(2) })
-    const path = [
-      bar(later(1), 1.3, 1.3035, 1.2995, 1.3005),
-      bar(later(2), 1.3008, 1.304, 1.3, 1.3035),
+  it('no clock exit: past the old 16:30 London close it holds into the next day, then a confirmed stop or the news close ends it', () => {
+    const s = openSell()
+    expect(s.open[0]).not.toHaveProperty('deadline')
+    // t0 is 09:00 UTC: 16:30 is later(30). Quiet candles to 09:00 the next day.
+    const quietTo = (n: number) =>
+      Array.from({ length: n }, (_, i) => bar(later(i + 1), 1.3, 1.301, 1.299, 1.3))
+    const next = stepStrategy(s, [mtick({ path: quietTo(96) })], later(97))
+    expect(next.closed).toEqual([])
+    expect(next.strategy.open).toHaveLength(1)
+    // a stop the next candle confirms still closes it
+    const stopped = [
+      ...quietTo(96),
+      bar(later(97), 1.3, 1.3035, 1.2995, 1.3005),
+      bar(later(98), 1.304, 1.3045, 1.302, 1.3025),
     ]
-    const r = stepStrategy(s, [mtick({ path })], later(3))
-    expect(r.closed[0].reason).toBe('time')
-    expect(r.closed[0].exit).toBe(1.3008)
+    const r = stepStrategy(next.strategy, [mtick({ path: stopped })], later(99))
+    expect(r.closed.map((c) => [c.reason, c.exit])).toEqual([['stop', 1.304]])
+    // or red news: closed at the price now
+    const news = stepStrategy(
+      next.strategy,
+      [mtick({ path: quietTo(96), price: 1.2995, closeNow: true })],
+      later(97) + 60,
+    )
+    expect(news.closed.map((c) => [c.reason, c.exit])).toEqual([['news', 1.2995]])
   })
 
   it('gold (no confirm flag) still fills on a plain touch', () => {

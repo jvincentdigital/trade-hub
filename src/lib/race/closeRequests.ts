@@ -113,7 +113,7 @@ export interface Booked {
 /**
  * Every pending request, in tap order: booked (the trade closes and the
  * request can go), dropped (the trade is not open any more: closed by its
- * stop, target or the 12:45 close first, or never existed) or waiting (its
+ * stop, target or red news first, or never existed) or waiting (its
  * minute is not printed yet, or its 1-minute feed failed: try at the next check).
  */
 export function bookCloseRequests(

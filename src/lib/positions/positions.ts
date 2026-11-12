@@ -219,7 +219,7 @@ export interface ClosedRow {
   pnl: number
   /** Milliseconds. */
   closedAt: number
-  /** time and news: lab bots in the race (deadline passed, closed before red news). */
+  /** news: closed before red news (v1, lab bots). session and time: old trades only (the 12:45 close and time limits, until 2026-11-12). */
   reason: 'stop' | 'target' | 'manual' | 'session' | 'time' | 'news'
 }
 

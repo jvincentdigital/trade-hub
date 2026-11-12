@@ -12,7 +12,7 @@ import {
 import type { Call } from './callSchema'
 import { bookCloseRequests, tradeId, type Minute } from './closeRequests'
 import { compareRows, EVIDENCE_TEXT } from './compare'
-import { applyDailyClose, createRaceState, parseRaceState, type RaceState } from './live'
+import { createRaceState, parseRaceState, type RaceState } from './live'
 
 /** Unix seconds of a Puerto Rico (AST = UTC-4) wall clock time on Thu 2026-11-12. */
 const at = (h: number, mi: number, s = 0) => Date.UTC(2026, 10, 12, h + 4, mi, s) / 1000
@@ -422,7 +422,7 @@ describe("John's calls: stop and targets", () => {
   })
 })
 
-describe("John's calls: cancel, Close now and the daily close", () => {
+describe("John's calls: cancel and Close now", () => {
   it('cancel takes the waiting orders off; filled trades keep running', () => {
     const s = race()
     const c = call(GOLD, s)
@@ -459,20 +459,6 @@ describe("John's calls: cancel, Close now and the daily close", () => {
       [JOHNS_CALLS.id, 3912, 'manual'],
     ])
     expect(booked.state.strategies[JOHNS_CALLS.id].open).toEqual([])
-  })
-
-  it('the 12:45 daily close leaves John’s calls open', () => {
-    const s = race()
-    const c = call(GOLD, s)
-    const r = step(s, [c], [min(at(9, 51), 3906, 3906, 3904)], at(9, 52))
-    const state: RaceState = {
-      ...s,
-      strategies: { ...s.strategies, [JOHNS_CALLS.id]: r.account },
-      dailyCloseAt: at(9, 0) - 86_400,
-    }
-    const d = applyDailyClose(state, at(12, 50), () => 0.0002)
-    expect(d.closed).toEqual([])
-    expect(d.state.strategies[JOHNS_CALLS.id].open).toHaveLength(1)
   })
 })
 

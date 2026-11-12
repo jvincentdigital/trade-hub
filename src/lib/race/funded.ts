@@ -32,8 +32,9 @@ import { LONDON_BREAKOUT } from './londonBreakout'
  * The only race strategy whose signals the funded test takes (John,
  * 2026-11-11 evening): John's London v1. A signal from any other strategy is
  * ignored here; it still trades in that strategy's own Lab account. Its
- * trades keep v1's own exits (half at TP1, the forced close, the news close,
- * the lone-wick rule on GBP/USD), taken from v1's market tick.
+ * trades keep v1's own exits (half at TP1, the news close, the lone-wick rule
+ * on GBP/USD), taken from v1's market tick. Like every race trade they hold
+ * until the stop or target, overnight too (John, 2026-11-12).
  */
 export const FUNDED_SIGNALS_FROM: string = JOHNS_LONDON.id
 
@@ -357,12 +358,11 @@ export interface FundedStep {
  */
 export type FundedTick = MarketTick & { strategy?: string }
 
-/** Price and path only: another strategy's news close, first target, deadline and lone-wick flag left out. */
+/** Price and path only: another strategy's news close, first target and lone-wick flag left out. */
 const plainTick = (m: FundedTick): FundedTick => ({
   ...m,
   closeNow: false,
   target1: undefined,
-  deadline: undefined,
   confirm: undefined,
 })
 
@@ -513,7 +513,6 @@ export function stepFunded(
       ...(c.note ? { note: c.note } : {}),
       // Its own strategy's exits, from that strategy's market tick (as stepStrategy does).
       ...(m.target1 != null ? { target1: m.target1, part1: 0.5 } : {}),
-      ...(m.deadline != null ? { deadline: m.deadline } : {}),
       ...(m.confirm ? { confirm: true } : {}),
     }
     open.push(t)

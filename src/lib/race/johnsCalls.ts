@@ -23,8 +23,8 @@ import {
 // one shared stop and one or more targets. The race tick fills them on
 // Kraken's 1-minute candles after the call (never before it), charges the
 // same fees and manages the stop and targets like other trades. Not for his
-// calls: the 02:00 to 12:30 AST entry window and the 12:45 daily close (they
-// are his own trades). Play money only. Pure, tested.
+// calls: the 02:00 to 12:30 AST entry window (they are his own trades). Play
+// money only. Pure, tested.
 
 export { JOHNS_CALLS }
 

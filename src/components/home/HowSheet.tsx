@@ -108,7 +108,7 @@ export function HowSheet(props: {
             ],
             [
               'Entry.',
-              `At the live price at the next race check, at most 4 candles after the signal. No entry if the price already went past 1 or reached 0, ran away from the signal close, or the plan is under ${V1.rrMin} times the risk. No entry 30 minutes either side of red news, and at most ${V1.maxPerDay} trades per market a day. New trades only from 2:00 AM to 12:30 PM, Monday to Friday; at 12:45 PM every open trade closes.`,
+              `At the live price at the next race check, at most 4 candles after the signal. No entry if the price already went past 1 or reached 0, ran away from the signal close, or the plan is under ${V1.rrMin} times the risk. No entry 30 minutes either side of red news, and at most ${V1.maxPerDay} trades per market a day. New trades only from 2:00 AM to 12:30 PM, Monday to Friday.`,
             ],
             [
               'Stop.',
@@ -116,7 +116,7 @@ export function HowSheet(props: {
             ],
             [
               'Target.',
-              `Half closes at the 0 level, the rest at ${V1.tp2Level}: a plan of ${V1.rrMin} to ${V1.rrMax} times the risk. Everything closes by 12:30 PM (4:30 PM London) and 30 minutes before red news. On GBP/USD a stop or target counts only when the candle closes past it or the next candle reaches it too (Kraken prints fake wicks).`,
+              `Half closes at the 0 level, the rest at ${V1.tp2Level}: a plan of ${V1.rrMin} to ${V1.rrMax} times the risk. There is no closing time: a trade holds, overnight too, until its stop or target, or until you tap Close now. It still closes before red news. On GBP/USD a stop or target counts only when the candle closes past it or the next candle reaches it too (Kraken prints fake wicks).`,
             ],
             [
               'Size.',
@@ -172,7 +172,7 @@ export function HowSheet(props: {
         <p style={{ ...secondary, fontSize: FS.sm, margin: '14px 0 16px' }}>
           <b style={b}>Not built yet:</b>{' '}
           {
-            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade ends at its stop, its target, the 12:45 PM close, or Close now. USD/JPY and NZD/USD prices come once a day from the European Central Bank (GBP/JPY uses that rate too), so no account opens new trades on them; the other pairs and gold use real prices, checked every hour (every 15 minutes in the session).'
+            'trailing stops, moving the stop to break-even, and taking part of the profit early. A trade ends at its stop, its target, the close before red news, or Close now. USD/JPY and NZD/USD prices come once a day from the European Central Bank (GBP/JPY uses that rate too), so no account opens new trades on them; the other pairs and gold use real prices, checked every hour (every 15 minutes in the session).'
           }
         </p>
         <button

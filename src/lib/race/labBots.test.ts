@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { OHLCCandle } from '../types/market'
 import type { Signal } from '../rules/engine'
 import {
-  applyDailyClose,
   createRaceState,
   parseRaceState,
   stepStrategy,
@@ -83,35 +82,28 @@ describe('lab bots in the live race', () => {
     expect(r.strategy.open).toHaveLength(0)
   })
 
-  it('a deadline closes at the open of the first candle at or after it', () => {
-    const s = opened({ deadline: 4000 + 2 * H })
-    const r = stepStrategy(
-      s,
-      [tick({ path: [bar(4000 + H, 100, 101, 99, 100), bar(4000 + 2 * H, 102, 103, 101, 102)] })],
-      4000 + 2 * H + 60,
-    )
-    expect(r.closed[0]).toMatchObject({ reason: 'time', exit: 102 })
+  it('no time limit: a trade holds past its old limit (race 10 days) until its stop or target', () => {
+    const s = opened()
+    expect(s.open[0]).not.toHaveProperty('deadline')
+    const days11 = 5000 + 11 * 24 * H
+    const quiet = [bar(4000 + H, 100, 101, 99, 100), bar(days11 - H, 100, 104, 96, 101)]
+    const r = stepStrategy(s, [tick({ path: quiet, price: 101 })], days11)
+    expect(r.closed).toEqual([])
+    expect(r.strategy.open).toHaveLength(1)
+    const hit = [...quiet, bar(days11, 101, 110.5, 100, 110)]
+    expect(stepStrategy(r.strategy, [tick({ path: hit })], days11 + H).closed[0]).toMatchObject({
+      reason: 'target',
+      exit: 110,
+    })
   })
 
-  it('past the deadline with no later candle: closes at the price, but not on a stale (weekend) feed', () => {
-    const s = opened({ deadline: 5000 })
-    const live = stepStrategy(
-      s,
-      [tick({ path: [bar(4000, 100, 100, 100, 100)], price: 101 })],
-      6000,
-    )
-    expect(live.closed[0]).toMatchObject({ reason: 'time', exit: 101 })
-    const stale = stepStrategy(
-      s,
-      [tick({ path: [bar(4000, 100, 100, 100, 100)], price: 101 })],
-      4000 + 3 * H,
-    )
-    expect(stale.closed).toHaveLength(0)
-  })
-
-  it('closeNow closes open trades before red news', () => {
+  it('closeNow still closes a trade before red news, at the price now, but not on a stale (weekend) feed', () => {
     const r = stepStrategy(opened(), [tick({ closeNow: true, price: 99 })], 6000)
     expect(r.closed[0]).toMatchObject({ reason: 'news', exit: 99 })
+    expect(r.strategy.open).toHaveLength(0)
+    // the newest candle is 3 hours old (the market is shut): nothing closes
+    const stale = stepStrategy(opened(), [tick({ closeNow: true, price: 99 })], 4000 + 3 * H)
+    expect(stale.closed).toHaveLength(0)
   })
 
   it('a buy whose price already passed the first target does not open', () => {
@@ -130,9 +122,9 @@ describe('lab bots in the live race', () => {
     expect(changes).toHaveLength(5)
     expect(state.strategies.x).toEqual(base.strategies.x)
     for (const b of LAB_BOTS) expect(state.strategies[b.id].balance).toBe(10_000)
-    // A state with first targets, deadlines and the new exit reasons still parses.
+    // A state with first targets and the new exit reasons still parses.
     const r = stepStrategy(
-      opened({ target1: 105, deadline: 99_999 }),
+      opened({ target1: 105 }),
       [tick({ path: [bar(4000 + H, 100, 106, 99, 105)] })],
       9000,
     )
@@ -142,10 +134,9 @@ describe('lab bots in the live race', () => {
 })
 
 describe("main's race rules bind the lab bots too (merge of 2026-11-11)", () => {
-  // Wednesday 2026-11-11 13:00 AST: after the entry window and the daily close.
+  // Wednesday 2026-11-11 13:00 AST: after the entry window (and the old 12:45 close).
   const wed1300 = Date.UTC(2026, 10, 11, 17, 0) / 1000
-  const opened = () =>
-    stepStrategy(fresh(), [tick({ signal: sig(), target1: 105, deadline: 9e9 })], 5000).strategy
+  const opened = () => stepStrategy(fresh(), [tick({ signal: sig(), target1: 105 })], 5000).strategy
 
   it('outside 02:00 to 12:30 AST a lab signal is used up and passed', () => {
     const block = entryWindowBlock(wed1300)
@@ -162,22 +153,28 @@ describe("main's race rules bind the lab bots too (merge of 2026-11-11)", () => 
     expect(r.strategy.lastSignal['pax-gold']).toBe(1000)
   })
 
-  it('the 12:45 AST close also closes what is left of a half-closed lab trade', () => {
-    const half = stepStrategy(opened(), [tick({ path: [bar(4000 + H, 100, 106, 99, 105)] })], 9000)
+  it('the first target still closes half; the rest holds past 12:45 AST and overnight', () => {
+    const tp1 = bar(4000 + H, 100, 106, 99, 105)
+    const half = stepStrategy(opened(), [tick({ path: [tp1] })], 9000)
+    expect(half.closed).toHaveLength(1)
+    expect(half.closed[0]).toMatchObject({ reason: 'target', exit: 105, part1Of: 0.5 })
     expect(half.strategy.open[0].units).toBeCloseTo(20)
-    const base = createRaceState([{ id: 'a', name: 'A' }], 10_000, 1)
-    const state = {
-      ...base,
-      strategies: { a: half.strategy },
-      prices: { 'pax-gold': 104 },
-      dailyCloseAt: wed1300 - 86_400,
+    // 13:00 AST and the next morning: under the target, over the stop, still open
+    let s = half.strategy
+    for (const now of [wed1300, wed1300 + 13 * H]) {
+      const path = [tp1, bar(now - H, 104, 107, 101, 104)]
+      const r = stepStrategy(s, [tick({ path, price: 104 })], now)
+      expect(r.closed).toEqual([])
+      expect(r.strategy.open[0].units).toBeCloseTo(20)
+      s = r.strategy
     }
-    const r = applyDailyClose(state, wed1300, () => 0.001)
-    expect(r.closed).toHaveLength(1)
-    expect(r.closed[0]).toMatchObject({ reason: 'session', exit: 104 })
+    // then the rest closes at the target
+    const end = wed1300 + 14 * H
+    const r = stepStrategy(s, [tick({ path: [tp1, bar(end - H, 104, 111, 103, 110)] })], end)
+    expect(r.closed[0]).toMatchObject({ reason: 'target', exit: 110 })
     expect(r.closed[0].units).toBeCloseTo(20)
-    expect(r.state.strategies.a.open).toHaveLength(0)
-    expect(r.state.strategies.a.closed.map((c) => c.reason)).toEqual(['target', 'session'])
+    expect(r.strategy.open).toHaveLength(0)
+    expect(r.strategy.closed.map((c) => c.reason)).toEqual(['target', 'target'])
   })
 
   it('a lab rule bot signal re-anchors to the fill like the built-in rules', () => {
@@ -223,10 +220,10 @@ describe('lab bot checks', () => {
     expect(newsCloseDue(rsi, wc, NOW)).toBe(false) // a "block" bot never closes for news
   })
 
-  it('day trades: nothing new after 16:00 New York, deadline 17:00 New York', () => {
+  it('day trades: nothing new after 16:00 New York (an entry rule; trades hold past 17:00)', () => {
     const late = Date.UTC(2026, 6, 1, 20, 30) / 1000 // 16:30 EDT
     expect(labCheck(day, [], late, 50_000, []).note).toMatch(/16:00/)
-    expect(labCheck(day, [], NOW, 50_000, []).deadline).toBe(Date.UTC(2026, 6, 1, 21) / 1000)
+    expect(labCheck(day, [], NOW, 50_000, [])).not.toHaveProperty('deadline')
   })
 
   it("John's Fib: a level touched on the last closed candle opens near the level, not after it ran", () => {

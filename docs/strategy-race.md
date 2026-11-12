@@ -212,7 +212,7 @@ test and all Lab accounts) "until a live price exists". The race prices
 USD/JPY and NZD/USD from the ECB's daily rate, and GBP/JPY is GBP/USD times
 that daily USD/JPY (`docs/london-open.md`), so none of the three has a live
 price. One list, `NOT_LIVE` in `account.ts`. Trades already open on them run
-to their stop, target or the 12:45 close as before. The GBP/JPY copy rule
+to their stop or target as before. The GBP/JPY copy rule
 above now only keeps a new GBP/USD out of an account that still holds an
 older GBP/JPY trade. Red news: no pause, the race trades through it (John,
 same answer).
@@ -277,10 +277,10 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
   Claude's picks).
 - **v1's own exits.** A funded trade from v1 keeps the rules v1 was tested
   with (SPEC.md section 6), taken from v1's market tick: half off at TP1 (0),
-  the rest at TP2 (-0.272), the forced close (16:30 London, or 30 minutes
-  before red news), the news close, closed 15-minute candles only, and the
-  lone-wick rule on GBP/USD. It is checked with the same `tradeExits` as the
-  Lab. The funded rules come on top. Its size stays the funded test's: 2% of
+  the rest at TP2 (-0.272), the news close, closed 15-minute candles only,
+  and the lone-wick rule on GBP/USD. No forced close since 2026-11-12: the
+  trade holds (see "2026-11-12: trades hold"). It is checked with the same
+  `tradeExits` as the Lab. The funded rules come on top. Its size stays the funded test's: 2% of
   the balance over the fill-to-stop distance (v1's Lab account also counts
   both fees inside its 2%). A trade closed in two halves counts once in the
   3 new trades a day.
@@ -294,7 +294,7 @@ markets in `~/jvd-outputs/2026-11-11/funded-accounts/` (REPORT.md, rules.json):
   dip between two checks that recovers is not seen. Stops and targets are
   still found on the candles in between.
 - **Failed or passed** is final: no new trades after it, open trades run to
-  their stop, target or the 12:45 close, and the card says which rule broke
+  their stop or target, and the card says which rule broke
   or that it passed. To run a fresh one: `make funded-reset` (backs up
   race.json first, then the next tick starts a new $10,000 account).
 - **Start.** The first tick that runs this code starts it with $10,000. Every
@@ -339,8 +339,8 @@ risking 2% of its own balance.
   on it takes exactly the signals the $10K takes; the $10K keeps any trades
   it already has, and the new ones show "started <time>".
 - **Close now** names one size (`funded|...` is the $10K, `funded-50k|...`
-  and so on for the others) and closes the trade in that account only. The
-  12:45 close and `race-close-all.ts` close every size.
+  and so on for the others) and closes the trade in that account only.
+  `race-close-all.ts` closes every size.
 - `make funded-reset` resets all four (both tests since 2026-11-12).
 
 The tick log shows its lines with the name `Funded test <size>`, for example:
@@ -377,10 +377,10 @@ How it is built:
 - **Each trade keeps its own strategy's exits.** The tick hands the funded
   tests every feed strategy's own market ticks, tagged with the strategy
   (`FundedTick`): a v1 trade uses v1's tick (closed candles, half at TP1, the
-  forced close, the news close, the lone-wick rule), a breakout trade the
+  news close, the lone-wick rule), a breakout trade the
   breakout's (its plain 2R stop and target, as in its Lab account). A trade
   with no tick of its own strategy gets another strategy's as price and path
-  only (no news close, first target or deadline). An untagged tick counts as
+  only (no news close or first target). An untagged tick counts as
   every strategy's own (the tests use those).
 - **Start**: the first tick that runs this code starts B empty in all four
   sizes, with every signal out there at that moment marked used, so it only
@@ -389,8 +389,8 @@ How it is built:
 - **Limits** are per test and per size: B has its own day loss, 3 new a day,
   worst case and max loss; A's limits never block B or the other way round.
 - **Close now** ids: `funded-b-10k|...`, `funded-b-50k|...` and so on close
-  the trade in that test and size only. The 12:45 close, `race-close-all.ts`
-  and `make funded-reset` cover both tests.
+  the trade in that test and size only. `race-close-all.ts` and
+  `make funded-reset` cover both tests.
 - **Pages**: Today has a "v1 only | v1 + breakouts" switch above the size
   switch on the summary card (`TestSwitch` in `SizeSwitch.tsx`, saved as
   `trade-hub-funded-test`, `useFundedTest.ts`). Compare shows both tests for
@@ -405,6 +405,9 @@ Tick log names: `Funded test v1 + breakouts <size>`, for example:
 ```
 
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)
+
+**The daily close ended on 2026-11-12** (next section). The entry window
+below still holds.
 
 John: "after the New York session ends, close all the trades and take the
 profit". He chose 12:45 AST. Every account (the Lab strategies and the funded
@@ -429,6 +432,52 @@ trades on the weekend`), so it can't open later at a stale price. Claude's
   close is the next 12:45.
 - Stops and targets are checked first in that same check, so a trade that hit
   its stop before 12:45 books the stop, not the 12:45 price.
+
+## 2026-11-12: trades hold
+
+John, about 14:40 AST, poll answer "Everything holds": "When we're negative
+like that, we can just hold the trades. You don't have to wait till the New
+York session closes. We can just leave it running and see what happens and
+hold the position." Play money only, as always.
+
+What changed (exits only; entries are exactly as tested):
+
+- **No 12:45 AST daily close.** `applyDailyClose` and its helpers in
+  `session.ts` are gone, and `dailyCloseAt` is no longer in `race.json` (an
+  old file still reads: the field is dropped).
+- **No time limit on a trade.** New trades store no `deadline`, so nothing
+  closes on the clock: not v1's 16:30 London exit, not the lab bots' "flat by
+  17:00 New York" or their 5-day and 10-day limits. An open trade in an old
+  `race.json` loses its `deadline` when read, so it holds too.
+- Every account holds the same way: the Lab strategies, Claude's picks, both
+  funded tests in all four sizes (overnight and over the weekend), and John's
+  calls (they never had a clock).
+
+What stays:
+
+- Stops, the first target (half closes there, the rest holds), the final
+  target, and the lone-wick rule on GBP/USD v1.
+- The close before red news (`closeNow`) for v1 and the lab bots with news
+  `close`. v1 inside its London session still closes once a red-news window
+  has started (the race checks every 15 minutes there). Outside the session
+  the race checks only once an hour, so v1 also closes when a window starts
+  within the next hour (`NEWS_LOOKAHEAD` in `johnsLondonLive.ts`): when the
+  hourly checks run on time, the close comes 30 to 90 minutes before the news,
+  not after it.
+- Close now taps, `make race-close-all`, John's calls and their own rules.
+- The funded tests' FTMO limits: day loss (a held trade's open loss counts
+  in each new Prague day), max loss, the worst case (a held trade counts at
+  its stop), at most 2 open and 3 new a day.
+- Entry rules: 02:00 to 12:30 AST on weekdays, and v1's "under 90 minutes to
+  16:30 London or red news" gate, as tested.
+- Old closed trades with reason `session` or `time` still read and keep
+  their labels ("closed at 12:45", "closed at its time limit").
+
+**Backtests still use the old clock exits.** `src/lib/lab` (the strategy
+lab, v1's clean-year test) is unchanged: its trades close at 16:30 London,
+17:00 New York, after 5 or 10 days, or at 12:45 AST. Live results from
+2026-11-12 on may differ from those tests, in both directions: a held loser
+can come back to its target, or run on to its full stop.
 
 ## Stop and target follow the fill (2026-11-11 post-mortem)
 
@@ -541,8 +590,7 @@ last look:
    Close now (`race-call-cancel` only takes waiting orders off).
 6. Forex minutes while the real market is shut are skipped, as in the race.
 
-**Not for John's calls:** the 02:00 to 12:30 AST entry window and the 12:45
-daily close (`applyDailyClose` leaves the account alone). They are his own
+**Not for John's calls:** the 02:00 to 12:30 AST entry window. They are his own
 trades: he decides when. The strategies' new-trade rules (Bitcoin only among
 crypto, one pound/dollar bet, at most 2 dollar bets, at most 5 open) do not
 apply either: one call is one idea, its ladder is several trades. `NOT_LIVE`
@@ -674,7 +722,8 @@ bots keep their Fib levels). So the 5-day and 10-day deadlines are a cap the
 12:45 close always comes before. Lab bots do not feed the funded test (since
 the evening of 2026-11-11 it takes only John's London v1). Every account, the
 funded test too, checks its open trades with one function, `tradeExits` in
-`live.ts`.
+`live.ts`. Since 2026-11-12 the deadlines and the 12:45 close are gone: lab
+trades hold until their stop or target (see "2026-11-12: trades hold").
 
 ## Hourly job (installed by John, 2026-11-10)
 
@@ -713,31 +762,31 @@ hourly job is not installed yet".
 
 ## Files
 
-| File                            | Role                                                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `src/app/compare/page.tsx`      | The page: funded test, every strategy side by side, past results folded                                      |
-| `src/app/race/page.tsx`         | Redirects the old `/race` to `/compare`                                                                      |
-| `src/lib/race/compare.ts`       | Pure: the comparison's live stats, past-test evidence, sorting (`compare.test.ts`)                           |
-| `src/app/api/race/route.ts`     | Reads the local race file, reports whether the job is installed                                              |
-| `src/lib/race/account.ts`       | Pure: sizing (`sizeRaceTrade`), new-trade rules (`newTradeBlock`)                                            |
-| `src/lib/race/leaderboard.ts`   | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`                                           |
-| `src/lib/race/live.ts`          | Pure: state schema, old-file move, `stepStrategy`, `summarize`, `closeAll`, `applyDailyClose`, `entryLevels` |
-| `src/lib/race/funded.ts`        | Pure: the funded test (limits, `stepFunded`, `checkFunded`, `fundedView`)                                    |
-| `src/lib/race/session.ts`       | Pure: entry window, 12:45 AST close, FTMO's Prague day                                                       |
-| `src/lib/race/closeRequests.ts` | Pure: Close now ids and booking (`bookCloseRequests`)                                                        |
-| `src/lib/race/johnsCalls.ts`    | Pure: John's calls (`planCall`, `stepCalls`, `cancelCall`); shapes in `callSchema.ts`                        |
-| `scripts/race-call.ts`          | Make, list or cancel a call (`make race-call`, `race-call-list`, `race-call-cancel`)                         |
-| `src/lib/race/store.ts`         | Server: reads the race and close requests (worker or local files)                                            |
-| `src/lib/sizing/sizing.ts`      | Pure: units, lots, $ per pip or per $1, risk, goal, R:R, text                                                |
-| `scripts/race-reset`            | Back up race.json, fresh race, first tick, push                                                              |
-| `src/lib/race/candles.ts`       | `closedOnly` (drop the forming candle)                                                                       |
-| `src/lib/kraken.ts`             | Kraken OHLC: pairs, parser, spaced + cached fetch                                                            |
-| `src/lib/race/feeds.ts`         | Direct Frankfurter fetch for the script                                                                      |
-| `src/lib/frankfurter.ts`        | Daily forex candles, shared with `/api/forex/ohlc/[pair]`                                                    |
-| `scripts/race-tick.ts`          | One live tick                                                                                                |
-| `scripts/launchd/*`             | Hourly job (installed)                                                                                       |
-| `src/lib/race/race.test.ts`     | Tests: sizing limits, open/close, fees, one account, old files, ranking                                      |
-| `src/lib/race/*.test.ts`        | Tests: funded limits, session clock, Close now and the relay worker                                          |
+| File                            | Role                                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `src/app/compare/page.tsx`      | The page: funded test, every strategy side by side, past results folded                   |
+| `src/app/race/page.tsx`         | Redirects the old `/race` to `/compare`                                                   |
+| `src/lib/race/compare.ts`       | Pure: the comparison's live stats, past-test evidence, sorting (`compare.test.ts`)        |
+| `src/app/api/race/route.ts`     | Reads the local race file, reports whether the job is installed                           |
+| `src/lib/race/account.ts`       | Pure: sizing (`sizeRaceTrade`), new-trade rules (`newTradeBlock`)                         |
+| `src/lib/race/leaderboard.ts`   | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`                        |
+| `src/lib/race/live.ts`          | Pure: state schema, old-file move, `stepStrategy`, `summarize`, `closeAll`, `entryLevels` |
+| `src/lib/race/funded.ts`        | Pure: the funded test (limits, `stepFunded`, `checkFunded`, `fundedView`)                 |
+| `src/lib/race/session.ts`       | Pure: entry window, FTMO's Prague day                                                     |
+| `src/lib/race/closeRequests.ts` | Pure: Close now ids and booking (`bookCloseRequests`)                                     |
+| `src/lib/race/johnsCalls.ts`    | Pure: John's calls (`planCall`, `stepCalls`, `cancelCall`); shapes in `callSchema.ts`     |
+| `scripts/race-call.ts`          | Make, list or cancel a call (`make race-call`, `race-call-list`, `race-call-cancel`)      |
+| `src/lib/race/store.ts`         | Server: reads the race and close requests (worker or local files)                         |
+| `src/lib/sizing/sizing.ts`      | Pure: units, lots, $ per pip or per $1, risk, goal, R:R, text                             |
+| `scripts/race-reset`            | Back up race.json, fresh race, first tick, push                                           |
+| `src/lib/race/candles.ts`       | `closedOnly` (drop the forming candle)                                                    |
+| `src/lib/kraken.ts`             | Kraken OHLC: pairs, parser, spaced + cached fetch                                         |
+| `src/lib/race/feeds.ts`         | Direct Frankfurter fetch for the script                                                   |
+| `src/lib/frankfurter.ts`        | Daily forex candles, shared with `/api/forex/ohlc/[pair]`                                 |
+| `scripts/race-tick.ts`          | One live tick                                                                             |
+| `scripts/launchd/*`             | Hourly job (installed)                                                                    |
+| `src/lib/race/race.test.ts`     | Tests: sizing limits, open/close, fees, one account, old files, ranking                   |
+| `src/lib/race/*.test.ts`        | Tests: funded limits, session clock, Close now and the relay worker                       |
 
 ## Reading the results
 

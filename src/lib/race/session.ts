@@ -1,6 +1,6 @@
 // The race's trading day (John, 2026-11-11): new trades only from 02:00 to
-// 12:30 Puerto Rico time (AST) on weekdays, and every open trade closes at the
-// first race check at or after 12:45 AST, after the New York session. Plus the
+// 12:30 Puerto Rico time (AST) on weekdays. Open trades hold until their stop
+// or target (John, 2026-11-12: the 12:45 AST daily close is gone). Plus the
 // funded test's day, which starts at midnight in Prague like FTMO's. Pure,
 // tested. Puerto Rico has no daylight saving: AST is UTC-4 all year.
 
@@ -10,8 +10,6 @@ const DAY = 86_400
 /** First and last AST minute of the day a new trade may open (02:00 and 12:30). */
 export const ENTRY_FROM = 2 * 60
 export const ENTRY_TO = 12 * 60 + 30
-/** The daily close: 12:45 AST. */
-export const DAILY_CLOSE = 12 * 60 + 45
 
 /** Weekday (0 Sunday) and minute of the day in Puerto Rico. */
 export function astClockOf(sec: number): { weekday: number; minute: number } {
@@ -28,20 +26,6 @@ export function entryWindowBlock(sec: number): string | null {
   if (minute < ENTRY_FROM || minute > ENTRY_TO) return 'new trades only from 02:00 to 12:30 AST'
   return null
 }
-
-/** The latest weekday 12:45 AST at or before `sec`, in Unix seconds. */
-export function lastDailyClose(sec: number): number {
-  const midnight = Math.floor((sec + AST) / DAY) * DAY - AST
-  for (let back = 0; back < 7; back++) {
-    const at = midnight - back * DAY + DAILY_CLOSE * 60
-    if (at <= sec && isWeekday(astClockOf(at).weekday)) return at
-  }
-  return -Infinity // never: a week always has a weekday
-}
-
-/** True when a weekday 12:45 AST has passed since the check that did the last daily close. */
-export const dailyCloseDue = (sec: number, lastCloseSec: number) =>
-  lastDailyClose(sec) > lastCloseSec
 
 // ── FTMO's day: midnight to midnight in Prague (CET, or CEST in summer) ──
 
