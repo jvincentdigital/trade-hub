@@ -124,8 +124,8 @@ const dollarSign = (t: Side) => signOf(DOLLAR, t)
  * Markets the race prices only from a once-a-day ECB rate (USD/JPY, NZD/USD)
  * or half from one (GBP/JPY = GBP/USD x the daily USD/JPY, src/lib/feeds.ts):
  * not live prices, so no account opens new trades on them (John, 2026-11-11:
- * "until a live price exists"). Trades already open run to their stop, target
- * or the daily close as before.
+ * "until a live price exists"). Trades already open run to their stop or
+ * target as before.
  */
 export const NOT_LIVE: readonly string[] = ['USD-JPY', 'NZD-USD', 'GBP-JPY']
 

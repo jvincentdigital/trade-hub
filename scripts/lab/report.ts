@@ -14,7 +14,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { BotDetail, BotResult, Neighbour, SigStats } from '../../src/lib/lab/bots'
 import { labMarket, type LabMarketId } from '../../src/lib/lab/markets'
-import { LAB_BOTS, LAB_MAX_DAYS } from '../../src/lib/race/labBots'
+import { LAB_BOTS, LAB_HOLD } from '../../src/lib/race/labBots'
 
 type Detailed = BotResult & { detail: BotDetail }
 interface FamRow {
@@ -261,7 +261,7 @@ function botCard(d: Detailed, i: number | null): { title: string; lines: string[
     lines.push(
       `US30 sizing: in the US, a $10,000 account would trade Micro Dow futures ($0.50 a point, whole contracts), not a 20:1 CFD. Rounded down to whole contracts, the test months come to about ${delta(mymNet(d))} instead of ${delta(d.oos.net)} (smaller trades lose part of their size to the rounding).`,
     )
-  if (live) lines.push(`Live race: **${live.name}**, ${LAB_MAX_DAYS[live.style]}. ${live.why}`)
+  if (live) lines.push(`Live race: **${live.name}**, ${LAB_HOLD}. ${live.why}`)
   return { title: `${i != null ? `${i}. ` : ''}${label(d)}`, lines }
 }
 

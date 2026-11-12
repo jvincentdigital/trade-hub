@@ -28,7 +28,7 @@ import {
 } from './funded'
 import { LONDON_BREAKOUT } from './londonBreakout'
 import {
-  applyDailyClose,
+  closeAll,
   createRaceState,
   raceStateSchema,
   stepStrategy,
@@ -242,12 +242,12 @@ describe('funded test: signal order and markets', () => {
     expect(r.opened.map((t) => t.market)).toEqual(['EUR-USD'])
   })
 
-  it("a v1 trade keeps v1's own exits from its market tick: half at TP1, the forced close, the lone-wick rule", () => {
+  it("a v1 trade keeps v1's own exits from its market tick: half at TP1, the lone-wick rule; the rest holds", () => {
     const p = PRICE['GBP-USD']
-    const deadline = NOW + 3600
-    const tick = mt('GBP-USD', { target1: p * 1.01, deadline, confirm: true })
+    const tick = mt('GBP-USD', { target1: p * 1.01, confirm: true })
     const [t] = stepFunded(createFunded(0), [tick], [cand(V, 'GBP-USD')], NOW).opened
-    expect(t).toMatchObject({ target1: p * 1.01, part1: 0.5, deadline, confirm: true })
+    expect(t).toMatchObject({ target1: p * 1.01, part1: 0.5, confirm: true })
+    expect(t).not.toHaveProperty('deadline')
     const f = { ...createFunded(0), open: [t], lastSignal: {} }
     const c = (time: number, o: number, h: number, l: number, cl: number): OHLCCandle => ({
       time,
@@ -272,10 +272,10 @@ describe('funded test: signal order and markets', () => {
     expect(half.funded.open[0].units).toBeCloseTo(t.units / 2)
     // two rows, one entry: it counts once in the 3 new trades a day
     expect(fundedView(half.funded, PRICE, NOW + 1900).newToday).toBe(1)
-    // past the forced close with no later candle: the rest closes at the price
-    const late = stepFunded(half.funded, [{ ...tick, path: tp1 }], [], deadline + 60)
-    expect(late.closed[0]).toMatchObject({ reason: 'time' })
-    expect(late.funded.open).toHaveLength(0)
+    // past v1's old forced close (16:30 London) and the old 12:45 AST close: the rest holds
+    const late = stepFunded(half.funded, [{ ...tick, path: tp1 }], [], ast(2026, 11, 11, 13, 7))
+    expect(late.closed).toEqual([])
+    expect(late.funded.open[0].units).toBeCloseTo(t.units / 2)
   })
 
   it("v1's news close closes v1's funded trades, not a trade from before the switch", () => {
@@ -388,6 +388,37 @@ describe('funded test: FTMO limits', () => {
     expect(checkFunded(r.funded, PRICE, NOW + 3600).status).toBe('failed')
   })
 
+  it('a trade held overnight still counts in the new FTMO day: day loss and worst case', () => {
+    // Opened Wednesday 08:00 AST ($200 at its stop), with $200 lost on Wednesday.
+    const held = trade('GBP-USD')
+    const f = withClosed([closedT(-200, NOW - 1800)], [held])
+    // Thursday 09:00 AST: the FTMO day began Wednesday 19:00 AST. No stop or target hit: still open.
+    const THU = ast(2026, 11, 12, 9)
+    const quiet = mt('GBP-USD', {
+      path: [flat(NOW - 900, 1.3), flat(THU - 900, 1.295)],
+      price: 1.295,
+    })
+    const r = stepFunded(f, [quiet], [], THU)
+    expect(r.closed).toEqual([])
+    expect(r.funded.open).toHaveLength(1)
+    expect(r.funded.status).toBe('active')
+    const v = fundedView(r.funded, { ...PRICE, 'GBP-USD': 1.295 }, THU)
+    expect(v.dayStart).toBeCloseTo(9_800) // Wednesday's loss is in the day start
+    expect(v.dayLoss).toBeCloseTo(held.units * 0.005) // the held trade's open loss counts today
+    expect(dayWorstCase(r.funded, THU)).toBeCloseTo(lossAtStop(held))
+    // Thursday: -$350 closed plus the held trade at -$151 open passes the $500 day limit
+    const thu = withClosed([closedT(-200, NOW - 1800), closedT(-350, THU - 1800)], [held])
+    const at = (loss: number) => ({ ...PRICE, 'GBP-USD': 1.3 - loss / held.units })
+    expect(checkFunded(thu, at(149), THU).status).toBe('active')
+    const failed = checkFunded(thu, at(151), THU)
+    expect(failed.status).toBe('failed')
+    expect(failed.statusNote).toMatch(
+      /^daily loss limit: the day lost \$501\.00 from its \$9,800\.00 start/,
+    )
+    // and the worst case counts it at its stop on top of the $350
+    expect(dayWorstCase(thu, THU)).toBeCloseTo(350 + lossAtStop(held))
+  })
+
   describe('worst case under $475 (the $500 day limit minus 5% for slippage)', () => {
     // real fees: forex 0.007% a side, gold 0.02%
     const fx = Object.keys(PRICE).map((m) =>
@@ -492,14 +523,13 @@ describe('funded test: FTMO limits', () => {
 })
 
 describe('funded test in the race file', () => {
-  it('is saved with the race and closed at 12:45 like every account', () => {
+  it('is saved with the race, and Close all books it like every account', () => {
     const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
     st.funded = withClosed([], [trade('GBP-USD')])
     st.prices = { 'GBP-USD': 1.305 }
-    st.dailyCloseAt = ast(2026, 11, 11, 2)
     expect(raceStateSchema.parse(JSON.parse(JSON.stringify(st))).funded?.open).toHaveLength(1)
-    const r = applyDailyClose(st, ast(2026, 11, 11, 12, 45), () => 0)
-    expect(r.closed.map((c) => [c.strategy, c.reason])).toEqual([['Funded test $10K', 'session']])
+    const r = closeAll(st, st.prices, ast(2026, 11, 11, 12, 45), () => 0)
+    expect(r.closed.map((c) => [c.strategy, c.reason])).toEqual([['Funded test $10K', 'manual']])
     expect(r.state.funded?.open).toHaveLength(0)
     expect(r.state.funded?.balance).toBeCloseTo(10_000 + (200 / 0.013) * 0.005)
     expect(r.state.funded?.closed[0].strategy).toBe('a')
@@ -653,7 +683,7 @@ describe('funded test: four sizes (John, 2026-11-12)', () => {
     }
   })
 
-  it('the 12:45 close books every size', () => {
+  it('Close all books every size', () => {
     const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
     const withTrade = (size: number): FundedState => ({
       ...createFunded(0, [], size),
@@ -661,8 +691,7 @@ describe('funded test: four sizes (John, 2026-11-12)', () => {
     })
     const next = withFunded(st, FUNDED_SIZES.map(withTrade))
     next.prices = { 'GBP-USD': 1.305 }
-    next.dailyCloseAt = ast(2026, 11, 11, 2)
-    const r = applyDailyClose(next, ast(2026, 11, 11, 12, 45), () => 0)
+    const r = closeAll(next, next.prices, ast(2026, 11, 11, 12, 45), () => 0)
     expect(r.closed.map((c) => c.strategy)).toEqual([
       'Funded test $10K',
       'Funded test $50K',
@@ -728,7 +757,7 @@ describe('funded test B: v1 + breakouts (John, 2026-11-12)', () => {
     const g = PRICE['GBP-USD']
     const au = PRICE['pax-gold']
     const ticks: FundedTick[] = [
-      { ...mt('GBP-USD', { target1: g * 1.01, deadline: NOW + 3600, confirm: true }), strategy: V },
+      { ...mt('GBP-USD', { target1: g * 1.01, confirm: true }), strategy: V },
       { ...mt('GBP-USD'), strategy: LB },
       { ...mt('pax-gold', { target1: au * 1.01 }), strategy: V },
       { ...mt('pax-gold'), strategy: LB },
@@ -738,12 +767,7 @@ describe('funded test B: v1 + breakouts (John, 2026-11-12)', () => {
     const gold = r.opened.find((t) => t.market === 'pax-gold')!
     expect(gold).toMatchObject({ strategy: V, target1: au * 1.01, part1: 0.5 })
     expect(gbp.strategy).toBe(LB)
-    expect([gbp.target1, gbp.part1, gbp.deadline, gbp.confirm]).toEqual([
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-    ])
+    expect([gbp.target1, gbp.part1, gbp.confirm]).toEqual([undefined, undefined, undefined])
     // v1's news close at the next check closes v1's gold, not the breakout's GBP/USD
     const news = ticks.map((t) => (t.strategy === V ? { ...t, closeNow: true } : t))
     const n = stepB(r.funded, news, [], NOW + 60)
@@ -829,7 +853,7 @@ describe('funded test B: v1 + breakouts (John, 2026-11-12)', () => {
     }
   })
 
-  it('the 12:45 close books both tests, every size', () => {
+  it('Close all books both tests, every size', () => {
     const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
     const withTrade = (size: number): FundedState => ({
       ...createFunded(0, [], size),
@@ -841,8 +865,7 @@ describe('funded test B: v1 + breakouts (John, 2026-11-12)', () => {
       'breakouts',
     )
     next.prices = { 'GBP-USD': 1.305 }
-    next.dailyCloseAt = ast(2026, 11, 11, 2)
-    const r = applyDailyClose(next, ast(2026, 11, 11, 12, 45), () => 0)
+    const r = closeAll(next, next.prices, ast(2026, 11, 11, 12, 45), () => 0)
     expect(r.closed.map((c) => c.strategy)).toEqual([
       fundedLabel(10_000),
       ...FUNDED_SIZES.map((s) => fundedLabel(s, 'breakouts')),

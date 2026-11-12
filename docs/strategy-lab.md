@@ -287,11 +287,11 @@ How the live race runs them (`labCheck`, `stepStrategy`):
   fills a limit at the level, so live fills are a little different.
 - **First target**: `target1` and `part1` on the live trade; half closes there
   (a closed trade with `part1Of`), the rest runs to the target or stop.
-- **Deadline**: `deadline` on the live trade (race style 10 days, swing 5,
-  day 17:00 New York). A path candle starting at or after it closes the
-  trade at its open; past it with no new candle, the trade closes at the
-  price now, but only while the market trades (its newest candle under 2
-  hours old), so a weekend waits for the reopen as in the lab.
+- **No deadline live since 2026-11-12**: live trades hold until their stop
+  or target (`docs/strategy-race.md`, "2026-11-12: trades hold"). Until then
+  a `deadline` on the live trade (race style 10 days, swing 5, day 17:00 New
+  York) closed it. The lab's backtests keep their time exits, so live
+  results may differ from them.
 - **News**: Forex Factory's free weekly JSON (`newsFeed.ts`, no key), High
   impact only, cached as `ff-thisweek.json` next to the race file and
   downloaded at most every 6 hours (a failed download uses the cached copy,
@@ -369,7 +369,8 @@ flip is gone, and v1-flip, v1-NY and thirds are new.
   that reaches its stop or target later inside the minute of the new fill
   still counts as open; one force-closed at that minute's open does not.
 - **Race hours** (John's live rules, a backstop in the code): entries only
-  02:00 to 12:30 AST (06:00 to 16:30 UTC), flat at 12:45 AST. Every v1 and
+  02:00 to 12:30 AST (06:00 to 16:30 UTC), flat at 12:45 AST (live trades
+  hold since 2026-11-12; the backtest keeps this). Every v1 and
   v1-NY moment is inside them, so they never change a backtest trade (a test
   walks a whole year of sessions to show it).
 - **v1-flip (section 3)**: v1 plus "the ride": on a setup's first move candle

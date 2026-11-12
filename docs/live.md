@@ -121,7 +121,7 @@ Mac race check ─(write key)─> GET /close-requests ─> books each one ─> s
   close wins instead. USD/JPY and NZD/USD close at the race's own price,
   GBP/JPY at GBP/USD times the race's USD/JPY leg (the same fallback as
   `make race-close-all`). A trade that is no longer open (its stop, target or
-  the 12:45 close came first) drops its request. A request whose minute is
+  the close before red news came first) drops its request. A request whose minute is
   not printed yet, or whose 1-minute fetch failed, waits for the next check.
   Requests are cleared after the save and push.
 - Locally (no `RACE_URL`), the site and the tick use

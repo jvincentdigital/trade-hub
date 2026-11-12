@@ -1,15 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { entryWindowBlock, nextPragueDayStart, pragueDate, pragueDayStart } from './session'
 import {
-  dailyCloseDue,
-  entryWindowBlock,
-  lastDailyClose,
-  nextPragueDayStart,
-  pragueDate,
-  pragueDayStart,
-} from './session'
-import {
-  applyDailyClose,
   createRaceState,
+  parseRaceState,
+  REASON_TEXT,
   stepStrategy,
   type LiveTrade,
   type MarketTick,
@@ -66,36 +60,15 @@ describe('entry window: new trades only 02:00 to 12:30 AST on weekdays', () => {
   })
 })
 
-describe('daily close at 12:45 AST', () => {
-  it('the latest weekday 12:45 at or before a time', () => {
-    expect(lastDailyClose(ast(2026, 11, 11, 12, 45))).toBe(ast(2026, 11, 11, 12, 45))
-    expect(lastDailyClose(ast(2026, 11, 11, 12, 44))).toBe(ast(2026, 11, 10, 12, 45))
-    // weekend and Monday morning: Friday's
-    expect(lastDailyClose(ast(2026, 11, 14, 12, 50))).toBe(ast(2026, 11, 13, 12, 45))
-    expect(lastDailyClose(ast(2026, 11, 16, 9, 0))).toBe(ast(2026, 11, 13, 12, 45))
-  })
-
-  it('due at the first check at or after 12:45, once a day', () => {
-    const morning = ast(2026, 11, 11, 9, 0)
-    expect(dailyCloseDue(ast(2026, 11, 11, 12, 30), morning)).toBe(false)
-    expect(dailyCloseDue(ast(2026, 11, 11, 12, 45), morning)).toBe(true)
-    // the 12:45 check was missed: the 12:52 one does it
-    expect(dailyCloseDue(ast(2026, 11, 11, 12, 52), morning)).toBe(true)
-    // done at 12:52: not again at 13:07 or overnight, again the next day
-    const done = ast(2026, 11, 11, 12, 52)
-    expect(dailyCloseDue(ast(2026, 11, 11, 13, 7), done)).toBe(false)
-    expect(dailyCloseDue(ast(2026, 11, 12, 2, 0), done)).toBe(false)
-    expect(dailyCloseDue(ast(2026, 11, 12, 12, 45), done)).toBe(true)
-    // Friday's close done: nothing on the weekend
-    expect(dailyCloseDue(ast(2026, 11, 14, 12, 45), ast(2026, 11, 13, 12, 45))).toBe(false)
-  })
-
+describe('trades hold until their stop or target (John, 2026-11-12)', () => {
+  // Opened Wednesday 09:00 AST: long GBP/USD at 1.3, stop 1.29, target 1.32.
+  const entry = ast(2026, 11, 11, 9, 0)
   const trade = (over: Partial<LiveTrade> = {}): LiveTrade => ({
     market: 'GBP-USD',
     direction: 'long',
     signalTime: 1,
-    entryTime: ast(2026, 11, 11, 9, 0),
-    entryBucket: ast(2026, 11, 11, 9, 0),
+    entryTime: entry,
+    entryBucket: entry,
     entry: 1.3,
     stop: 1.29,
     takeProfit: 1.32,
@@ -105,52 +78,90 @@ describe('daily close at 12:45 AST', () => {
     entryFee: 1.82,
     ...over,
   })
-  const race = () => {
-    const st = createRaceState(
-      [
-        { id: 'a', name: 'A' },
-        { id: 'b', name: 'B' },
-      ],
-      10_000,
-      0,
-    )
-    st.strategies.a.open = [trade()]
-    st.strategies.b.open = [
-      trade({ market: 'pax-gold', entry: 4000, stop: 3950, takeProfit: 4100, units: 4 }),
-    ]
-    st.prices = { 'GBP-USD': 1.305, 'pax-gold': 4010 }
-    st.dailyCloseAt = ast(2026, 11, 11, 2, 0)
-    return st
+  /** 15-minute candles from the entry up to `now` that stay between 1.298 and 1.302. */
+  const quietPath = (now: number) =>
+    Array.from({ length: Math.floor((now - entry) / 900) }, (_, i) => ({
+      time: entry + i * 900,
+      open: 1.3,
+      high: 1.302,
+      low: 1.298,
+      close: 1.3,
+    }))
+  const tick = (now: number, over: Partial<MarketTick> = {}): MarketTick => ({
+    market: 'GBP-USD',
+    signal: null,
+    path: quietPath(now),
+    price: 1.3,
+    usdPerQuote: 1,
+    feeRate: 0.00007,
+    leverage: 30,
+    ...over,
+  })
+  const account = () => {
+    const s = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0).strategies.a
+    return { ...s, open: [trade()] }
   }
-  const fee = () => 0.00007
 
-  it('a check at 12:52 closes every account at that check price, reason session, both fees', () => {
-    const r = applyDailyClose(race(), ast(2026, 11, 11, 12, 52), fee)
-    expect(r.closed.map((c) => [c.strategy, c.market, c.reason, c.exit])).toEqual([
-      ['A', 'GBP-USD', 'session', 1.305],
-      ['B', 'pax-gold', 'session', 4010],
-    ])
-    const gbp = r.closed[0]
-    // 20,000 x 0.005 = $100, minus the entry fee and an exit fee of 20,000 x 1.305 x 0.007%
-    expect(gbp.pnl).toBeCloseTo(100 - 1.82 - 20_000 * 1.305 * 0.00007)
-    expect(r.state.strategies.a.open).toHaveLength(0)
-    expect(r.state.strategies.a.balance).toBeCloseTo(10_000 + gbp.pnl)
-    expect(r.state.dailyCloseAt).toBe(ast(2026, 11, 11, 12, 52))
-    // the next check does nothing
-    expect(applyDailyClose(r.state, ast(2026, 11, 11, 13, 7), fee).closed).toHaveLength(0)
+  it('past the old 12:45 close with no stop or target hit, it stays open across checks and days', () => {
+    let s = account()
+    for (const now of [
+      ast(2026, 11, 11, 12, 45),
+      ast(2026, 11, 11, 12, 52),
+      ast(2026, 11, 11, 13, 7),
+      ast(2026, 11, 11, 20, 7),
+      ast(2026, 11, 12, 2, 0),
+      ast(2026, 11, 12, 12, 52),
+      ast(2026, 11, 16, 9, 0), // the next Monday, after a weekend
+    ]) {
+      const r = stepStrategy(s, [tick(now)], now, undefined, entryWindowBlock(now))
+      expect(r.closed).toEqual([])
+      expect(r.strategy.open).toHaveLength(1)
+      s = r.strategy
+    }
+    expect(s.balance).toBe(10_000)
+    // Days later its stop still closes it, on the candle that hit it.
+    const now = ast(2026, 11, 16, 10, 0)
+    const path = [
+      ...quietPath(now),
+      { time: now, open: 1.295, high: 1.296, low: 1.288, close: 1.29 },
+    ]
+    const r = stepStrategy(s, [tick(now + 900, { path })], now + 900)
+    expect(r.closed.map((c) => [c.reason, c.exit, c.exitTime])).toEqual([['stop', 1.29, now]])
   })
 
-  it('before 12:45 nothing closes', () => {
-    expect(applyDailyClose(race(), ast(2026, 11, 11, 12, 30), fee).closed).toHaveLength(0)
+  it('a race file from before keeps its open trades: the old deadline and daily close fields are dropped, so they hold too', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
+    st.strategies.a.open = [trade()]
+    const old = JSON.parse(JSON.stringify(st))
+    old.dailyCloseAt = ast(2026, 11, 10, 12, 45)
+    old.strategies.a.open[0].deadline = ast(2026, 11, 11, 12, 30)
+    const parsed = parseRaceState(old)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.state).not.toHaveProperty('dailyCloseAt')
+    expect(parsed.state.strategies.a.open[0]).not.toHaveProperty('deadline')
+    const now = ast(2026, 11, 11, 14, 7)
+    const r = stepStrategy(parsed.state.strategies.a, [tick(now)], now)
+    expect(r.closed).toEqual([])
+    expect(r.strategy.open).toHaveLength(1)
   })
 
-  it('a race new to the rule starts counting at this check (no surprise close)', () => {
-    const st = race()
-    delete st.dailyCloseAt
-    const r = applyDailyClose(st, ast(2026, 11, 11, 20, 0), fee)
-    expect(r.closed).toHaveLength(0)
-    expect(r.state.dailyCloseAt).toBe(ast(2026, 11, 11, 20, 0))
-    expect(applyDailyClose(r.state, ast(2026, 11, 12, 12, 45), fee).closed).toHaveLength(2)
+  it('old closed trades closed at 12:45 or at a time limit still read and keep their labels', () => {
+    const st = createRaceState([{ id: 'a', name: 'A' }], 10_000, 0)
+    const closed = (reason: string) => ({
+      ...trade(),
+      exitTime: entry + 3600,
+      exit: 1.3,
+      reason,
+      pnl: -3.64,
+      fees: 3.64,
+    })
+    const old = JSON.parse(JSON.stringify(st))
+    old.strategies.a.closed = [closed('session'), closed('time')]
+    const parsed = parseRaceState(old)
+    expect(parsed.ok && parsed.state.strategies.a.closed.map((c) => REASON_TEXT[c.reason])).toEqual(
+      ['closed at 12:45', 'closed at its time limit'],
+    )
   })
 })
 
