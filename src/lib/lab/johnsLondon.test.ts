@@ -900,7 +900,7 @@ describe('2.8 size and limits', () => {
 
 // ── 2.8 race hours (John's live rules, a backstop) ────────────────────────
 
-describe("John's race hours: entries 02:00 to 12:30 AST, flat at 12:45 AST", () => {
+describe("John's race hours: entries 02:00 to 12:30 AST, backtest flat at 12:45 AST (live holds since 2026-11-12)", () => {
   it('in UTC: entries 06:00 to 16:30, flat at 16:45 (AST = UTC - 4)', () => {
     expect(RACE).toEqual({ entryFrom: 6 * 3600, entryTo: 16.5 * 3600, flat: 16.75 * 3600 })
     expect(inRaceHours(S0, DAY0 + 6 * 3600 - 60)).toBe(false)
@@ -908,7 +908,7 @@ describe("John's race hours: entries 02:00 to 12:30 AST, flat at 12:45 AST", () 
     expect(inRaceHours(S0, DAY0 + 16.5 * 3600)).toBe(true)
     expect(inRaceHours(S0, DAY0 + 16.5 * 3600 + 60)).toBe(false)
   })
-  it('an entry outside them is refused, and a session running past 12:45 AST is closed then', () => {
+  it('an entry outside them is refused, and a backtest session running past 12:45 AST is closed then', () => {
     const d = dataOf(flatBars(1.303))
     const late: typeof S0 = {
       ...S0,

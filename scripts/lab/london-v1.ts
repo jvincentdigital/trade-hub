@@ -262,7 +262,7 @@ function score(name: string, run: RunResult, byId: Map<LondonMarketId, LondonDat
     reasons,
     // Exits more than an hour after their deadline (data stopped before it).
     lateExits: ts.filter((t) => t.exitTime - t.deadline > 3600).length,
-    // Trades the 12:45 AST flat rule closed (never expected: every time exit is 12:30 AST or earlier).
+    // Trades the backtest's 12:45 AST flat rule closed (live no longer has it; never expected: every time exit is 12:30 AST or earlier).
     raceExits: ts.filter((t) => t.why === 'race').length,
     tradeListSha256: sha(JSON.stringify(ts)),
   }
@@ -1118,7 +1118,7 @@ async function main() {
     L.push('')
   }
   L.push(
-    `Race hours (02:00 to 12:30 AST entries, flat at 12:45 AST): ${outsideRaceHours.every((r) => !r.entriesRefused && !r.endedByTheFlatRule) ? 'no entry was refused and no trade was ended by them in any run' : JSON.stringify(outsideRaceHours)}.`,
+    `Race hours (02:00 to 12:30 AST entries, backtest flat at 12:45 AST): ${outsideRaceHours.every((r) => !r.entriesRefused && !r.endedByTheFlatRule) ? 'no entry was refused and no trade was ended by them in any run' : JSON.stringify(outsideRaceHours)}.`,
     '',
   )
 
