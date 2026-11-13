@@ -369,8 +369,9 @@ flip is gone, and v1-flip, v1-NY and thirds are new.
   that reaches its stop or target later inside the minute of the new fill
   still counts as open; one force-closed at that minute's open does not.
 - **Race hours** (John's live rules, a backstop in the code): entries only
-  02:00 to 12:30 AST (06:00 to 16:30 UTC), flat at 12:45 AST (live trades
-  hold since 2026-11-12; the backtest keeps this). Every v1 and
+  02:00 to 12:30 AST (06:00 to 16:30 UTC), flat at 12:45 AST in the
+  backtest only (live trades hold to stop or target since 2026-11-12, PR #21;
+  the backtest closes at 16:30 London time and has no hold option). Every v1 and
   v1-NY moment is inside them, so they never change a backtest trade (a test
   walks a whole year of sessions to show it).
 - **v1-flip (section 3)**: v1 plus "the ride": on a setup's first move candle

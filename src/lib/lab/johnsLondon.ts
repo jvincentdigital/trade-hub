@@ -90,8 +90,10 @@ export const THIRDS = { rungs: [0.786, 0.836, 0.886] } as const
 
 /**
  * John's race hours (section 6), as a backstop: new entries only from
- * 02:00 to 12:30 AST, flat at 12:45 AST. AST = UTC - 4, so 06:00, 16:30 and
- * 16:45 UTC of the trading day. Every v1 and v1-NY moment is inside them.
+ * 02:00 to 12:30 AST, and (backtest only) flat at 12:45 AST. Live trading no
+ * longer closes at 12:45: since 2026-11-12 (PR #21) live trades hold to stop
+ * or target. AST = UTC - 4, so 06:00, 16:30 and 16:45 UTC of the trading
+ * day. Every v1 and v1-NY moment is inside them.
  */
 export const RACE = { entryFrom: 6 * HOUR, entryTo: 16.5 * HOUR, flat: 16.75 * HOUR } as const
 
@@ -295,7 +297,7 @@ export function chartOf(d: LondonData, sec: number): Chart {
   return ch
 }
 
-/** The forced close for a trade at `t`: the time exit, or 30 minutes before the next red event if earlier. 12:45 AST is the backstop. */
+/** The forced close for a trade at `t`: the time exit, or 30 minutes before the next red event if earlier. 12:45 AST is the backtest's backstop (live no longer closes on the clock). */
 export function forcedCloseAt(
   d: LondonData,
   s: Session,

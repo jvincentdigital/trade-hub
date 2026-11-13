@@ -409,6 +409,9 @@ Tick log names: `Funded test v1 + breakouts <size>`, for example:
 **The daily close ended on 2026-11-12** (next section). The entry window
 below still holds.
 
+Superseded 2026-11-12 (PR #21): live v1 now holds to stop or target. The
+12:45 close described in this section no longer runs in live trading.
+
 John: "after the New York session ends, close all the trades and take the
 profit". He chose 12:45 AST. Every account (the Lab strategies and the funded
 test, below) follows the same day, in Puerto Rico time (AST = UTC-4 all year,
@@ -434,6 +437,11 @@ trades on the weekend`), so it can't open later at a stale price. Claude's
   its stop before 12:45 books the stop, not the 12:45 price.
 
 ## 2026-11-12: trades hold
+
+Live v1 holds to stop or target. The backtest that passed used a 16:30
+London clock exit (or 30 minutes before red news), not a hold. So the forward
+test is not yet testing the exact rule that passed. A hold-rule backtest is
+planned for the Trading turn (from 2026-12-29).
 
 John, about 14:40 AST, poll answer "Everything holds": "When we're negative
 like that, we can just hold the trades. You don't have to wait till the New
