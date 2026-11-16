@@ -6,7 +6,7 @@ import { HelpCircle } from 'lucide-react'
 import { useCandleMap } from '@/lib/hooks/useMarketData'
 import { useLivePrices, usePaperAccount } from '@/lib/hooks/usePaperAccount'
 import { useRace } from '@/lib/hooks/useRace'
-import { FUNDED, fundedOf, fundedView } from '@/lib/race/funded'
+import { FUNDED, fundedLabel, fundedOf, fundedView } from '@/lib/race/funded'
 import { useFundedSize } from '@/lib/hooks/useFundedSize'
 import { useFundedTest } from '@/lib/hooks/useFundedTest'
 import { BUILT_IN_RULES } from '@/lib/rules/presets'
@@ -32,9 +32,11 @@ import {
   pnlSeries,
   priceFor,
 } from '@/lib/positions/today'
+import { YARDSTICKS, historyTrades, scorecard } from '@/lib/positions/history'
 import { JOHNS_CALLS } from '@/lib/race/callSchema'
 import { POUND_AND_GOLD } from '@/lib/positions/london'
 import { EXTRA_STRATEGIES } from '@/lib/race/extras'
+import { History } from '@/components/home/History'
 import { HowSheet } from '@/components/home/HowSheet'
 import { LondonStrip } from '@/components/home/LondonStrip'
 import { FAILED_TEXT, Summary } from '@/components/home/Summary'
@@ -128,7 +130,19 @@ function Today() {
       all.map((pos) => ({ pos, m: measure(pos, priceFor(pos, prices, state?.prices)) })),
     )
   }, [state, size, test, account, prices])
-  const { candles, isLoading: candlesLoading } = useCandleMap(rows.map((r) => r.pos.market))
+  // Every closed trade of the shown funded account, and its scorecard.
+  const history = useMemo(
+    () => historyTrades(shownFunded?.closed ?? [], shownFunded?.open),
+    [shownFunded],
+  )
+  const score = useMemo(
+    () => scorecard(shownFunded?.closed ?? [], size, shownFunded?.open),
+    [shownFunded, size],
+  )
+  const { candles, isLoading: candlesLoading } = useCandleMap([
+    ...rows.map((r) => r.pos.market),
+    ...history.map((t) => t.market),
+  ])
   // The race feed failed and there is nothing to show: say so, not "no trades".
   const failed = !!raceError && rows.length === 0
 
@@ -450,6 +464,17 @@ function Today() {
               )}
             </div>
           </section>
+          <History
+            trades={history}
+            score={score}
+            yardstick={YARDSTICKS[test]}
+            account={fundedLabel(size, test)}
+            nameOf={(id) => state?.strategies[id]?.name ?? id}
+            candles={candles}
+            candlesLoading={candlesLoading}
+            loading={raceLoading}
+            now={now}
+          />
           <MoreLinks />
         </div>
       </div>

@@ -8,6 +8,8 @@ interface Props {
   stop?: number
   target?: number
   price?: number | null
+  /** A closed trade: where and when (ms) it closed. The dot sits on that candle, not the last one. */
+  exit?: { price: number; at: number }
   /** Milliseconds; draws a dotted line at the candle the trade opened in. */
   openedAt?: number
   /** Price text for the line labels. */
@@ -24,7 +26,8 @@ const PAD_R = 10
  * lines and the current price as a dot. Light SVG, no chart library.
  */
 export function MiniChart(props: Props) {
-  const { candles, loading, entry, stop, target, price, openedAt, fmt, label } = props
+  const { candles, loading, entry, stop, target, openedAt, fmt, label } = props
+  const price = props.exit?.price ?? props.price
   if (!candles.length) {
     return (
       <div
@@ -87,7 +90,9 @@ export function MiniChart(props: Props) {
   const hourly = candles.length > 1 && candles[1].time - candles[0].time <= 3600
   const openIdx =
     hourly && openedAt != null ? candles.findIndex((c) => (c.time + 3600) * 1000 > openedAt) : -1
-  const dotX = (candles.length - 0.5) * step
+  // The last candle that started at or before the close.
+  const exitIdx = props.exit ? candles.findLastIndex((c) => c.time * 1000 <= props.exit!.at) : -1
+  const dotX = ((exitIdx >= 0 ? exitIdx + 1 : candles.length) - 0.5) * step
 
   return (
     <svg
