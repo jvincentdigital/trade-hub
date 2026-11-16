@@ -442,7 +442,7 @@ function exitsOf(t: LiveTrade, path: OHLCCandle[], wicks: LoneWick[] = []): Exit
  * Exits with the lone-wick rule (John's London v1 on GBP/USD, SPEC.md 6,
  * "Exits"): Kraken's thin forex book prints fake wicks, so a candle that
  * reaches the stop, TP1 or TP2 counts only when it also closes at or past it
- * (a stop then fills at that close), or when the very next candle reaches it
+ * (a stop then fills at the stop price, or at that candle's open when it gapped past it), or when the very next candle reaches it
  * too (a stop then fills at that candle's open or the stop, whichever is
  * worse). A target always fills at its price. A reach with neither is a lone
  * wick: ignored and reported. A reach on the newest candle waits for the next
@@ -473,7 +473,11 @@ function confirmedExitsOf(t: LiveTrade, path: OHLCCandle[], wicks: LoneWick[]): 
       const how = confirm(i, t.stop, true)
       if (how === 'wait') return out
       if (how === 'close') {
-        out.push({ exit: c.close, time: c.time, reason: 'stop', share: 1 })
+        // At the stop price, as a broker's stop order and the backtest fill it
+        // (a gap past it fills at the open). Until 2026-11-16 it filled at the
+        // close, which made a stop-out cost about 1.4R instead of 1R.
+        const gapped = long ? c.open < t.stop : c.open > t.stop
+        out.push({ exit: gapped ? c.open : t.stop, time: c.time, reason: 'stop', share: 1 })
         return out
       }
       if (how === 'next') {

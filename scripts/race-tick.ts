@@ -79,6 +79,7 @@ import {
   checkFunded,
   FUNDED,
   FUNDED_FEEDS,
+  activeFeeds,
   FUNDED_TESTS,
   fundedAccounts,
   fundedLabel,
@@ -533,7 +534,15 @@ async function tick() {
       )
     const stepped = sizes.accounts.map((acc) => {
       const label = fundedLabel(acc.startMoney, test.id)
-      const f = stepFunded(acc, fundedTicks, candidates, nowSec, blockNew, lastPrices, test.feeds)
+      const f = stepFunded(
+        acc,
+        fundedTicks,
+        candidates,
+        nowSec,
+        blockNew,
+        lastPrices,
+        activeFeeds(test.feeds),
+      )
       closed += f.closed.length
       opened += f.opened.length
       for (const c of f.closed)

@@ -5,6 +5,7 @@ import { INSTRUMENTS } from '../paper/instruments'
 import { feedOf } from '../feeds'
 import { NOT_LIVE } from './account'
 import {
+  activeFeeds,
   addFundedSizes,
   checkFunded,
   createFunded,
@@ -872,5 +873,17 @@ describe('funded test B: v1 + breakouts (John, 2026-11-12)', () => {
     ])
     for (const f of fundedAccounts(r.state, 'breakouts')) expect(f.open).toHaveLength(0)
     expect(r.state.funded?.open).toHaveLength(0)
+  })
+})
+
+describe('paused feeds', () => {
+  it('the second test takes no new London breakout signal while it is paused', () => {
+    const feeds = activeFeeds(FUNDED_B_SIGNALS_FROM)
+    expect(feeds).toEqual([V])
+    const step = (f: readonly string[]) =>
+      stepFunded(createFunded(0), markets, [cand(LONDON_BREAKOUT.id, 'pax-gold')], NOW, null, {}, f)
+    // Not paused, the same signal opens a trade.
+    expect(step(FUNDED_B_SIGNALS_FROM).opened).toHaveLength(1)
+    expect(step(feeds).opened).toHaveLength(0)
   })
 })

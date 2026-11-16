@@ -58,6 +58,22 @@ export const FUNDED_TESTS: readonly {
   { id: 'breakouts', label: 'v1 + breakouts', feeds: FUNDED_B_SIGNALS_FROM },
 ]
 export const fundedTest = (id: FundedTestId) => FUNDED_TESTS.find((t) => t.id === id)!
+
+/**
+ * Strategies whose NEW signals no funded test takes for now (John,
+ * 2026-11-16): the London breakout lost 3 of 3 in the second test on 5 to 9
+ * pip stops, where fees are about a fifth of each trade's risk, and it has no
+ * fair past test. Its open funded trades would still run to their exits, and
+ * its own Lab account keeps trading. Empty this list to resume.
+ */
+export const FUNDED_PAUSED: readonly string[] = [LONDON_BREAKOUT.id]
+/** The feeds a test takes new signals from right now. */
+export const activeFeeds = (feeds: readonly string[]) =>
+  feeds.filter((s) => !FUNDED_PAUSED.includes(s))
+/** Shown where the second test is described. Empty when nothing is paused. */
+export const PAUSED_TEXT = FUNDED_PAUSED.includes(LONDON_BREAKOUT.id)
+  ? 'New breakout trades are paused since November 16: they lost 3 of 3 on very tight stops and have no past test yet.'
+  : ''
 /** Every strategy some funded test takes signals from. */
 export const FUNDED_FEEDS: readonly string[] = [...new Set(FUNDED_TESTS.flatMap((t) => t.feeds))]
 
