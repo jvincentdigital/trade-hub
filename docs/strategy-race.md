@@ -354,6 +354,22 @@ The tick log shows its lines with the name `Funded test <size>`, for example:
 
 ### Second test: v1 + breakouts (John, 2026-11-12)
 
+**Paused 2026-11-16 (John): no new breakout trades in the funded tests.** The
+London breakout lost 3 of 3 here (about -1.2R each): its stops are 5 to 9
+pips, so the two fees are about a fifth of each trade's risk, and it has no
+fair past test. `FUNDED_PAUSED` in `src/lib/race/funded.ts` lists it and
+`scripts/race-tick.ts` offers only `activeFeeds(test.feeds)`, so the second
+test trades like v1 only until the list is emptied. The breakout's own Lab
+account keeps trading. Today and Compare say so (`PAUSED_TEXT`).
+
+**Stop fills on confirmed exits, changed 2026-11-16 (John).** A GBP/USD v1
+stop confirmed by the candle's close used to fill at that close. The first
+live v1 trade lost $285 on a $199 stop that way (-1.43R), while the backtest
+(`src/lib/lab/johnsLondon.ts`) and a real stop order fill at the stop price.
+It now fills at the stop price, or at the candle's open when it opened past
+the stop (`confirmedExitsOf` in `src/lib/race/live.ts`). The lone-wick rule
+itself is unchanged, and trades already closed keep their booked result.
+
 On the morning of 2026-11-12 the London breakout (Lab) sold gold at 03:00
 AST and went into profit, while the funded test (v1 only) took nothing. John
 asked for a second funded test next to the first, so the two can be compared:

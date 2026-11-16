@@ -362,11 +362,19 @@ describe('race engine: sizing stop, 1% floor, looked-at mark', () => {
     )
     expect(r.closed).toHaveLength(1)
     expect(r.closed[0].reason).toBe('stop')
-    // Confirmed by the close: fills at the close 1.3035, worse than the stop.
-    expect(r.closed[0].exit).toBe(1.3035)
-    // At the stop price itself the loss is exactly 2% with fees.
-    const u = s.open[0].units
-    expect(u * (stop - E) + u * FEE * (E + stop)).toBeCloseTo(200, 6)
+    // Confirmed by the close 1.3035, filled at the stop price like a broker's stop order.
+    expect(r.closed[0].exit).toBe(stop)
+    // So the loss is exactly 2% with fees.
+    expect(r.closed[0].pnl).toBeCloseTo(-200, 6)
+  })
+
+  it('a confirmed stop on a candle that opened past it fills at that open', () => {
+    const r = stepStrategy(
+      openSell(),
+      [mtick({ path: [bar(later(1), 1.3036, 1.304, 1.3032, 1.3035)] })],
+      later(2),
+    )
+    expect(r.closed[0]).toMatchObject({ reason: 'stop', exit: 1.3036 })
   })
 
   it('without sizeStop the race sizes on the stop as before', () => {

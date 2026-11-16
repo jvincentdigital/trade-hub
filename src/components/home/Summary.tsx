@@ -5,6 +5,7 @@ import {
   sizeLabel,
   type FundedTestId,
   type FundedView,
+  PAUSED_TEXT,
 } from '@/lib/race/funded'
 import { pct } from './format'
 import { FS, card, num, pnlText, secondary, tone } from './ui'
@@ -293,6 +294,7 @@ export function Summary(p: Props) {
         </b>{' '}
         per trade, with FTMO-style limits. All four sizes follow the same rules and signals. Each
         strategy&apos;s own account is on the Compare tab.
+        {p.test === 'breakouts' && PAUSED_TEXT && ` ${PAUSED_TEXT}`}
       </p>
     </section>
   )

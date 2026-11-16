@@ -38,6 +38,7 @@ import {
   fundedOf,
   fundedView,
   sizeLabel,
+  PAUSED_TEXT,
 } from '@/lib/race/funded'
 import { useFundedSize } from '@/lib/hooks/useFundedSize'
 import { SizeSwitch } from '@/components/home/SizeSwitch'
@@ -636,7 +637,7 @@ function FundedLive() {
       </div>
       {/* One string: JSX text with entities can lose a space here (docs/dashboard.md, Gotcha). */}
       <p style={small}>
-        {`Two tests with the same rules, each in four sizes (${FUNDED_SIZES.map(sizeLabel).join(', ')}). v1 only takes John's London v1 signals (GBP/USD and gold). v1 + breakouts takes those first, then the London breakout's (GBP/USD, EUR/GBP and gold); each trade keeps the exits of the strategy that opened it. ${FUNDED.sizing.riskPct}% risk per trade, rounded down to 0.01 lot, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${FUNDED.dailyLossPct}% of the start (counted from the day's opening balance) or money ${FUNDED.maxLossPct}% under the start fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${FUNDED.worstCasePct}% of the start. Every other strategy trades only in its own play account, compared below. Today shows the same size.`}
+        {`Two tests with the same rules, each in four sizes (${FUNDED_SIZES.map(sizeLabel).join(', ')}). v1 only takes John's London v1 signals (GBP/USD and gold). v1 + breakouts takes those first, then the London breakout's (GBP/USD, EUR/GBP and gold); each trade keeps the exits of the strategy that opened it. ${PAUSED_TEXT ? `${PAUSED_TEXT} ` : ''}${FUNDED.sizing.riskPct}% risk per trade, rounded down to 0.01 lot, at most ${FUNDED.sizing.maxOpen} open and ${FUNDED.maxNewPerDay} new a day. FTMO 2-Step limits: a day that loses ${FUNDED.dailyLossPct}% of the start (counted from the day's opening balance) or money ${FUNDED.maxLossPct}% under the start fails it; +${FUNDED.targetPct}% after at least ${FUNDED.minDays} trading days passes it. A new trade opens only if the day's worst case, every open trade hitting its stop, stays under ${FUNDED.worstCasePct}% of the start. Every other strategy trades only in its own play account, compared below. Today shows the same size.`}
       </p>
       <div style={{ marginTop: 12 }}>
         <SizeSwitch value={size} onChange={setSize} />
