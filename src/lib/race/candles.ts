@@ -32,3 +32,53 @@ export function forexClosed(sec: number): boolean {
 /** Forex candles that start while the market is shut, left out. The Sunday reopen candle stays. */
 export const dropClosedForex = (candles: OHLCCandle[]): OHLCCandle[] =>
   candles.filter((c) => !forexClosed(c.time))
+
+/** How far past the second source's range a price may sit: 0.04%, about 5 pips on GBP/USD. */
+export const CROSS_TOL = 0.0004
+
+export interface CrossChecked {
+  candles: OHLCCandle[]
+  /** Candles whose prices were pulled back into the second source's range. */
+  trimmed: number
+  /** Start times of candles the second source does not have (left as they were). */
+  unmatched: number[]
+}
+
+/**
+ * Candles from a thin feed trimmed to what a second source also saw (John,
+ * 2026-11-16). Kraken's GBP/USD book printed a high of 1.3471 on 2026-11-12
+ * while the market's high was about 1.3272; the spike cap left 1.3318, and
+ * John's London v1 built its only trade on that move. Each candle with a
+ * same-time candle in `second` gets its four prices clamped into that
+ * candle's low-to-high range, widened by `tol` of the price. The two feeds
+ * sit a few pips apart all the time (Kraken about 3 under Yahoo), so `second`
+ * is first shifted by the median difference of the closes. Pure, tested.
+ */
+export function crossCheck(
+  main: OHLCCandle[],
+  second: OHLCCandle[],
+  tol = CROSS_TOL,
+): CrossChecked {
+  const byTime = new Map(second.map((c) => [c.time, c]))
+  const diffs = main
+    .flatMap((c) => (byTime.has(c.time) ? [c.close - byTime.get(c.time)!.close] : []))
+    .sort((a, b) => a - b)
+  const shift = diffs.length ? diffs[Math.floor(diffs.length / 2)] : 0
+  let trimmed = 0
+  const unmatched: number[] = []
+  const candles = main.map((c) => {
+    const s = byTime.get(c.time)
+    if (!s) {
+      unmatched.push(c.time)
+      return c
+    }
+    const lo = s.low + shift - tol * s.close
+    const hi = s.high + shift + tol * s.close
+    const fit = (v: number) => Math.min(hi, Math.max(lo, v))
+    const out = { ...c, open: fit(c.open), high: fit(c.high), low: fit(c.low), close: fit(c.close) }
+    if (out.open !== c.open || out.high !== c.high || out.low !== c.low || out.close !== c.close)
+      trimmed++
+    return out
+  })
+  return { candles, trimmed, unmatched }
+}

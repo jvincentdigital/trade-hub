@@ -362,6 +362,34 @@ fair past test. `FUNDED_PAUSED` in `src/lib/race/funded.ts` lists it and
 test trades like v1 only until the list is emptied. The breakout's own Lab
 account keeps trading. Today and Compare say so (`PAUSED_TEXT`).
 
+**GBP/USD candles are cross-checked against a second source (John,
+2026-11-16).** Why: v1's only live trade (GBP/USD buy, 2026-11-12) was built
+on a fake print. Kraken's 08:45 UTC candle had a high of 1.3471 while the
+market's high was about 1.3272; the spike cap (`capSpikes`) left 1.3318, v1
+read that as a move of 2 ATRs and bought the "pullback". John had the trade
+voided in all five accounts (`race.json.bak-2026-11-16-pre-void` is the file
+before). Over 192 London-hours candles that week, 6 Kraken candles had a wick
+more than 10 pips past Yahoo's.
+
+- `crossCheck` in `src/lib/race/candles.ts` clamps each 15-minute GBP/USD
+  candle's four prices into the same-time Yahoo candle's low-to-high range
+  (`GBPUSD=X`, `fetchYahoo15m`, `YAHOO_SECOND` in `src/lib/race/feeds.ts`),
+  widened by 0.04% (about 5 pips). Kraken sits about 3 pips under Yahoo all
+  the time, so Yahoo is first shifted by the median difference of the closes.
+- `scripts/race-tick.ts` does it once per check, right after the candles
+  load, so every strategy that reads GBP/USD 15m gets the trimmed candles
+  (v1, the London breakout, exits). It logs a `CROSS-CHECK GBP-USD` line.
+- If Yahoo fails, or lacks any of today's closed candles (UTC day), v1 opens
+  no new GBP/USD trade on that check and the signal is not marked as looked
+  at, so the next check can still take it (within v1's 4-candle catch-up).
+  Open trades are still managed. Other strategies trade on as before.
+- Yahoo has no candles from Sunday 22:00 to Monday 00:00 UTC; Kraken's are
+  kept as they are there. Gold (PAXG) and the other pairs are not
+  cross-checked.
+- Replay of 2026-11-12, 13 and 16 on the cross-checked candles: 7 setups, no
+  trade, every plan under the 1.5R minimum (best 1.46R). On Kraken alone the
+  replay gives the fake trade again.
+
 **Stop fills on confirmed exits, changed 2026-11-16 (John).** A GBP/USD v1
 stop confirmed by the candle's close used to fill at that close. The first
 live v1 trade lost $285 on a $199 stop that way (-1.43R), while the backtest

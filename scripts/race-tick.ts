@@ -48,7 +48,8 @@ import type { Rule, RuleTimeframe } from '../src/lib/rules/schema'
 import { getInstrument, INSTRUMENTS, type PriceMap } from '../src/lib/paper/instruments'
 import { sizingLine, sizingOf, usdPerQuoteFor } from '../src/lib/sizing/sizing'
 import { FEE_RATE, LEVERAGE } from '../src/lib/paper/engine'
-import { closedOnly, forexClosed, TF_HOURS } from '../src/lib/race/candles'
+import { closedOnly, crossCheck, forexClosed, TF_HOURS } from '../src/lib/race/candles'
+import { fetchYahoo15m, YAHOO_SECOND } from '../src/lib/race/feeds'
 import { minStopForFullRisk } from '../src/lib/race/account'
 import { BST_NOTE, londonOnSummerTime } from '../src/lib/positions/london'
 import { feedOf } from '../src/lib/feeds'
@@ -267,6 +268,35 @@ async function tick() {
     }
   }
 
+  // GBP/USD 15m candles trimmed to what a second source (Yahoo) also saw, for
+  // every strategy that reads them (crossCheck in src/lib/race/candles.ts).
+  /** Why John's London v1 opens nothing new on a market this check; no entry = checked. */
+  const unchecked = new Map<string, string>()
+  for (const [id, symbol] of Object.entries(YAHOO_SECOND)) {
+    const k = key(id, '15m')
+    const raw = data.get(k)
+    if (!raw) continue
+    try {
+      const r = crossCheck(raw, await fetchYahoo15m(symbol))
+      data.set(k, r.candles)
+      // Today's closed candles (UTC) must all be checked: v1 builds its setups on them.
+      const dayStart = Math.floor(nowSec / 86_400) * 86_400
+      const today = closedOnly(raw, 0.25, nowSec).filter((c) => c.time >= dayStart)
+      const missing = today.filter((c) => r.unmatched.includes(c.time)).length
+      if (missing)
+        unchecked.set(
+          id,
+          `the second price source lacks ${missing} of today's ${today.length} candles`,
+        )
+      console.log(
+        `  CROSS-CHECK ${id}: ${r.trimmed} of ${raw.length} candles trimmed to the second source${missing ? `, ${missing} of today's not checked` : ''}`,
+      )
+    } catch (e) {
+      unchecked.set(id, `the second price source is down (${(e as Error).message})`)
+      console.log(`  CROSS-CHECK ${id}: failed (${(e as Error).message}), candles left as they are`)
+    }
+  }
+
   // Latest price per market first: crosses like EUR/GBP need GBP/USD to size in dollars.
   const prices: PriceMap = {}
   for (const id of new Set(PLANS.flatMap((p) => p.markets))) {
@@ -337,14 +367,17 @@ async function tick() {
         todayEntries: entriesToday(account, id, nowSec),
         feeRate: FEE_RATE[inst.market],
       })
+      // Prices not confirmed by the second source: no new trade, and the
+      // signal is not marked as looked at, so the next check can still take it.
+      const block = unchecked.get(id)
       johnsExtra.set(id, {
-        ...(r.signal?.target1 != null ? { target1: r.signal.target1 } : {}),
-        ...(r.sizeStop != null ? { sizeStop: r.sizeStop } : {}),
-        ...(r.seen != null ? { seen: r.seen } : {}),
+        ...(!block && r.signal?.target1 != null ? { target1: r.signal.target1 } : {}),
+        ...(!block && r.sizeStop != null ? { sizeStop: r.sizeStop } : {}),
+        ...(!block && r.seen != null ? { seen: r.seen } : {}),
         closeNow: r.closeNow,
       })
-      console.log(`  JOHN'S LONDON v1 ${id}: ${r.note}`)
-      return r.signal
+      console.log(`  JOHN'S LONDON v1 ${id}: ${r.note}${block ? ` (no new trade: ${block})` : ''}`)
+      return block ? null : r.signal
     }
     if (p.kind === 'london') {
       const m15 = data.get(key(id, '15m'))
