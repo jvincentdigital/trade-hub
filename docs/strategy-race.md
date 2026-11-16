@@ -368,7 +368,11 @@ live v1 trade lost $285 on a $199 stop that way (-1.43R), while the backtest
 (`src/lib/lab/johnsLondon.ts`) and a real stop order fill at the stop price.
 It now fills at the stop price, or at the candle's open when it opened past
 the stop (`confirmedExitsOf` in `src/lib/race/live.ts`). The lone-wick rule
-itself is unchanged, and trades already closed keep their booked result.
+itself is unchanged. On John's word the same day, that first trade (GBP/USD
+buy, entered 2026-11-12 07:30 AST) was re-booked at its stop price in the five
+accounts that held it: -$267.49 to -$200.00 in v1's own account, -$285.13 to
+-$213.18 in the $10K funded test, the other sizes in proportion. The file
+from before is `race.json.bak-2026-11-16-pre-rebook`.
 
 On the morning of 2026-11-12 the London breakout (Lab) sold gold at 03:00
 AST and went into profit, while the funded test (v1 only) took nothing. John
