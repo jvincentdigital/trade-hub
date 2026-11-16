@@ -112,3 +112,90 @@ fall of that curve from a high, as a share of the start.
 ./node_modules/.bin/tsx scripts/lab/confluence-study.ts --phase design --out <dir>
 ./node_modules/.bin/tsx scripts/lab/confluence-study.ts --phase exam --cell <id> --out <dir>   # once
 ```
+
+## Results (2026-11-16)
+
+Outputs: `~/jvd-outputs/2026-11-16/confluence-study/` (`design-results.txt`,
+`exam-results.txt`, `EXAM-DONE.json`). Each phase ran once.
+
+### Design phase: average R a trade after costs (trades), profit factor
+
+4-hour Fib, 1-hour entries:
+
+| Version                 | P1                | P2                | P3                | All design years   |
+| ----------------------- | ----------------- | ----------------- | ----------------- | ------------------ |
+| F, Fib only             | -0.02 (525), 0.98 | -0.19 (553), 0.76 | -0.05 (515), 0.94 | -0.09 (1593), 0.89 |
+| FT, Fib + trend         | +0.05 (383), 1.06 | -0.20 (402), 0.75 | -0.04 (392), 0.95 | -0.07 (1177), 0.91 |
+| FC, Fib + bounce        | +0.03 (158), 1.07 | +0.08 (169), 1.18 | +0.04 (159), 1.10 | +0.05 (486), 1.12  |
+| FTC, all three          | +0.02 (107), 1.04 | +0.06 (102), 1.13 | -0.04 (97), 0.91  | +0.01 (306), 1.03  |
+| side: FTC, EMA 50 / 200 | +0.05 (83), 1.13  | +0.06 (88), 1.12  | +0.07 (84), 1.17  | +0.06 (255), 1.14  |
+
+Daily Fib, 4-hour entries:
+
+| Version | P1               | P2               | P3               | All design years  |
+| ------- | ---------------- | ---------------- | ---------------- | ----------------- |
+| F       | -0.40 (64), 0.52 | -0.26 (77), 0.67 | +0.07 (72), 1.11 | -0.19 (213), 0.75 |
+| FT      | -0.34 (44), 0.58 | -0.37 (54), 0.55 | +0.24 (53), 1.40 | -0.15 (151), 0.80 |
+| FC      | -0.14 (19), 0.74 | -0.48 (32), 0.26 | -0.36 (26), 0.35 | -0.36 (77), 0.40  |
+| FTC     | -0.12 (12), 0.76 | -0.55 (20), 0.18 | -0.27 (15), 0.41 | -0.35 (47), 0.38  |
+
+1-hour alone:
+
+| Version                 | P1                 | P2                 | P3                 | All design years   |
+| ----------------------- | ------------------ | ------------------ | ------------------ | ------------------ |
+| F                       | -0.26 (2268), 0.69 | -0.20 (2451), 0.76 | -0.13 (2371), 0.84 | -0.20 (7090), 0.76 |
+| FT                      | -0.30 (1539), 0.64 | -0.23 (1688), 0.73 | -0.10 (1665), 0.88 | -0.21 (4892), 0.75 |
+| FC                      | -0.04 (186), 0.90  | -0.02 (220), 0.94  | -0.03 (207), 0.92  | -0.03 (613), 0.92  |
+| FTC                     | -0.08 (118), 0.79  | -0.08 (168), 0.78  | -0.00 (143), 0.99  | -0.06 (429), 0.84  |
+| side: FTC, EMA 50 / 200 | -0.03 (92), 0.92   | -0.03 (126), 0.90  | -0.13 (103), 0.68  | -0.06 (321), 0.83  |
+
+Design gate: one version passed, **Fib + bounce on the 4-hour Fib with 1-hour
+entries** (FC): a little above zero in all three periods and better than Fib
+only. The full three-confirmation version (FTC) did not pass on any chart.
+No luck test was under 0.05 anywhere (best: 0.09).
+
+### Exam (2019-04-01 to 2020-12-31, run once, FC on the 4-hour Fib)
+
+146 trades, **-0.06R a trade**, total -8.4R, 45% won, profit factor 0.88,
+worst drop 19% at 1% risk, luck p 0.32.
+
+| Pass line                  | Result |
+| -------------------------- | ------ |
+| at least 60 trades         | pass   |
+| average R above 0          | FAIL   |
+| profit factor at least 1.2 | FAIL   |
+| luck p under 0.05          | FAIL   |
+| worst drop at most 20%     | pass   |
+
+**The exam failed.** The sealed years are now used; there is no fresh period
+left in this data.
+
+### What the confirmations did
+
+- **The bounce (two strong candles) is the one that matters.** It turns a
+  clearly losing entry into one near zero on the 4-hour and 1-hour charts,
+  and lifts the share of winners from about 25% to about 50% (smaller wins,
+  since the entry is later). Near zero is still not money: the small design
+  profit (+0.05R) did not hold in the exam (-0.06R).
+- **The trend filter added nothing.** With EMA 12 / 36 it removed a quarter to
+  a third of the trades and left the average the same or worse. EMA 50 / 200
+  looked steadier on the 4-hour chart (+0.06R, 255 trades) but it was a side
+  cell, is about as small as the FC result that just failed, and has no fresh
+  years left to be tested on.
+- **Stacking all three did not beat two.** Fewer trades, no better average.
+- On the daily Fib everything lost, and the bounce made it worse there.
+
+### What this could not test
+
+- 5 to 30 minute charts, London and New York hours, the news (no list before
+  2024-11), John's eye for which setups to skip, and other candle patterns
+  (morning star and so on): only "two strong candles" was used as the bounce.
+- Whether the EMA 50 / 200 side cell is real: that would need new data
+  (another set of markets, or the months after 2026-11-10 as they arrive).
+
+### Not sure about
+
+- The exam score is 146 trades over 21 months; -0.06R is not far from zero
+  either. The honest reading is "no edge shown", not "proven to lose".
+- No diagnostic run was needed: the F and FC numbers sit close to what the
+  Fib anchor study found for the same entries with tuned settings.
