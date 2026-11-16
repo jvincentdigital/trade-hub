@@ -97,13 +97,21 @@ export function parseYahooChart(json: unknown, stepSec: number): OHLCCandle[] {
   return out
 }
 
-/** Last 30 days of 1h candles for a Yahoo symbol (the last one still forming). */
-export async function fetchYahooHourly(symbol: string): Promise<OHLCCandle[]> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=60m&range=30d`
+/** Yahoo's symbol for a market the race cross-checks against it (./candles.ts, crossCheck). */
+export const YAHOO_SECOND: Record<string, string> = { 'GBP-USD': 'GBPUSD=X' }
+
+async function fetchYahoo(symbol: string, interval: string, range: string, stepSec: number) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`
   const res = await fetch(url, {
     headers: { 'user-agent': 'Mozilla/5.0 (trade-hub race, play money)' },
     signal: AbortSignal.timeout(20_000),
   })
   if (!res.ok) throw new Error(`Yahoo ${res.status}`)
-  return parseYahooChart(await res.json(), 3600)
+  return parseYahooChart(await res.json(), stepSec)
 }
+
+/** Last 30 days of 1h candles for a Yahoo symbol (the last one still forming). */
+export const fetchYahooHourly = (symbol: string) => fetchYahoo(symbol, '60m', '30d', 3600)
+
+/** Last 8 days of 15m candles for a Yahoo symbol, as long as Kraken's 720 (the last one still forming). */
+export const fetchYahoo15m = (symbol: string) => fetchYahoo(symbol, '15m', '8d', 900)
