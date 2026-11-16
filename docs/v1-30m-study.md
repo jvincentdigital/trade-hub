@@ -41,8 +41,8 @@ the frozen numbers: design year 121 trades, +24.1R; clean year 97 trades,
 
 ### The two years, and what they can show
 
-| Year   | Dates                    | Status                                         |
-| ------ | ------------------------ | ---------------------------------------------- |
+| Year   | Dates                    | Status                                          |
+| ------ | ------------------------ | ----------------------------------------------- |
 | Clean  | 2024-11-11 to 2025-11-10 | v1's settings were not chosen on it; seen twice |
 | Design | 2025-11-11 to 2026-11-10 | chose v1's k and b                              |
 
@@ -76,3 +76,26 @@ minutes and this study stops; no other chart sizes are tried after the fact.
 ```bash
 ./node_modules/.bin/tsx scripts/lab/v1-30m.ts --history <dir with the 1-minute files> --out <dir>
 ```
+
+## Results (run once, 2026-11-16)
+
+Output: `~/jvd-outputs/2026-11-16/v1-30m-study/results.txt`. The files matched
+the freeze record's hashes, and the 15-minute runs reproduced the frozen
+numbers exactly, so the comparison stands.
+
+| Chart  | Year   | Trades | Total  | Avg R | Won | Profit factor | $10,000 became | Max drop | Mirror z | Six lines |
+| ------ | ------ | ------ | ------ | ----- | --- | ------------- | -------------- | -------- | -------- | --------- |
+| 15 min | clean  | 97     | +27.6R | +0.28 | 58% | 1.76          | $16,896        | 9.6%     | 2.15     | pass      |
+| 15 min | design | 121    | +24.1R | +0.20 | 50% | 1.44          | $15,508        | 13.7%    | 1.83     | pass      |
+| 30 min | clean  | 80     | +5.5R  | +0.07 | 48% | 1.15          | $10,951        | 10.9%    | 0.73     | **fail**  |
+| 30 min | design | 99     | +17.7R | +0.18 | 54% | 1.45          | $13,848        | 9.8%     | 1.89     | pass      |
+
+**The 30-minute version did not pass.** On the clean year it made a little
+money but failed three of the six lines: average +0.07R (needs +0.10R), profit
+factor 1.15 (needs 1.20), mirror z 0.73 (needs 1.0). GBP/USD lost there
+(44 trades, -3.5R); gold carried it (36 trades, +8.9R). The design year looked
+fine (+17.7R), but that year does not count as proof.
+
+On both years the 15-minute chart made more: +27.6R against +5.5R, and +24.1R
+against +17.7R. v1 stays on 15 minutes. Per the plan, the study stops here and
+no other chart size is tried.
