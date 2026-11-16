@@ -105,3 +105,39 @@ exam years is evidence, not proof.
 ./node_modules/.bin/tsx scripts/lab/trend-study.ts --phase design --out <dir>
 ./node_modules/.bin/tsx scripts/lab/trend-study.ts --phase exam --cell <id> --out <dir>   # once
 ```
+
+## Results (design phase, run once, 2026-11-16)
+
+Output: `~/jvd-outputs/2026-11-16/trend-study/design-results.txt`.
+
+| Version  | P1 avg R (trades) | P2 avg R (trades) | P3 avg R (trades) | Profit factor P1 / P2 / P3 | Gate |
+| -------- | ----------------- | ----------------- | ----------------- | -------------------------- | ---- |
+| D-20-10  | -0.18 (128)       | -0.10 (128)       | -0.31 (137)       | 0.69 / 0.80 / 0.51         | fail |
+| D-55-20  | -0.33 (72)        | -0.55 (81)        | -0.23 (72)        | 0.48 / 0.27 / 0.70         | fail |
+| H4-20-10 | -0.11 (717)       | -0.16 (758)       | -0.07 (785)       | 0.82 / 0.74 / 0.89         | fail |
+| H4-55-20 | -0.03 (360)       | -0.14 (401)       | -0.25 (444)       | 0.95 / 0.79 / 0.65         | fail |
+
+**No version passed the design gate. There is no exam, and 2019 to 2020 stay
+sealed.** Every version lost in every period; the luck test never came close
+(best p 0.45). About 1 trade in 4 to 1 in 3 won, with an average winner of
+only 1.1R to 2R, not enough to pay for the losers.
+
+One diagnostic was run after the result, to check the code and not to find a
+new version: D-20-10 on three markets from 2021-04 on, with and without costs.
+
+| Market  | Trades | Total, no costs | Total, with costs |
+| ------- | ------ | --------------- | ----------------- |
+| Gold    | 44     | +8.0R           | +2.3R             |
+| USD/JPY | 43     | +7.4R           | +2.8R             |
+| GBP/USD | 55     | -16.6R          | -23.7R            |
+
+The trades look right (entries at the open after the breakout close, 1R stop
+losses, channel exits). The markets that trended (gold, the yen) made a
+little; the pound, which ranged, lost a lot; costs (rollover spread, swap for
+about a month a trade) take roughly 0.1R a trade.
+
+What it means: plain breakout trend following does not pay on these 8 markets
+after retail costs in 2021 to 2026. Changing the numbers now to make it fit
+would be curve fitting, so this study stops here. The idea is documented to
+work on a wide basket of unrelated markets (stock indexes, bonds, commodities,
+currencies together); that would be a different study with different data.
