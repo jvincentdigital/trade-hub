@@ -38,6 +38,30 @@ card's title names both ("Funded test $10K, v1 + breakouts"). Close now's
 confirm says "Only in the $50K v1 + breakouts funded test. The other sizes
 and the other test keep their trade."
 
+**Since 2026-11-16 Today has a Trade history** under Open trades. John opened
+the app, saw the funded test's loss and no trade behind it: Today listed only
+open trades and a "Closed today" line, so a trade that closed on an earlier
+day was visible only on Compare. Now:
+
+- **Scorecard** (`scorecard` in `src/lib/positions/history.ts`): closed trades
+  "1 of 30" (30 = `FIRST_READ`, the count before the live numbers mean
+  anything), won, average per trade in R, average loss in R (the plan is -1R;
+  more than that means stops filled past their price or fees are heavy), worst
+  drop and fees. For v1 only, each tile shows the test-year number next to it
+  (`YARDSTICKS`: 58% won, +0.28R a trade, worst drop 9.6%, about 2 trades a
+  week; the same source as `PAST_TESTS` in `race/compare.ts`). The breakout
+  trades have no past test, so that test shows "no past test".
+- **One row per closed trade** of the shown account (test and size switches),
+  newest first, a half at the first target and the rest counted as one trade
+  (`historyTrades`). A row opens in place (`History.tsx`): 1-hour candles from
+  a day before the entry to half a day after the exit with the entry, stop and
+  target lines and a dot where it closed (`MiniChart`'s `exit`), then opened,
+  closed, entry, exit, stop, target, size, risk, the checklist at entry, and
+  for a stop-out that lost more than its risk "Why it lost more than the
+  plan" (the stop, the fill past the stop, the fees, in dollars).
+- Charts go back 30 days (what `useCandleMap` loads); an older trade keeps its
+  numbers and says so. The open row is plain component state, not in the URL.
+
 ## What the page shows
 
 Phone: everything in one column. Wide screens (1100 px and up): the summary
