@@ -189,7 +189,7 @@ async function main() {
           .join('; ')}`,
       )
       lines.push(
-        `   held: median ${f(pct(hours, 0.5), 1)} h, 9 in 10 under ${f(pct(hours, 0.9), 1)} h, longest ${f(Math.max(...hours), 1)} h; ${nights.filter((n) => n > 0).length} trades over at least one night (${sum(nights)} nights charged); signals passed because a trade was open: ${blocked}; most open at once: ${run.maxOpenSeen}; ${Object.entries(
+        `   held: median ${f(pct(hours, 0.5), 1)} h, 9 in 10 under ${f(pct(hours, 0.9), 1)} h, longest ${f(Math.max(...hours), 1)} h; ${nights.filter((n) => n > 0).length} trades over at least one night (${sum(nights)} nights${v.hold === 'costs' ? ' charged' : v.hold ? ', not charged' : ''}); signals passed because a trade was open: ${blocked}; most open at once: ${run.maxOpenSeen}; ${Object.entries(
           per,
         )
           .map(([m, x]) => `${m} ${x.trades}/${f(x.totalR, 1)}R`)

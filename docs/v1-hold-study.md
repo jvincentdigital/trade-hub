@@ -130,6 +130,89 @@ It does not open any unseen data. The exam of frozen v1 on older years
 ./node_modules/.bin/tsx scripts/lab/v1-hold.ts --history <dir with the 1-minute files> --out <dir>
 ```
 
-## Results
+## Results (run once, 2026-11-17)
 
-Not run yet.
+Output: `~/jvd-outputs/2026-11-17/v1-hold-study/` (`results.txt`,
+`results.json`, the trade lists). The price files matched the freeze record's
+hashes. The frozen rule, run first through the same runner with the hold
+option off, reproduced the frozen numbers exactly: design year 121 trades,
++24.1R, trade list fingerprint `235d582d22978d5e`; clean year 97 trades,
++27.6R (its fingerprint, recorded here for later checks: `2ebe12b9455690c4`).
+A second run gave the same `results.json` byte for byte.
+
+| Year   | Version                  | Trades | Total  | Avg R | Won | Profit factor | $10,000 became | Max drop | Mirror z | Six lines |
+| ------ | ------------------------ | ------ | ------ | ----- | --- | ------------- | -------------- | -------- | -------- | --------- |
+| Clean  | frozen (16:30 close)     | 97     | +27.6R | +0.28 | 58% | 1.76          | $16,896        | 9.6%     | 2.15     | pass      |
+| Clean  | hold, overnight costs    | 93     | +24.8R | +0.27 | 49% | 1.57          | $15,894        | 12.6%    | 2.23     | pass      |
+| Clean  | hold, no overnight costs | 93     | +25.4R | +0.27 | 51% | 1.59          | $16,071        | 12.4%    | 2.23     | pass      |
+| Design | frozen (16:30 close)     | 121    | +24.1R | +0.20 | 50% | 1.44          | $15,508        | 13.7%    | 1.83     | pass      |
+| Design | hold, overnight costs    | 120    | +22.2R | +0.18 | 45% | 1.34          | $14,794        | 11.6%    | 1.47     | pass      |
+| Design | hold, no overnight costs | 120    | +25.4R | +0.21 | 46% | 1.39          | $15,767        | 11.6%    | 1.57     | pass      |
+
+The six lines are a description here, not a verdict: both years were already
+seen.
+
+**The reading fixed in the plan: holding is fine.** With overnight costs, both
+years end above $10,000, the totals are 2.7R (clean) and 1.9R (design) under
+the frozen run, inside the 5R line, and the worst drop is 3.0 points higher in
+the clean year and 2.1 points lower in the design year.
+
+### How the trades ended
+
+| Year   | Version               | Stop        | Final target | Clock (16:30) | Before red news |
+| ------ | --------------------- | ----------- | ------------ | ------------- | --------------- |
+| Clean  | frozen                | 35 (-33.8R) | 21 (+38.0R)  | 35 (+21.4R)   | 6 (+2.1R)       |
+| Clean  | hold, overnight costs | 49 (-42.2R) | 33 (+60.7R)  | none          | 11 (+6.4R)      |
+| Design | frozen                | 54 (-52.8R) | 25 (+48.1R)  | 38 (+26.0R)   | 4 (+2.8R)       |
+| Design | hold, overnight costs | 71 (-63.4R) | 42 (+81.6R)  | none          | 7 (+4.0R)       |
+
+The paired view, which answers the question that started this study: what
+became of the trades the clock used to close?
+
+- **Clean year:** 32 of those 35 trades were also taken under the hold rule.
+  12 went on to the final target (+22.7R), 14 to the stop (-8.4R together,
+  less than 1R each because many had banked the first target), 6 closed
+  before red news (+4.0R). Together +18.3R, against +20.3R for the same 32
+  trades on the clock.
+- **Design year:** all 38 were also taken. 17 reached the final target
+  (+33.5R), 18 the stop (-11.6R), 3 closed before news (+1.2R). Together
+  +23.1R, against +26.0R on the clock.
+
+So the profit does not come from the 16:30 close. Held, those trades split
+into more full targets and more stops and kept most of what they made.
+
+### What holding changes
+
+- **Fewer winners, bigger ones.** The share of winning trades falls from 58%
+  to 49% (clean) and from 50% to 45% (design). The live scorecard must not be
+  read against the frozen "58% won".
+- **Time in a trade.** Half the trades still end within about 3 hours. One in
+  ten runs longer than 19 hours (clean) or 22 hours (design). The longest ran
+  118 and 116 hours, over a weekend. 16 trades (clean) and 27 (design) stayed
+  open over at least one night.
+- **Trades not taken.** A held trade keeps its market busy: 48 signals were
+  passed for that reason against 34 (clean), and 34 against 25 (design). Net,
+  holding took 4 fewer trades in the clean year and 1 fewer in the design year.
+- **Overnight costs** took 0.6R in the clean year and 3.2R in the design year,
+  where more gold buys stayed open overnight. The play-money race does not
+  charge them; a real account would.
+
+### What this does and does not show
+
+- On these two years the two exits cannot be told apart: the gaps (2 to 3R a
+  year) are well inside what luck moves in a year of about 100 trades.
+- It removes one worry: the tested profit did not depend on an exit the live
+  account no longer has.
+- It is not proof of anything. Both years were seen before, and holding was
+  tested only after its frozen twin had passed on them. The exam on older
+  years should score both exits, with the frozen one as the verdict.
+- Not modelled: the live lone-wick rule, the live check rhythm, the live feed.
+
+### What happens next
+
+Per the plan, the recommendation to John is to keep the hold in the live
+account, and to change the scorecard's yardstick from the frozen numbers to
+the hold numbers of the test year (93 trades, 51% won, +0.27R a trade, worst
+drop 12.4%, without overnight costs because the play-money race charges none),
+captioned as a year the rule has already seen. That is a change to the live
+app, so it waits for his word.
