@@ -99,3 +99,21 @@ fine (+17.7R), but that year does not count as proof.
 On both years the 15-minute chart made more: +27.6R against +5.5R, and +24.1R
 against +17.7R. v1 stays on 15 minutes. Per the plan, the study stops here and
 no other chart size is tried.
+
+## Side check, same day: is v1's 1.5R minimum too strict?
+
+Exploration on the same two seen years (`scripts/lab/v1-skips.ts`), run because
+live v1 skipped 7 of 7 setups in its first three days for "plan under 1.5R".
+Not a test and not proof.
+
+About 70% of v1's signals are skipped by that rule (472 of 671 on the clean
+year, 437 of 649 on the design year). With the minimum lowered to 1.0R:
+
+| Year   | v1 (1.5R minimum)              | 1.0R minimum                   | Only the added trades |
+| ------ | ------------------------------ | ------------------------------ | --------------------- |
+| Clean  | 97 trades, +27.6R, 9.6% drop   | 228 trades, +1.0R, 29.2% drop  | 139 trades, -19.5R    |
+| Design | 121 trades, +24.1R, 13.7% drop | 240 trades, +27.2R, 23.9% drop | 125 trades, +5.5R     |
+
+The skipped setups are the weak ones: on the clean year they lose, and on both
+years the account's worst drop doubles. The minimum stays at 1.5R. Skipping
+most setups is how v1 works, not a fault.
