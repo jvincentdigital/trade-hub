@@ -131,25 +131,25 @@ export interface Yardstick {
 }
 
 /**
- * John's London v1 on its test year (November 2024 to November 2025), run
- * with the exit the live account has used since 2026-11-12: a trade holds to
- * its stop, its targets or red news, with no 16:30 London close. 93 trades,
- * 51% won, +0.27R a trade, worst drop 12.4% (docs/v1-hold-study.md on branch
- * lab/v1-hold, run 2026-11-17; without overnight costs, because the
- * play-money race charges none). The rule that passed the one-time test
- * closed at 16:30 London and showed 97 trades, 58% won, +0.28R, worst drop
- * 9.6% (PAST_TESTS in race/compare.ts). The hold run came after that year
- * had been seen, so it is a yardstick, not proof. The breakout trades in the
- * second test have no past test, so that test has no yardstick.
+ * John's London v1 on the six older years it was examined on (2019-01-01 to
+ * 2024-11-10, run once on 2026-11-17, docs/v1-older-years-exam.md on branch
+ * lab/v1-older-years): 656 trades, 42% won, -0.03R a trade, worst drop 44.5%.
+ * The rule lost there, so that is what the live numbers are held against.
+ * Its one good year (November 2024 to November 2025) showed 58% won and
+ * +0.28R with the 16:30 London close, 51% and +0.27R with the hold rule the
+ * live account uses; the exam says that year was most likely luck. Trades a
+ * week: 656 over the about 282 weeks the exam traded (thin days of 2023 sat
+ * out). The breakout trades in the second test have no past test, so that
+ * test has no yardstick.
  */
 export const YARDSTICKS: Record<FundedTestId, Yardstick | null> = {
   v1: {
-    winRate: 0.51,
-    avgR: 0.27,
-    maxDrawdown: 0.124,
-    tradesPerWeek: 93 / 52,
+    winRate: 0.42,
+    avgR: -0.03,
+    maxDrawdown: 0.445,
+    tradesPerWeek: 656 / 282,
     source:
-      'its test year (November 2024 to November 2025) run with the same hold rule. A yardstick, not proof: that year had already been seen',
+      'the six older years it was examined on (2019 to 2024, 656 trades). The rule lost there; its one good year (November 2024 to November 2025) was most likely luck',
   },
   breakouts: null,
 }

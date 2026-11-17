@@ -498,8 +498,24 @@ year, with overnight costs. In the test year 35 of the 97 clock-rule trades
 ended at 16:30 and carried +21.4R of the +27.6R; held, those trades kept most
 of it (+18.3R against +20.3R for the 32 also taken). Winners are fewer and
 bigger under the hold (51% won against 58%). It is a description of seen
-years, not proof. The Today scorecard and the Compare text use the hold
-numbers since then.
+years, not proof.
+
+## 2026-11-17: v1 lost its exam on six older years
+
+The same day, frozen v1 sat one exam on 2019-01-01 to 2024-11-10, years it
+had never been run on (`docs/v1-older-years-exam.md` on branch
+`lab/v1-older-years`, draft PR #33; plan, data checks and file fingerprints
+fixed before the run; on the seen year the new price files reproduce the
+frozen trade list byte for byte). Result: 656 trades, -18.3R, -0.03R a trade,
+$10,000 became $5,863, worst drop 44.5%. Three of its six lines fail. With the
+hold rule the same years were worse (-37.7R). Its entries beat random ones,
+but not by enough to pay the costs.
+
+So v1's good year (November 2024 to November 2025) was most likely luck or a
+passing market mood, and the live v1 account is no longer a proof in
+progress. On Compare its tag is "Lost its past test", and the Today scorecard
+holds its live numbers against the six older years. Whether the v1 accounts
+keep running is John's call; it is play money either way.
 
 John, about 14:40 AST, poll answer "Everything holds": "When we're negative
 like that, we can just hold the trades. You don't have to wait till the New
@@ -738,11 +754,12 @@ backing." Order:
      v1 joined at the check of 2026-11-11 17:43:43 AST (`race.log`), kept in
      `JOINED_AT`; the rest from `state.startedAt`. A race reset counts from
      the reset.
-   - **Evidence tag** (`PAST_TESTS`): "Passed an unseen-data test" (v1: the
-     clean year, $10,000 to $16,896 on 97 trades, from
-     `~/jvd-outputs/2026-11-11/london-strategy/FINAL.md` and `HOLDOUT.md`),
-     "Lost its past test" (the 5 lab bots: made money in the lab's test
-     months, lost on 2019 to 2024, from `strategy-lab/REPORT.md`) and
+   - **Evidence tag** (`PAST_TESTS`): "Passed an unseen-data test" (no
+     strategy holds it since 2026-11-17: v1 passed its clean year, $10,000 to
+     $16,896 on 97 trades, then lost its exam on 2019 to 2024, $10,000 to
+     $5,863 on 656 trades), "Lost its past test" (v1, and the 5 lab bots:
+     made money in the lab's test months, lost on 2019 to 2024, from
+     `strategy-lab/REPORT.md`) and
      "Testing live only" (everything else; the 11 originals have no fair
      past test). London breakout's details add the lab's winter-loss note.
    - **Sort**: Evidence (passed, live only, lost; inside each, best live

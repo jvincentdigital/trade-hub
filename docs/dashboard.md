@@ -47,15 +47,14 @@ day was visible only on Compare. Now:
   "1 of 30" (30 = `FIRST_READ`, the count before the live numbers mean
   anything), won, average per trade in R, average loss in R (the plan is -1R;
   more than that means stops filled past their price or fees are heavy), worst
-  drop and fees. For v1 only, each tile shows the test-year number next to it
-  (`YARDSTICKS`). Since 2026-11-17 those are the test year run with the hold
-  rule the live account uses: 51% won, +0.27R a trade, worst drop 12.4%, about
-  2 trades a week (`docs/v1-hold-study.md` on branch `lab/v1-hold`). Before
-  that the tiles showed the frozen rule's numbers (58% won, +0.28R, 9.6%),
-  which closed every trade at 16:30 London and so was not what the live
-  account does. The hold run came after the year had been seen: a yardstick,
-  not proof. The breakout trades have no past test, so that test shows "no
-  past test".
+  drop and fees. For v1 only, each tile shows a past-test number next to it
+  (`YARDSTICKS`). Since 2026-11-17 that is the exam on six older years the
+  rule had never seen (2019 to 2024, `docs/v1-older-years-exam.md` on branch
+  `lab/v1-older-years`): 656 trades, 42% won, -0.03R a trade, worst drop
+  44.5%, about 2 trades a week. The rule lost there, and the caption says so.
+  Before that the tiles showed its one good year (58% won, +0.28R, 9.6%),
+  which the exam says was most likely luck. The breakout trades have no past
+  test, so that test shows "no past test".
 - **One row per closed trade** of the shown account (test and size switches),
   newest first, a half at the first target and the rest counted as one trade
   (`historyTrades`). A row opens in place (`History.tsx`): 1-hour candles from
