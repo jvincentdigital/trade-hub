@@ -66,7 +66,7 @@ const ZERO: BounceCount = {
   firstBounces: 0,
   firstOnward: 0,
 }
-/** The upper bound added after the first run: only the first step of each price move counts. */
+/** The generous estimate added after the first run: only the first step of each price move counts. It leans toward bounces and is not a strict limit. */
 const firstRate = (c: BounceCount) => c.firstBounces / (c.firstBounces + c.firstOnward)
 const rate = (c: BounceCount) => c.bounces / (c.bounces + c.onward)
 /** Plus or minus, in percentage points: two standard errors of a share (steps treated as independent). */
@@ -178,7 +178,7 @@ async function main() {
     'PART 1: the bounce count ($1 steps). A fade needs over 60.0% at the best cost and over 67.5% at the typical cost.',
   )
   lines.push(
-    '   "Too fast" = steps that came two or more inside one price move of a 1-minute candle, where a bounce in between cannot be seen. The upper bound counts only the first step of each move (added after the first run).',
+    '   "Too fast" = steps that came two or more inside one price move of a 1-minute candle, where a bounce in between cannot be seen. The generous estimate counts only the first step of each move and leans toward bounces (added after the first run).',
   )
   const table = (name: string, x: { out: Session[]; skipped: number }) => {
     const per = byYear(x.out)
@@ -189,11 +189,11 @@ async function main() {
       if (!e) continue
       all = add(all, e.c)
       lines.push(
-        `   ${y}: ${String(e.n).padStart(3)} sessions  ${String(e.c.steps).padStart(6)} steps (${f(e.c.steps / e.n)} a session)  bounce rate ${f(100 * rate(e.c))}% (plus or minus ${f(margin(e.c))})  | too fast for 1-minute candles: ${f((100 * e.c.fast) / e.c.steps, 0)}% of steps; upper bound ${f(100 * firstRate(e.c))}%`,
+        `   ${y}: ${String(e.n).padStart(3)} sessions  ${String(e.c.steps).padStart(6)} steps (${f(e.c.steps / e.n)} a session)  bounce rate ${f(100 * rate(e.c))}% (plus or minus ${f(margin(e.c))})  | too fast for 1-minute candles: ${f((100 * e.c.fast) / e.c.steps, 0)}% of steps; generous estimate ${f(100 * firstRate(e.c))}%`,
       )
     }
     lines.push(
-      `   all: ${all.steps} steps  bounce rate ${f(100 * rate(all))}% (plus or minus ${f(margin(all), 2)})  | too fast: ${f((100 * all.fast) / all.steps, 0)}% of steps; upper bound ${f(100 * firstRate(all))}%`,
+      `   all: ${all.steps} steps  bounce rate ${f(100 * rate(all))}% (plus or minus ${f(margin(all), 2)})  | too fast: ${f((100 * all.fast) / all.steps, 0)}% of steps; generous estimate ${f(100 * firstRate(all))}%`,
     )
     results[name] = { per, all, sessions: x.out.length, skipped: x.skipped }
     return per

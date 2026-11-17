@@ -170,45 +170,72 @@ pre-registered count or its reading.
 2. **1-minute candles are too coarse for $1 steps when gold moves fast.** In
    2025 half of the steps, and in 2026 three quarters, came several to one
    price move inside a single candle, where a bounce in between cannot be
-   seen. So the count now also shows that share, and an upper bound that
-   counts only the first step of each move. The upper bound is generous: it
-   drops the fast one-way runs.
+   seen. That pushes the counted rate down. So the count now also shows that
+   share, and a generous estimate that counts only the first step of each
+   move. The estimate leans the other way, toward bounces (inside a candle
+   the assumed path turns at the low and at the high, so first steps are
+   often bounces by construction), and it is not a strict limit. An extra
+   check on bigger steps, below, settles what the $1 ladder cannot.
 
 A count written separately in Python reproduces Part 1 exactly (same
-evenings, steps and rates for 2019 to 2025).
+evenings, steps and rates for all eight years).
 
 ### Part 1: the bounce count in the Owl's hours
 
 Monday to Wednesday evenings, 18:05 to 24:00 New York. 1,157 evenings
 counted, 73 sat out (thin data in 2023, holidays).
 
-| Year | Evenings | $1 steps an evening | Bounce rate               | Too fast for 1-minute candles | Upper bound |
-| ---- | -------- | ------------------- | ------------------------- | ----------------------------- | ----------- |
-| 2019 | 154      | 14                  | 47.1% (plus or minus 2.2) | 16% of steps                  | 52.6%       |
-| 2020 | 156      | 72                  | 44.8% (0.9)               | 31%                           | 55.7%       |
-| 2021 | 155      | 26                  | 48.5% (1.6)               | 7%                            | 50.4%       |
-| 2022 | 156      | 29                  | 49.0% (1.5)               | 9%                            | 51.8%       |
-| 2023 | 94       | 21                  | 48.9% (2.3)               | 4%                            | 50.2%       |
-| 2024 | 155      | 56                  | 47.6% (1.1)               | 17%                           | 53.0%       |
-| 2025 | 154      | 271                 | 40.0% (0.5)               | 50%                           | 58.0%       |
-| 2026 | 133      | 780                 | 30.6% (0.3)               | 74%                           | 63.7%       |
+| Year | Evenings | $1 steps an evening | Bounce rate               | Too fast for 1-minute candles | Generous estimate |
+| ---- | -------- | ------------------- | ------------------------- | ----------------------------- | ----------------- |
+| 2019 | 154      | 14                  | 47.1% (plus or minus 2.2) | 16% of steps                  | 52.6%             |
+| 2020 | 156      | 72                  | 44.8% (0.9)               | 31%                           | 55.7%             |
+| 2021 | 155      | 26                  | 48.5% (1.6)               | 7%                            | 50.4%             |
+| 2022 | 156      | 29                  | 49.0% (1.5)               | 9%                            | 51.8%             |
+| 2023 | 94       | 21                  | 48.9% (2.3)               | 4%                            | 50.2%             |
+| 2024 | 155      | 56                  | 47.6% (1.1)               | 17%                           | 53.0%             |
+| 2025 | 154      | 271                 | 40.0% (0.5)               | 50%                           | 58.0%             |
+| 2026 | 133      | 780                 | 30.6% (0.3)               | 74%                           | 63.7%             |
 
 Needed to pay the costs: over 60.0% at the best cost, over 67.5% at the
 typical cost.
 
 - **Where the candles can see it, the next dollar is a coin flip.** In 2021,
   2022 and 2023 fewer than one step in ten is too fast, and the bounce rate
-  is 48.5% to 49.0%, with an upper bound of 50% to 52%.
-- **From 2019 to 2024 even the generous upper bound is under 60%.** That is
-  six years out of eight, more than the five the plan asked for.
-- **2025 and 2026 cannot be measured this way.** Gold moved from about $2,600
-  to over $4,000, so a $1 step went from a real move to noise: 271 and 780
-  steps an evening. The true rate is somewhere between the count and the
-  upper bound. Nothing shows it clears the bar, and a 100-point grid written
-  for gold near $1,900 is far too tight for gold at $4,000.
+  is 48.5% to 49.0%; even the generous estimate is 50% to 52%.
+- **Through 2025 even the generous estimate is under 60%.** That is seven
+  years out of eight; the plan asked for five.
+- **The low numbers for 2025 and 2026 are the candles, not the market.** Gold
+  went from about $2,600 at the start of 2025 to about $4,500 in 2026, so a
+  $1 step went from a real move to noise: 271 and 780 steps an evening. The
+  40.0% and 30.6% are too low for that reason; they are not a sign that gold
+  runs one way. A 100-point grid written for gold near $1,800 is also far too
+  tight for gold at $4,500.
 - **The Owl's hours are not special.** Thursday evenings give 46% to 51%
   through 2024 (Friday evenings have no market and sat out), and London hours
   give 44% to 47%. The Asian session does not bounce more than the rest.
+
+#### Extra check, added after the first results: bigger steps
+
+Not in the plan, so it changes no reading. The same count on steps of $1, $2,
+$5 and $10, taking for each year the smallest step the candles can resolve
+(fewer than one step in ten too fast):
+
+| Year | Step | Bounce rate               | Too fast |
+| ---- | ---- | ------------------------- | -------- |
+| 2019 | $2   | 47.2% (plus or minus 4.8) | 9%       |
+| 2020 | $5   | 51.7% (5.3)               | 6%       |
+| 2021 | $1   | 48.5% (1.6)               | 7%       |
+| 2022 | $1   | 49.0% (1.5)               | 9%       |
+| 2023 | $1   | 48.9% (2.3)               | 4%       |
+| 2024 | $2   | 47.7% (2.2)               | 8%       |
+| 2025 | $5   | 47.7% (2.2)               | 5%       |
+| 2026 | $10  | 47.3% (2.4)               | 9%       |
+
+Every year sits between 47% and 52%, 2025 and 2026 included: the next step is
+a coin flip at every size the candles can see, 8 to 13 points short of the
+60% a fade needs. What stays unmeasured is the $1 step itself in 2025 and
+2026; that needs tick data, which this study did not use. The script is kept
+at `~/jvd-outputs/2026-11-17/owl-study/tools/owl_check_steps.py`.
 
 ### Part 2: a grid with the Owl's passive numbers (our reading, an illustration)
 

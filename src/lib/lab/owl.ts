@@ -80,7 +80,7 @@ export interface BounceCount {
   onward: number
   /** Steps that came two or more inside one price move of a candle: there the candle cannot show a bounce in between. */
   fast: number
-  /** Bounces and onward steps counting only the first step of each price move (added after the first run, as an upper bound on the bounce rate). */
+  /** Bounces and onward steps counting only the first step of each price move (added after the first run as a generous estimate of the bounce rate; it leans toward bounces and is not a strict limit). */
   firstBounces: number
   firstOnward: number
 }
