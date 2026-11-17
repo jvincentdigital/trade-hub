@@ -755,6 +755,150 @@ describe('2.7 red news', () => {
   })
 })
 
+// ── The hold study (docs/v1-hold-study.md) ────────────────────────────────
+
+describe('hold study: no time exit, the market stays busy, overnight costs', () => {
+  const twoDays = (): Bar[] => {
+    const day: Bar[] = [...quiet(B, 30), ...sellSetup(B)]
+    const rest = quiet(B - 0.0002, 96 - day.length)
+    return [...day, ...rest, ...day, ...rest]
+  }
+
+  it('without the option nothing changes: the trade still closes at 16:30 London', () => {
+    const d = dataOf(flatBars(1.303))
+    const r = prepareV1(d, S0, sellSignal(d, 39, 1.305, 1.295), 0.5)
+    if ('why' in r) throw new Error(r.why)
+    expect(r.walk.why).toBe('time')
+    expect(r.walk.exitTime).toBe(S0.timeExit)
+  })
+  it('hold: no time exit, the trade runs past 16:30 to the end of the data', () => {
+    const d = dataOf(flatBars(1.303))
+    const r = prepareV1(d, S0, sellSignal(d, 39, 1.305, 1.295), 0.5, undefined, 'free')
+    if ('why' in r) throw new Error(r.why)
+    expect(r.deadline).toEqual({ at: Infinity, why: 'news' })
+    expect(r.walk.why).toBe('end')
+    expect(r.walk.exitTime).toBe(d.m1[d.m1.length - 1].time)
+  })
+  it('hold: red news on a later day still closes the trade 30 minutes before', () => {
+    const news: NewsEvent[] = [{ time: DAY0 + 86_400 + 12 * 3600, currency: 'USD', event: 'CPI' }]
+    const d = dataOf(flatBars(1.303, 192), news)
+    const r = prepareV1(d, S0, sellSignal(d, 39, 1.305, 1.295), 0.5, undefined, 'free')
+    if ('why' in r) throw new Error(r.why)
+    expect(r.walk.why).toBe('news')
+    expect(r.walk.exitTime).toBe(DAY0 + 86_400 + 11.5 * 3600)
+  })
+  it('hold: the entry gate is unchanged (under 90 minutes to 16:30 London is still passed)', () => {
+    const d = dataOf(flatBars(1.303))
+    const late = sellSignal(d, 61, 1.305, 1.295) // order time 15:30 UTC, 60 minutes before 16:30
+    expect(prepareV1(d, S0, late, 0.5, undefined, 'free')).toEqual({
+      why: 'under 90 minutes to the forced close',
+    })
+  })
+  it('financing: a buy held over one rollover pays one night on the fill price', () => {
+    const gold = londonMarket('XAUUSD')
+    const t0 = DAY0 + 21 * 3600 + 58 * 60 // Monday 21:58 UTC
+    const m1: OHLCCandle[] = Array.from({ length: 6 }, (_, n) => ({
+      time: t0 + n * 60,
+      open: 4000,
+      high: 4001,
+      low: 3999,
+      close: 4000,
+    }))
+    const walk = (overnight: boolean) =>
+      walkExits({
+        m: gold,
+        m1,
+        from: 0,
+        long: true,
+        E: 4000,
+        stop: 3900,
+        targets: [{ price: 4100, share: 1, why: 'target' }],
+        deadline: t0 + 4 * 60, // 22:02, after the 22:00 rollover
+        deadlineWhy: 'news',
+        ...(overnight ? { overnight: { from: t0 } } : {}),
+      })
+    const flat = walk(false).fills[0].price
+    const held = walk(true).fills[0].price
+    expect(flat).toBeCloseTo(4000 - 4000 * gold.slippage, 9)
+    // Rollover hour: slippage x2. One Monday night at the buy rate on the fill E.
+    const night = (4000 * labMarket('XAUUSD').swap[0]) / 365
+    expect(held).toBeCloseTo(4000 - 2 * 4000 * gold.slippage - night, 9)
+    expect(night).toBeGreaterThan(0.5)
+  })
+  it('financing: Wednesday counts three nights, and nothing is charged before the first rollover', () => {
+    const wed = DAY0 + 2 * 86_400
+    // Every minute from 20:00 to 23:10 UTC, so no candle counts as a reopen after a gap.
+    const m1: OHLCCandle[] = Array.from({ length: 191 }, (_, n) => ({
+      time: wed + 20 * 3600 + n * 60,
+      open: 1.3,
+      high: 1.3001,
+      low: 1.2999,
+      close: 1.3,
+    }))
+    const sellAt = (deadline: number) =>
+      walkExits({
+        m: GBP,
+        m1,
+        from: 0,
+        long: false,
+        E: 1.3,
+        stop: 1.32,
+        targets: [{ price: 1.28, share: 1, why: 'target' }],
+        deadline,
+        deadlineWhy: 'news',
+        overnight: { from: wed + 20 * 3600 },
+      }).fills[0].price
+    const before = sellAt(wed + 21 * 3600)
+    const after = sellAt(wed + 23 * 3600)
+    // A sell pays on the price it buys back at: three nights at the pound's rate.
+    const three = (1.3 * labMarket('GBPUSD').swap[1] * 3) / 365
+    expect(before).toBeCloseTo(
+      forcedFill({ ...GBP, spread: GBP.spread * 4, slippage: GBP.slippage * 2 }, false, 1.3),
+      9,
+    )
+    expect(after - forcedFill({ ...GBP, spread: GBP.spread * 1.5 }, false, 1.3)).toBeCloseTo(
+      three,
+      9,
+    )
+  })
+  it('wider spread at the rollover: a sell is stopped where the normal spread would not reach', () => {
+    const t0 = DAY0 + 21 * 3600 + 30 * 60 // 21:30 UTC, inside the rollover hours
+    const m1: OHLCCandle[] = [{ time: t0, open: 1.3, high: 1.3017, low: 1.2999, close: 1.3 }]
+    const walk = (overnight: boolean) =>
+      walkExits({
+        m: GBP,
+        m1,
+        from: 0,
+        long: false,
+        E: 1.3,
+        stop: 1.302,
+        targets: [{ price: 1.29, share: 1, why: 'target' }],
+        deadline: Infinity,
+        deadlineWhy: 'news',
+        ...(overnight ? { overnight: { from: t0 } } : {}),
+      })
+    expect(walk(false).why).toBe('end')
+    expect(walk(true).why).toBe('stop')
+  })
+  it('hold: a market takes no new trade while its trade from the day before is still open', () => {
+    const d = dataOf(twoDays())
+    const frozen = runLondon([d], { k: 2, b: 0.5 }, DAY0, DAY0 + 2 * 86_400)
+    expect(frozen.trades.map((t) => [t.day, t.why])).toEqual([
+      ['2025-11-17', 'time'],
+      ['2025-11-18', 'time'],
+    ])
+    const held = runLondon([d], { k: 2, b: 0.5, hold: 'free' }, DAY0, DAY0 + 2 * 86_400)
+    expect(held.trades.map((t) => [t.day, t.why])).toEqual([['2025-11-17', 'end']])
+    expect(held.outcomes.filter((o) => o.result === 'trade open')).toHaveLength(1)
+  })
+  it('the hold option is for plain v1 only', () => {
+    const d = dataOf(flatBars(1.303))
+    expect(() =>
+      runLondon([d], { k: 2, b: 0.5, mode: 'flip', hold: 'costs' }, DAY0, DAY0 + 86_400),
+    ).toThrow()
+  })
+})
+
 // ── 2.8 Size and limits ───────────────────────────────────────────────────
 
 describe('2.8 size and limits', () => {
