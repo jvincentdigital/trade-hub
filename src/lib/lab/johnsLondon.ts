@@ -97,7 +97,15 @@ export const THIRDS = { rungs: [0.786, 0.836, 0.886] } as const
  */
 export const RACE = { entryFrom: 6 * HOUR, entryTo: 16.5 * HOUR, flat: 16.75 * HOUR } as const
 
-export const M15 = 900
+/**
+ * The chart's candle size in seconds. 15 minutes in v1 and everywhere live.
+ * Only the 30-minute lab study (docs/v1-30m-study.md) changes it, through
+ * `setChartSec`, and sets it back.
+ */
+export let M15 = 900
+export function setChartSec(sec: number) {
+  M15 = sec
+}
 /** 2025-11-11 00:00 UTC: the design year starts cold here (section 10). */
 export const DESIGN_START = 1_762_819_200
 
