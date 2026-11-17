@@ -488,8 +488,18 @@ trades on the weekend`), so it can't open later at a stale price. Claude's
 
 Live v1 holds to stop or target. The backtest that passed used a 16:30
 London clock exit (or 30 minutes before red news), not a hold. So the forward
-test is not yet testing the exact rule that passed. A hold-rule backtest is
-planned for the Trading turn (from 2026-12-29).
+test is not testing the exact rule that passed.
+
+The hold-rule backtest was run on 2026-11-17 (`docs/v1-hold-study.md` on
+branch `lab/v1-hold`, draft PR #31, plan written first). On the two years the
+rule had already seen, holding came out about the same as the clock: +24.8R
+against +27.6R on the test year and +22.2R against +24.1R on the settings
+year, with overnight costs. In the test year 35 of the 97 clock-rule trades
+ended at 16:30 and carried +21.4R of the +27.6R; held, those trades kept most
+of it (+18.3R against +20.3R for the 32 also taken). Winners are fewer and
+bigger under the hold (51% won against 58%). It is a description of seen
+years, not proof. The Today scorecard and the Compare text use the hold
+numbers since then.
 
 John, about 14:40 AST, poll answer "Everything holds": "When we're negative
 like that, we can just hold the trades. You don't have to wait till the New

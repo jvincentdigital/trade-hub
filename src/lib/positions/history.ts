@@ -131,19 +131,25 @@ export interface Yardstick {
 }
 
 /**
- * John's London v1 on its clean year (November 2024 to November 2025): 97
- * trades, 58% won, +0.28R a trade, worst drop 9.6% (the same numbers as
- * PAST_TESTS in race/compare.ts; source: London strategy report, 2026-11-11).
- * The breakout trades in the second test have no past test, so that test has
- * no yardstick.
+ * John's London v1 on its test year (November 2024 to November 2025), run
+ * with the exit the live account has used since 2026-11-12: a trade holds to
+ * its stop, its targets or red news, with no 16:30 London close. 93 trades,
+ * 51% won, +0.27R a trade, worst drop 12.4% (docs/v1-hold-study.md on branch
+ * lab/v1-hold, run 2026-11-17; without overnight costs, because the
+ * play-money race charges none). The rule that passed the one-time test
+ * closed at 16:30 London and showed 97 trades, 58% won, +0.28R, worst drop
+ * 9.6% (PAST_TESTS in race/compare.ts). The hold run came after that year
+ * had been seen, so it is a yardstick, not proof. The breakout trades in the
+ * second test have no past test, so that test has no yardstick.
  */
 export const YARDSTICKS: Record<FundedTestId, Yardstick | null> = {
   v1: {
-    winRate: 0.58,
-    avgR: 0.28,
-    maxDrawdown: 0.096,
-    tradesPerWeek: 97 / 52,
-    source: 'its test year, November 2024 to November 2025',
+    winRate: 0.51,
+    avgR: 0.27,
+    maxDrawdown: 0.124,
+    tradesPerWeek: 93 / 52,
+    source:
+      'its test year (November 2024 to November 2025) run with the same hold rule. A yardstick, not proof: that year had already been seen',
   },
   breakouts: null,
 }

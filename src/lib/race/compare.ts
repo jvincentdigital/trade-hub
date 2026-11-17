@@ -47,7 +47,7 @@ const lab = (test: string, older: string): PastTest => ({
 export const PAST_TESTS: Record<string, PastTest> = {
   [JOHNS_LONDON.id]: {
     evidence: 'passed',
-    text: 'Passed its one-time test on a clean year it had never seen (November 2024 to November 2025): $10,000 became $16,896 on 97 trades, 58% won, +0.28R a trade, worst drop 9.6%. One good year is a good sign, not proof. Source: London strategy report, 2026-11-11.',
+    text: 'Passed its one-time test on a clean year it had never seen (November 2024 to November 2025): $10,000 became $16,896 on 97 trades, 58% won, +0.28R a trade, worst drop 9.6%. One good year is a good sign, not proof. That test closed every trade at 16:30 London; the live account holds trades since 2026-11-12. Run again with the hold rule, that same year (already seen by then) made $16,071 on 93 trades, 51% won, worst drop 12.4%. Sources: London strategy report, 2026-11-11; hold study, 2026-11-17.',
   },
   'lab-rsi-us30': lab('+$4,986 on 59 trades', '-$5,649 on 462 trades'),
   'lab-fib-eurusd-4h': lab('+$2,648 on 37 trades', '-$8,588 on 305 trades'),
