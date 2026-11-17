@@ -304,6 +304,147 @@ choosing years, the ranking, the 10 candidates, the checks and the three
 readings. The preset files themselves leave the robot's clock off, so this is
 how the robot runs when nobody switches it off.
 
-## Results
+## Results (2026-11-17)
 
-Not run yet.
+Outputs: `~/jvd-outputs/2026-11-17/owl-copy/`. The code was frozen at commit
+`a1ebf80` before any number from 2023 or later was computed; one later commit
+(`d2fe239`) added a view and a zero-cost sanity run on the choosing years
+without changing any rule.
+
+**In one line: as sold it loses every year, its entry signal is no better
+than a coin flip, and none of 1,080 versions of its own settings made money,
+in the years used for choosing or in the years kept for checking.**
+
+### The check on the code
+
+- A helper wrote its own Part A from the plan page alone, in Python. Its
+  result and ours agree on all 621 evenings of 2019 to 2022 to the cent
+  (result, stops, targets, trades). The helper's list of 16 places where it
+  had to make a choice matched ours in every case.
+- 18 unit tests on hand-made prices.
+
+### Part A: the Owl as sold (passive 50k file, the seller's hours)
+
+$50,000 play account, 1,157 evenings. Year results in dollars and percent of
+the balance at the start of the year.
+
+| Year | Evenings | Best cost       | Typical cost    | Price-scaled cost | Evenings stopped (typical) |
+| ---- | -------- | --------------- | --------------- | ----------------- | -------------------------- |
+| 2019 | 154      | -$1,355 (-2.7%) | -$1,932 (-3.9%) | -$1,765 (-3.5%)   | 0                          |
+| 2020 | 156      | -$3,894 (-8.0%) | -$3,179 (-6.6%) | -$5,060 (-10.5%)  | 0                          |
+| 2021 | 155      | -$1,338 (-3.0%) | -$1,884 (-4.2%) | -$1,925 (-4.5%)   | 0                          |
+| 2022 | 156      | -$1,685 (-3.9%) | -$2,122 (-4.9%) | -$2,192 (-5.3%)   | 0                          |
+| 2023 | 94       | -$636 (-1.5%)   | -$1,119 (-2.7%) | -$1,157 (-3.0%)   | 0                          |
+| 2024 | 155      | -$2,943 (-7.2%) | -$3,822 (-9.6%) | -$4,577 (-12.1%)  | 1                          |
+| 2025 | 154      | -$15,288 (-40%) | -$16,349 (-46%) | -$20,661 (-62%)   | 13                         |
+| 2026 | to ruin  | -$17,921 (-78%) | -$14,646 (-75%) | -$7,733 (-61%)    | 70                         |
+
+At every cost level $50,000 ended under $5,000, and the account stopped
+trading in 2026 (in September, July and April for the three cost levels).
+
+- **2019 to 2024, the years the candles resolve well: a loss every year**, 2%
+  to 12%, with at most one stopped evening a year. It is a slow leak, not a
+  crash.
+- **Where the money goes** (typical cost, 2019 to 2022): closes at a target
+  +$15,860, closes at the end of the evening -$24,977, no stop. The piles
+  that reach their target pay less than the unfinished piles cost.
+- **2025 and 2026: wiped out.** Gold moves several dollars a minute, the
+  file's $1 steps are far too tight, and the 4% stop fires on 13 and then 70
+  evenings. These two years are the least reliable in this test (see Limits),
+  but the direction is not in doubt.
+- **The three sensitivity runs change nothing:** resized first trade refused
+  $4,891 at the end; starting over after a stop $2,788; reversed order inside
+  a candle $4,920. Each loses in every year.
+
+### Part B: does the signal pay for itself?
+
+Average move 15 minutes after a fresh signal, in its direction, dollars per
+ounce (plus or minus two standard errors across evenings).
+
+| Year | Fresh signals | Cost bar | Move after the signal | Same, with the evening's drift taken out |
+| ---- | ------------- | -------- | --------------------- | ---------------------------------------- |
+| 2019 | 9,707         | $0.27    | +$0.013 (0.021)       | -$0.011 (0.018)                          |
+| 2020 | 9,633         | $0.34    | -$0.056 (0.045)       | -$0.096 (0.045)                          |
+| 2021 | 9,908         | $0.35    | -$0.032 (0.024)       | -$0.060 (0.023)                          |
+| 2022 | 9,966         | $0.35    | -$0.031 (0.029)       | -$0.066 (0.026)                          |
+| 2023 | 6,087         | $0.38    | +$0.002 (0.031)       | -$0.028 (0.030)                          |
+| 2024 | 9,963         | $0.46    | -$0.027 (0.032)       | -$0.063 (0.032)                          |
+| 2025 | 9,553         | $0.67    | -$0.040 (0.095)       | -$0.159 (0.095)                          |
+| 2026 | 8,045         | $0.87    | +$0.110 (0.195)       | -$0.187 (0.182)                          |
+
+**The reading fixed in the plan: the signal does not pay its cost over 15
+minutes** (0 of 8 years above the bar; the best year is a tenth of the bar).
+With the evening's drift taken out, the move is against the signal in all 8
+years, and by more than two standard errors in 6 of them. After the robot's
+"go" moment the price tends to slip back a little. The 5 and 60 minute moves
+tell the same story.
+
+### Part C: can a tweak make it pay?
+
+**Choosing years (2019 to 2022), typical cost: 0 of 1,080 versions ended above
+$50,000.** There were no candidates to check.
+
+| Hours and signal                     | Versions | Made money | Median end | Best end |
+| ------------------------------------ | -------- | ---------- | ---------- | -------- |
+| Owl evenings, signal as sold         | 180      | 0          | $42,901    | $47,809  |
+| Owl evenings, short average inverted | 180      | 0          | $45,614    | $48,112  |
+| London hours, signal as sold         | 180      | 0          | $12,847    | $39,785  |
+| London hours, short average inverted | 180      | 0          | $28,880    | $42,623  |
+| Whole trading day, signal as sold    | 180      | 0          | $4,983     | $35,983  |
+| Whole trading day, inverted          | 180      | 0          | $11,056    | $37,512  |
+
+- The least bad version is the one that does the least: Owl evenings, the
+  widest step, no growth in size, at most 4 trades a side, signal inverted.
+  It lost 3.8%.
+- **Leaving it on all day (Amendment 1) is the worst choice, not a fix.** The
+  seller's rule to close at midnight limits the damage; it does not cause it.
+- The as-sold version is in the better third (place 295 of 1,080).
+
+**Checking years (2023 to November 2026), run once:** 0 of 1,080 ended above
+$50,000; the median version ended at $11,248; the as-sold version at $4,945
+(place 930). The rank correlation between a version's result in the two
+periods is 0.86: the versions that lose least keep losing least, and none
+crosses into profit.
+
+**The reading fixed in the plan: no tweak survives.**
+
+**A sanity check outside the plan** (choosing years only): with no spread and
+no commission at all, 211 of the 1,080 versions end above $50,000: 4 with the
+signal as sold and 207 with it inverted. So the code can produce winners; the
+robot's own signal loses even for free, its mirror image is about break-even
+for free, and real costs sink both.
+
+### What this means
+
+1. **The copy works and matches the public rules.** We own it, and we can
+   change it.
+2. **The Owl as sold is a slow leak that turns into a wipe-out when gold gets
+   fast.** Its settings were written for gold near $1,800.
+3. **There is nothing in its entries to build on.** The signal is slightly
+   worse than a coin flip, so all the money management on top of it is moving
+   risk around, and the costs decide the result.
+4. **Tweaking its own settings does not fix it**: not the step, not the size
+   growth, not the stop, not the hours, not flipping the signal.
+
+Recommendation, by the plan: do not build an Owl-style account. What is worth
+keeping from the Owl is on the decode side: knowing what it really is, and
+its seller's risk habits (a daily loss limit, a daily goal, no trading around
+red news).
+
+### Deviations from the plan
+
+- Amendment 1 (whole trading day), written before any number from 2023 or
+  later.
+- The spread-of-results view and the zero-cost run were added after the code
+  freeze; they use the choosing years only and changed no result (the
+  typical-cost choosing run is identical value by value before and after).
+- Part C produced no candidates, so the candidate checks (twins, price-scaled
+  cost, reversed order, two periods) had nothing to run on. The checking
+  years were still run once, for all 1,080 versions.
+
+### What would still change the picture
+
+- Watching the real file trade on a free demo account. It is the only way to
+  know whether the compiled Owl differs from the public code.
+- Tick data for 2025 and 2026. It would sharpen those two years; it cannot
+  rescue 2019 to 2024, where the candles are good enough and every year loses.
