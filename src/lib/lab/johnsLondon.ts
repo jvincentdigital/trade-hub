@@ -28,7 +28,7 @@ import type { OHLCCandle } from '../types/market'
 import { atrSeries } from '../race/londonBreakout'
 import { seeded } from './control'
 import { fibLevel, impulseAt } from './fib'
-import { labMarket, slippageAt, spreadAt, type LabMarket } from './markets'
+import { costMultAt, labMarket, slippageAt, spreadAt, swapCost, type LabMarket } from './markets'
 import { inWindow, newsWindows, nextWindowStart, type NewsEvent, type Window } from './news'
 import { directionTest } from './stats'
 import { DAY, HOUR, MIN, londonSummer, nyOffset, nySummer, utcWeekday } from './time'
@@ -558,6 +558,17 @@ export interface Walk {
   tp1Hit: boolean
 }
 
+/** Two 1-minute candles this far apart are a reopen (the weekend, gold's daily halt) for the overnight costs. */
+const REOPEN_GAP = 30 * MIN
+
+/** The market with the lab's wider spread and slippage for this candle: the rollover, late night, the first candle after a gap. */
+function widened(m: LabMarket, b: OHLCCandle, prev: OHLCCandle | undefined): LabMarket {
+  const c = costMultAt(m, b.time, MIN, prev != null && b.time - prev.time >= REOPEN_GAP, [])
+  return c.spread === 1 && c.slippage === 1
+    ? m
+    : { ...m, spread: m.spread * c.spread, slippage: m.slippage * c.slippage }
+}
+
 /**
  * Walk 1-minute candles from index `from`: forced close at the open of the
  * first candle at or after the deadline, else the stop (it counts first),
@@ -574,42 +585,47 @@ export function walkExits(o: {
   deadline: number
   deadlineWhy: ExitWhy
   mult?: number
+  /**
+   * The hold study only (docs/v1-hold-study.md): a trade that may stay open
+   * overnight pays the lab's overnight costs. Spread and slippage widen by
+   * the hour and after a gap (`costMultAt`), and each fill's price carries
+   * the financing since `from`, on the side against the trade (`swapCost`).
+   * v1 as frozen is flat the same day and passes none.
+   */
+  overnight?: { from: number }
 }): Walk {
   const { m, m1, long, E, stop, targets, deadline } = o
   const mult = o.mult ?? 1
   const fee = m.fee * mult
   const dir = long ? 1 : -1
+  const on = o.overnight
   const fills: Fill[] = []
   let left = 1
   let next = 0
   const close = (b: OHLCCandle, share: number, price: number, why: ExitWhy, atOpen = false) => {
-    fills.push({ time: b.time, atOpen, share, price, why })
+    const paid = on ? swapCost(m, long, on.from, b.time, E).cost : 0
+    fills.push({ time: b.time, atOpen, share, price: price - dir * paid, why })
     left -= share
   }
   for (let i = o.from; i < m1.length && left > 1e-12; i++) {
     const b = m1[i]
+    const mm = on ? widened(m, b, m1[i - 1]) : m
     if (b.time >= deadline) {
-      close(b, left, forcedFill(m, long, b.open, mult), o.deadlineWhy, true)
+      close(b, left, forcedFill(mm, long, b.open, mult), o.deadlineWhy, true)
       break
     }
-    if (stopHit(m, long, b, stop, mult)) {
-      close(b, left, stopFill(m, long, b, stop, mult), 'stop')
+    if (stopHit(mm, long, b, stop, mult)) {
+      close(b, left, stopFill(mm, long, b, stop, mult), 'stop')
       break
     }
-    while (next < targets.length && targetHit(m, long, b, targets[next].price, mult)) {
+    while (next < targets.length && targetHit(mm, long, b, targets[next].price, mult)) {
       const t = targets[next++]
       close(b, next === targets.length ? left : Math.min(t.share, left), t.price, t.why)
     }
   }
   if (left > 1e-12 && m1.length) {
     const last = m1[m1.length - 1]
-    fills.push({
-      time: last.time,
-      atOpen: false,
-      share: left,
-      price: forcedFill(m, long, last.close, mult),
-      why: 'end',
-    })
+    close(last, left, forcedFill(m, long, last.close, mult), 'end')
   }
   const pnl = fills.reduce((a, f) => a + f.share * (dir * (f.price - E) - fee * (E + f.price)), 0)
   const lastFill = fills[fills.length - 1]
@@ -1111,6 +1127,8 @@ export function prepareV1(
   sig: LondonSignal,
   b: number,
   chart?: Chart,
+  /** The hold study (docs/v1-hold-study.md): no time exit, the trade runs to its stop, its targets or the next red news. 'costs' charges the lab's overnight costs, 'free' does not. Entry checks are unchanged. */
+  hold?: 'costs' | 'free',
 ): Ready | { why: string } {
   const m = d.market
   const T = sig.T
@@ -1137,6 +1155,9 @@ export function prepareV1(
   if (isWhy(ref)) return { why: 'no chase: no plan at the signal close' }
   if (plan.reward < V1.noChase * ref.reward || plan.rr < V1.noChase * ref.rr)
     return { why: 'no chase' }
+  const end: { at: number; why: ExitWhy } = hold
+    ? { at: nextWindowStart(d.windows, T), why: 'news' }
+    : fc
   const walk = walkExits({
     m,
     m1: d.m1,
@@ -1148,10 +1169,11 @@ export function prepareV1(
       { price: tp1, share: 0.5, why: 'tp1' },
       { price: tp2, share: 0.5, why: 'tp2' },
     ],
-    deadline: fc.at,
-    deadlineWhy: fc.why,
+    deadline: end.at,
+    deadlineWhy: end.why,
+    ...(hold === 'costs' ? { overnight: { from: d.m1[iE].time } } : {}),
   })
-  return { entryIdx: iE, entryTime: d.m1[iE].time, p, E, plan, deadline: fc, walk }
+  return { entryIdx: iE, entryTime: d.m1[iE].time, p, E, plan, deadline: end, walk }
 }
 
 // ── v1-flip: the ride (section 3) ─────────────────────────────────────────
@@ -1454,10 +1476,13 @@ class Engine {
   trades: LondonTrade[] = []
   outcomes: Outcome[] = []
   private seq = 0
+  /** The hold study: the event key at which each market's last trade ends, so a held trade keeps its market busy on later days. */
+  private heldUntil = new Map<LondonMarketId, number>()
 
   constructor(
     readonly strategy: 'v1' | 'ny',
     start: number,
+    readonly hold = false,
   ) {
     this.acct = new LondonAccount(start)
   }
@@ -1488,6 +1513,7 @@ class Engine {
       )
     )
       return 'trade open'
+    if (this.hold && (this.heldUntil.get(st.d.id) ?? -Infinity) >= decKey) return 'trade open'
     if (st.opened >= V1.maxPerDay) return '2 trades today'
     return null
   }
@@ -1565,6 +1591,7 @@ class Engine {
     }
     this.trades.push(t)
     st.open = { trade: t, endKey: Math.max(...t.fills.map(fillKey)) }
+    if (this.hold) this.heldUntil.set(d.id, st.open.endKey)
     st.opened++
     return t
   }
@@ -1618,6 +1645,14 @@ export interface RunOptions {
   ext?: number
   g?: number
   startMoney?: number
+  /**
+   * Lab study only (docs/v1-hold-study.md): the live race's exits since
+   * 2026-11-12. No time exit: a trade ends at its stop, its targets or 30
+   * minutes before the next red news, and its market takes no new trade
+   * meanwhile. 'costs' adds the lab's overnight costs, 'free' leaves them
+   * out. Plain v1 only.
+   */
+  hold?: 'costs' | 'free'
 }
 
 /**
@@ -1627,9 +1662,10 @@ export interface RunOptions {
  */
 export function runLondon(data: LondonData[], o: RunOptions, from: number, to: number): RunResult {
   const mode = o.mode ?? 'v1'
+  if (o.hold && mode !== 'v1') throw new Error('the hold option is for plain v1 only')
   const ext = o.ext ?? FLIP_GRID.ext[0]
   const g = o.g ?? FLIP_GRID.g[0]
-  const eng = new Engine('v1', o.startMoney ?? V1.startMoney)
+  const eng = new Engine('v1', o.startMoney ?? V1.startMoney, o.hold != null)
   let signals = 0
   let rideCount = 0
   const stats: ThirdsStats = {
@@ -1652,7 +1688,7 @@ export function runLondon(data: LondonData[], o: RunOptions, from: number, to: n
       const tr = trackDay(d.c15, d.atr, s, o.k)
       for (const sig of tr.signals) {
         signals++
-        const ready = prepareV1(d, s, sig, o.b)
+        const ready = prepareV1(d, s, sig, o.b, undefined, o.hold)
         const decKey = eventKey(sig.T, 1)
         const key = decisionKey(ready, sig.T)
         eng.add(st, key, 1, () => {
@@ -2207,6 +2243,7 @@ function legR(
   iE: number,
   p: number,
   deadline: { at: number; why: ExitWhy },
+  overnight = false,
 ): number {
   const m = d.market
   const E = entryFill(m, long, p)
@@ -2225,20 +2262,26 @@ function legR(
     })),
     deadline: deadline.at,
     deadlineWhy: deadline.why,
+    ...(overnight ? { overnight: { from: d.m1[iE].time } } : {}),
   })
   return w.pnl / riskPerUnit(m, E, stop, p)
 }
 
 /** Mirror: the same minute, the other way, same distances from its own fill, same exit rules and clock closes, same costs. */
-export function mirrorR(t: LondonTrade, d: LondonData): number {
+export function mirrorR(t: LondonTrade, d: LondonData, hold?: 'costs' | 'free'): number {
   const iE = firstAtOrAfter(d.m1, t.entryTime)
-  return legR(d, t, !t.long, iE, t.p, { at: t.deadline, why: t.deadlineWhy })
+  return legR(d, t, !t.long, iE, t.p, { at: t.deadline, why: t.deadlineWhy }, hold === 'costs')
 }
 
 /** Mirror z for a list of trades (directionTest in stats.ts). Not for thirds trades. */
-export function mirrorTest(trades: LondonTrade[], byId: Map<LondonMarketId, LondonData>) {
+export function mirrorTest(
+  trades: LondonTrade[],
+  byId: Map<LondonMarketId, LondonData>,
+  /** The hold study: the mirrored trades hold and pay overnight costs the same way. */
+  hold?: 'costs' | 'free',
+) {
   const real = trades.map((t) => t.r)
-  const mirror = trades.map((t) => mirrorR(t, byId.get(t.market)!))
+  const mirror = trades.map((t) => mirrorR(t, byId.get(t.market)!, hold))
   return { ...directionTest(real, mirror), mirrorTotal: mirror.reduce((a, x) => a + x, 0) }
 }
 
@@ -2273,6 +2316,8 @@ export function coinRun(
   trades: LondonTrade[],
   byId: Map<LondonMarketId, LondonData>,
   seed: number,
+  /** The hold study: the coin-flip trades hold to the next red news and pay overnight costs the same way. */
+  hold?: 'costs' | 'free',
 ): { total: number; missed: number } {
   const rnd = seeded(seed)
   let total = 0
@@ -2291,9 +2336,12 @@ export function coinRun(
       const iE = entryMinute(d.m1, T)
       if (iE < 0) continue
       const limit = d.m1[iE].time + V1.rideLimit
-      const deadline: { at: number; why: ExitWhy } =
-        t.kind === 'ride' && limit < fc.at ? { at: limit, why: 'limit' } : fc
-      total += legR(d, t, long, iE, d.m1[iE].open, deadline)
+      const deadline: { at: number; why: ExitWhy } = hold
+        ? { at: nextWindowStart(d.windows, T), why: 'news' }
+        : t.kind === 'ride' && limit < fc.at
+          ? { at: limit, why: 'limit' }
+          : fc
+      total += legR(d, t, long, iE, d.m1[iE].open, deadline, hold === 'costs')
       done = true
     }
     if (!done) missed++

@@ -71,10 +71,10 @@ The same files as the v1 freeze, checked against the SHA-256 values in the
 freeze record before a candle is read: Dukascopy 1-minute BID candles for
 GBP/USD and gold, and the red-news list. Two years, both already seen:
 
-| Year   | Dates                    | Status                                         |
-| ------ | ------------------------ | ---------------------------------------------- |
+| Year   | Dates                    | Status                                            |
+| ------ | ------------------------ | ------------------------------------------------- |
 | Clean  | 2024-11-11 to 2025-11-10 | v1's settings were not chosen on it; seen 5 times |
-| Design | 2025-11-11 to 2026-11-10 | chose v1's k and b                              |
+| Design | 2025-11-11 to 2026-11-10 | chose v1's k and b                                |
 
 Neither year is fresh, so nothing here is proof. The question it can answer
 is narrower: on the same two years, does holding keep, improve or break what
