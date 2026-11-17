@@ -103,6 +103,38 @@ A test **passes** when all five hold, after costs:
   study printed gold's average evening drift for those years.
 - Play money only. No broker is connected. This is not financial advice.
 
+## Amendment 1: the clock (2026-11-17, before any return was computed)
+
+The planned clock check failed on all three files, and it showed why. In 2007
+to 2018, in the three or four weeks a year when the United States and Europe
+change their clocks on different dates, the converted files were one hour
+late: candles stamped after Friday 17:00 New York and a weekly reopen an hour
+late. From 2019 on no week was affected. The check's own pass line (90% of a
+year's weekends inside a window) also counted thin weeks and holidays as
+failures, which is not what it is for.
+
+**Repair, from the stamps alone (no price was read).** A week with a candle
+after Friday 17:00 New York is moved one hour earlier. A week that starts
+before the Sunday reopen (17:00 for EUR/USD, 18:00 for gold and the index) is
+moved one hour later. A week that one hour cannot explain is left out.
+
+| File    | Weeks moved earlier | Moved later | Left out |
+| ------- | ------------------- | ----------- | -------- |
+| EUR/USD | 41 (2007 to 2018)   | 1 (2006)    | 1 (2005) |
+| Gold    | 29 (2009 to 2018)   | 0           | 5 (2009) |
+| S&P 500 | 25 (2011 to 2018)   | 0           | 1 (2011) |
+
+**New pass line for the clock check:** no week has a candle while the market
+is shut. All three repaired files pass. Thin weeks stay in; the 5-minute rule
+skips the trades they cannot price.
+
+Known gap: in 2023 the free files are thin at the edges of many weeks. A week
+that is both thin and an hour off could not be seen by this check.
+
+Repaired files (sha256, first 16 characters): EUR/USD fdd9fe3c46956539, gold
+2ee908c82589366e, S&P 500 6722951418d34fcb. Everything else in the plan is
+unchanged.
+
 ## Results
 
 Not run yet.

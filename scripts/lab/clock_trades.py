@@ -305,10 +305,98 @@ def clock(path):
     print("CLOCK CHECK: %s" % ("PASS" if bad == 0 else "FAIL in %d years" % bad))
 
 
+def weeks_of(times):
+    """Index ranges [i0, i1) of the stretches between weekend gaps (more than 40 hours without a candle)."""
+    out = []
+    i0 = 0
+    for i in range(1, len(times)):
+        if times[i] - times[i - 1] >= 40 * 3600:
+            out.append((i0, i))
+            i0 = i
+    out.append((i0, len(times)))
+    return out
+
+
+def impossible(first, last, reopen_hour):
+    """Amendment 1: a week is 'late' if it has a candle after Friday 17:00 New York, 'early' if it starts before the Sunday reopen."""
+    f = datetime.fromtimestamp(first, timezone.utc).astimezone(NY)
+    l = datetime.fromtimestamp(last, timezone.utc).astimezone(NY)
+    late = (l.weekday() == 4 and (l.hour, l.minute) > (17, 0)) or l.weekday() == 5
+    early = f.weekday() == 5 or (f.weekday() == 6 and f.hour * 60 + f.minute < reopen_hour * 60 - 5)
+    return late, early
+
+
+def clock2(path, reopen_hour):
+    """Amendment 1 check: no week may have a candle while the market is shut. No returns."""
+    times, _ = load(path)
+    per = {}
+    for i0, i1 in weeks_of(times):
+        late, early = impossible(times[i0], times[i1 - 1], reopen_hour)
+        y = datetime.fromtimestamp(times[i0], timezone.utc).astimezone(NY).year
+        p = per.setdefault(y, [0, 0, 0])
+        p[0] += 1
+        p[1] += 1 if late else 0
+        p[2] += 1 if early else 0
+    bad = sum(p[1] + p[2] for p in per.values())
+    print(" ".join("%d:%d/%d" % (y, per[y][1] + per[y][2], per[y][0]) for y in sorted(per)))
+    print("CLOCK CHECK (weeks with a candle in the shut market / weeks): %s" % ("PASS" if bad == 0 else "FAIL, %d weeks" % bad))
+
+
+def fix(path, out, reopen_hour):
+    """Amendment 1 repair: move a whole week by one hour when it has candles in the shut market. Uses stamps only."""
+    times, _ = load(path)
+    shift_at = {}
+    drop_at = {}
+    count = {}
+    unresolved = 0
+    for i0, i1 in weeks_of(times):
+        late, early = impossible(times[i0], times[i1 - 1], reopen_hour)
+        shift = -3600 if late and not early else 3600 if early and not late else 0
+        settled = not (late and early)
+        if shift:
+            still_late, still_early = impossible(times[i0] + shift, times[i1 - 1] + shift, reopen_hour)
+            if still_late or still_early:
+                settled = False
+                shift = 0
+        if not settled:
+            # A week that one hour cannot explain is left out of the file altogether.
+            unresolved += 1
+            drop_at[i0] = i1
+        if shift:
+            y = datetime.fromtimestamp(times[i0], timezone.utc).astimezone(NY).year
+            c = count.setdefault(y, [0, 0])
+            c[0 if shift < 0 else 1] += 1
+            shift_at[i0] = (i1, shift)
+    with gzip.open(path, "rt") as f, gzip.open(out, "wt") as g:
+        g.write(next(f))
+        shift = 0
+        until = -1
+        drop_until = -1
+        for i, line in enumerate(f):
+            if i in drop_at:
+                drop_until = drop_at[i]
+            if i < drop_until:
+                continue
+            if i in shift_at:
+                until, shift = shift_at[i]
+            elif i == until:
+                shift = 0
+            if shift:
+                t, rest = line.split(",", 1)
+                line = "%d,%s" % (int(t) + shift, rest)
+            g.write(line)
+    print("weeks moved an hour earlier / later, by year: " + ", ".join("%d %d/%d" % (y, count[y][0], count[y][1]) for y in sorted(count)))
+    print("weeks that one hour could not explain, left out of the file: %d" % unresolved)
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "clock":
         clock(sys.argv[2])
+    elif cmd == "clock2":
+        clock2(sys.argv[2], int(sys.argv[3]))
+    elif cmd == "fix":
+        fix(sys.argv[2], sys.argv[3], int(sys.argv[4]))
     elif cmd == "test1":
         test1(sys.argv[2], sys.argv[3])
     elif cmd == "test2":
