@@ -147,6 +147,136 @@ account John opens himself), and any change to John's London v1.
 ./node_modules/.bin/tsx scripts/lab/owl-study.ts --hist <histdata dir> --frozen <frozen 1-minute dir> --out <dir>
 ```
 
-## Results
+## Results (2026-11-17)
 
-Not run yet.
+Output: `~/jvd-outputs/2026-11-17/owl-study/` (`results.txt`, `results.json`;
+the first run's output is kept as `results-run1-flawed.txt`). 2,738,472
+1-minute gold candles, 2019-01-01 to 2026-11-10.
+
+**The reading fixed in the plan: no bounce edge.** In all 8 years the bounce
+rate in the Owl's hours is under the 60% a fade needs at the best cost.
+
+### Two faults of the study itself, found after the first run and fixed
+
+Both are faults of this test, not of the Owl, and neither touches the
+pre-registered count or its reading.
+
+1. **The grid illustration jumped its own stop.** It checked the 4% account
+   stop only four times a minute, so a fast candle carried losses far past it
+   (evenings of -$19,886 on a stop of -$2,000), and it went on "trading" an
+   account that was already wiped out. The grid now walks every price move in
+   steps of 10 cents, and a run ends when the account is under a tenth of its
+   start. The numbers below are from the corrected run.
+2. **1-minute candles are too coarse for $1 steps when gold moves fast.** In
+   2025 half of the steps, and in 2026 three quarters, came several to one
+   price move inside a single candle, where a bounce in between cannot be
+   seen. So the count now also shows that share, and an upper bound that
+   counts only the first step of each move. The upper bound is generous: it
+   drops the fast one-way runs.
+
+A count written separately in Python reproduces Part 1 exactly (same
+evenings, steps and rates for 2019 to 2025).
+
+### Part 1: the bounce count in the Owl's hours
+
+Monday to Wednesday evenings, 18:05 to 24:00 New York. 1,157 evenings
+counted, 73 sat out (thin data in 2023, holidays).
+
+| Year | Evenings | $1 steps an evening | Bounce rate               | Too fast for 1-minute candles | Upper bound |
+| ---- | -------- | ------------------- | ------------------------- | ----------------------------- | ----------- |
+| 2019 | 154      | 14                  | 47.1% (plus or minus 2.2) | 16% of steps                  | 52.6%       |
+| 2020 | 156      | 72                  | 44.8% (0.9)               | 31%                           | 55.7%       |
+| 2021 | 155      | 26                  | 48.5% (1.6)               | 7%                            | 50.4%       |
+| 2022 | 156      | 29                  | 49.0% (1.5)               | 9%                            | 51.8%       |
+| 2023 | 94       | 21                  | 48.9% (2.3)               | 4%                            | 50.2%       |
+| 2024 | 155      | 56                  | 47.6% (1.1)               | 17%                           | 53.0%       |
+| 2025 | 154      | 271                 | 40.0% (0.5)               | 50%                           | 58.0%       |
+| 2026 | 133      | 780                 | 30.6% (0.3)               | 74%                           | 63.7%       |
+
+Needed to pay the costs: over 60.0% at the best cost, over 67.5% at the
+typical cost.
+
+- **Where the candles can see it, the next dollar is a coin flip.** In 2021,
+  2022 and 2023 fewer than one step in ten is too fast, and the bounce rate
+  is 48.5% to 49.0%, with an upper bound of 50% to 52%.
+- **From 2019 to 2024 even the generous upper bound is under 60%.** That is
+  six years out of eight, more than the five the plan asked for.
+- **2025 and 2026 cannot be measured this way.** Gold moved from about $2,600
+  to over $4,000, so a $1 step went from a real move to noise: 271 and 780
+  steps an evening. The true rate is somewhere between the count and the
+  upper bound. Nothing shows it clears the bar, and a 100-point grid written
+  for gold near $1,900 is far too tight for gold at $4,000.
+- **The Owl's hours are not special.** Thursday evenings give 46% to 51%
+  through 2024 (Friday evenings have no market and sat out), and London hours
+  give 44% to 47%. The Asian session does not bounce more than the rest.
+
+### Part 2: a grid with the Owl's passive numbers (our reading, an illustration)
+
+$50,000 play account. "Ended up" is the share of evenings that closed with a
+gain.
+
+Best cost ($0.20 a round trip), all years:
+
+| Year | Evenings | Ended up | Average up evening | Hit the 4% stop | Year              |
+| ---- | -------- | -------- | ------------------ | --------------- | ----------------- |
+| 2019 | 154      | 77       | +$57               | 2               | -$1,320 (-2.6%)   |
+| 2020 | 156      | 120      | +$255              | 13              | -$2,755 (-5.7%)   |
+| 2021 | 155      | 112      | +$72               | 1               | +$732 (+1.6%)     |
+| 2022 | 156      | 107      | +$73               | 8               | -$11,913 (-25.5%) |
+| 2023 | 94       | 59       | +$62               | 3               | -$3,343 (-9.6%)   |
+| 2024 | 155      | 105      | +$162              | 26              | -$12,707 (-40.5%) |
+| 2025 | 65       | 22       | +$250              | 40              | -$13,722 (-73.4%) |
+
+The account was under a tenth of its start before 2025-06-03, and the run
+ended there.
+
+| Run                             | $50,000 became | When the run ended     |
+| ------------------------------- | -------------- | ---------------------- |
+| Best cost, all years            | $4,971         | wiped out by June 2025 |
+| Best cost, June 2022 on         | $4,920         | wiped out by July 2025 |
+| Typical cost ($0.35), all years | $4,946         | wiped out by Nov 2024  |
+| Typical cost, June 2022 on      | $4,899         | wiped out by May 2025  |
+
+From June 2022 on, the part after the presets were written, the best-cost run
+made -11.1% (rest of 2022), -10.0% (2023), -37.7% (2024) and -80.3% (2025
+until it ended).
+
+What the picture shows is the shape the plan predicted. Most evenings end up:
+about seven in ten from 2020 to 2024. A handful of evenings a year hit the 4%
+stop, and each of those takes back the gains of ten to thirty winning
+evenings. It
+lost in six of the seven years it ran, and only 2021, the calmest year with
+one stop, ended slightly up.
+
+Limits of this illustration, said plainly:
+
+- It is our reading of the preset files, not the Owl. Both sides start at the
+  first minute and restart at once; the real robot uses an entry signal we
+  cannot read, and its user switches it off around news and may stop after a
+  daily goal.
+- A real user would have changed the lot and grid numbers as gold doubled.
+  The 2022 numbers on 2025 gold are not what anyone would run.
+- Inside a fast candle the test sees one straight move, so 2025 is the least
+  reliable year. The years 2019 to 2024 are the fair part.
+
+None of these limits can create an edge that the bounce count does not show.
+They change how fast and how smoothly the result arrives.
+
+### What is worth taking
+
+- **Not its entries and not its grid.** There is no bounce to collect, so a
+  grid on gold in these hours is paid for carrying risk: steady small wins
+  and a rare loss that is larger than all of them.
+- **Its risk rules are sound and cost nothing:** a daily loss limit that ends
+  the day, a daily goal after which trading stops, staying out around red
+  news. They do not make a losing rule win, but they are the right habits for
+  John's own calls and for any play account.
+- **One real lesson:** the Owl feels like it works because it wins about two
+  evenings in three. Winning often is not the same as making money. Any
+  robot or method should be judged on its worst nights and on years of
+  history, never on a good month.
+
+By the plan there is no Owl-style account and no further test. What stays
+possible, if John wants it one day, is running the real file in MetaTrader on
+a demo account he opens; this study gives no reason to expect a different
+answer.
