@@ -184,6 +184,10 @@ export interface SessionResult {
   fromStops: number
   fromKills: number
   fromEnd: number
+  /** Ounces opened in the session (each is also closed in it); used by the flipped study. */
+  ounces: number
+  /** The highest point of the session, open trades included, in dollars. */
+  best: number
 }
 
 /**
@@ -235,6 +239,8 @@ export function runSession(
   let trades = 0
   let kills = 0
   let worst = 0
+  let best = 0
+  let ounces = 0
   let deepest = 0
   let stopped = false
   let bid = 0
@@ -316,6 +322,7 @@ export function runSession(
         sumB += ask * oz
         lastB = ask
         lotB = lot
+        ounces += oz
         trades++
         if (nB > deepest) deepest = nB
         open = ozB * bid - sumB + (sumS - ozS * ask)
@@ -340,6 +347,7 @@ export function runSession(
         sumS += bid * oz
         lastS = bid
         lotS = lot
+        ounces += oz
         trades++
         if (nS > deepest) deepest = nS
         open = ozB * bid - sumB + (sumS - ozS * ask)
@@ -348,6 +356,7 @@ export function runSession(
 
     const now = realized + open
     if (now < worst) worst = now
+    if (now > best) best = now
   }
 
   // 5. End of the session: what is still open closes at market.
@@ -356,6 +365,7 @@ export function runSession(
     realized += fromEnd
     if (realized < worst) worst = realized
   }
+  if (realized > best) best = realized
   return {
     pnl: realized,
     stopped,
@@ -368,6 +378,8 @@ export function runSession(
     fromStops,
     fromKills,
     fromEnd,
+    ounces,
+    best,
   }
 }
 

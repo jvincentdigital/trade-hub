@@ -206,6 +206,25 @@ describe('owl copy: details fixed in the plan after review', () => {
   })
 })
 
+describe('owl copy: counters for the flipped study', () => {
+  it('counts the ounces opened and the best point, so the exact opposite of a session can be worked out', () => {
+    const r = runSession(
+      M([
+        [100, 1],
+        [100.5, 0],
+        [101.1, 0],
+      ]),
+      cfg({ spread: 0.1, commission: 0.07 }),
+      BIG,
+    )
+    expect(r.ounces).toBe(2)
+    expect(r.best).toBeCloseTo(1.86, 9)
+    // The opposite trade: 2 ounces sold at the Bid of 100.00 and bought back at the Ask of 101.20, less commission.
+    const opposite = 2 * (100 - 101.2) - 2 * 0.07
+    expect(-r.pnl - 2 * (0.1 + 0.07) * r.ounces).toBeCloseTo(opposite, 9)
+  })
+})
+
 describe('owl copy: averages, moments and signal', () => {
   const c = (time: number, open: number, high: number, low: number, close: number): OHLCCandle => ({
     time,

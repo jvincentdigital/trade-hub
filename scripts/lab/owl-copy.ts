@@ -78,14 +78,20 @@ interface Session {
   to: number
 }
 
-function sessions(m1: OHLCCandle[], make: (day: number) => Window, days: readonly number[]) {
+function sessions(
+  m1: OHLCCandle[],
+  make: (day: number) => Window,
+  days: readonly number[],
+  first = FROM,
+  last = TO,
+) {
   const out: Session[] = []
   let skipped = 0
   let i = 0
-  for (let day = FROM; day < TO; day += DAY) {
+  for (let day = first; day < last; day += DAY) {
     if (!isWeekday(day, days)) continue
     const w = make(day)
-    if (w.to > TO) continue
+    if (w.to > last) continue
     while (i < m1.length && m1[i].time < w.from) i++
     let j = i
     while (j < m1.length && m1[j].time < w.to) j++
@@ -263,6 +269,12 @@ interface RunOptions {
   reversed?: boolean
   /** A twin: the signal moved in time inside each session, by this seed. */
   twinSeed?: number
+  /**
+   * The flipped study (docs/owl-mirror-study.md): the versions run as a shadow on a constant
+   * paper balance and the account takes the opposite of every trade; `slip` is the extra cost
+   * in dollars per ounce.
+   */
+  mirror?: { slip: number }
 }
 
 /** Runs every variant over the sessions of one period. */
@@ -297,10 +309,19 @@ function runAll(
             )
       for (const x of mine) {
         if (!x.a.alive(s.w.day)) continue
-        x.a.add(
-          s.w.day,
-          runSession(m, configOf(x.v, first, cost), x.a.balance, x.v.inverted, shift),
-        )
+        const cfg = configOf(x.v, first, cost)
+        if (!o.mirror) {
+          x.a.add(s.w.day, runSession(m, cfg, x.a.balance, x.v.inverted, shift))
+          continue
+        }
+        const r = runSession(m, cfg, START, x.v.inverted, shift)
+        const costs = (2 * (cfg.spread + cfg.commission) + o.mirror.slip) * r.ounces
+        x.a.add(s.w.day, {
+          pnl: -r.pnl - costs,
+          worst: Math.min(0, -r.best - costs),
+          stopped: r.stopped,
+          targets: r.targets,
+        })
       }
     })
     if (o.mid !== undefined && !passedMid) snapshot()
@@ -337,7 +358,23 @@ function rankCorrelation(a: number[], b: number[]): number {
   return num / Math.sqrt(da * db)
 }
 
+/** The flipped study's main check: gold 2012 to 2018, a separate file that no Owl test has touched. */
+const OLD_FROM = Date.UTC(2012, 0, 1) / 1000
+const OLD_TO = Date.UTC(2019, 0, 1) / 1000
+
+async function loadOld(file: string): Promise<Data> {
+  const m1 = (await loadCandleFile(file)).filter((b) => b.time >= OLD_FROM && b.time < OLD_TO)
+  return {
+    m1,
+    avg: averages(m1),
+    owl: sessions(m1, eveningOf, [1, 2, 3], OLD_FROM, OLD_TO),
+    london: sessions(m1, londonHoursOf, [1, 2, 3, 4, 5], OLD_FROM, OLD_TO),
+    day: sessions(m1, tradingDayOf, [0, 1, 2, 3, 4], OLD_FROM, OLD_TO),
+  }
+}
+
 async function load(): Promise<Data> {
+  if (has('old')) return loadOld(resolve(arg('old')))
   const histFile = join(HIST, 'XAUUSD', 'XAUUSD_1m.csv.gz')
   if (createHash('sha256').update(readFileSync(histFile)).digest('hex') !== HIST_SHA)
     throw new Error(`${histFile} is not the gold file fixed in the v1 exam`)
@@ -640,6 +677,136 @@ function partCheck(d: Data, lines: string[], results: Record<string, unknown>) {
   results.check = { passes, p1, p2, both: both.map((v) => v.id), reading, ends, all }
 }
 
+const scoreOf = (a: Account) => (a.balance / START - 1) / Math.max(a.drop, 0.005)
+const yearsOf = (a: Account) =>
+  Object.keys(a.perYear)
+    .map(Number)
+    .sort((p, q) => p - q)
+const yearLine = (a: Account) =>
+  yearsOf(a)
+    .map((y) => `${y} ${money(a.perYear[y].pnl)}`)
+    .join(', ')
+
+/** The flipped study, choosing years: every version turned upside down on 2019 to 2022. */
+function partMirrorChoose(d: Data, lines: string[], results: Record<string, unknown>) {
+  const vs = variants()
+  const acc = runAll(d, vs, 'typical', FROM, CHECK_FROM, { mirror: { slip: 0 } })
+  const rows = vs.map((v, i) => ({
+    id: v.id,
+    end: acc[i].balance,
+    drop: acc[i].drop,
+    score: scoreOf(acc[i]),
+  }))
+  const inRows = rows.filter((r) => r.end > START && r.drop <= 0.2)
+  const candidates = [...inRows]
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .slice(0, 10)
+    .map((r) => r.id)
+  lines.push(
+    `FLIPPED, choosing years (2019 to 2022), typical cost: ${vs.length} versions; ${rows.filter((r) => r.end > START).length} ended above $${START}; ${inRows.length} did so with a worst drop of 20% or less`,
+  )
+  const median = (x: number[]) => [...x].sort((a, b) => a - b)[Math.floor(x.length / 2)]
+  for (const h of HOURS)
+    for (const inverted of [false, true]) {
+      const mine = rows.filter((r) => vs[r.id].hours === h && vs[r.id].inverted === inverted)
+      const ends = mine.map((r) => r.end)
+      lines.push(
+        `   ${HOURS_LABEL[h]}, shadow with ${inverted ? 'short average inverted' : 'signal as sold'}: ${mine.length} versions, ${ends.filter((e) => e > START).length} above $${START}, median end $${median(ends).toFixed(0)}, best $${Math.max(...ends).toFixed(0)}`,
+      )
+    }
+  lines.push('The candidates, ranked by gain divided by worst drop:')
+  candidates.forEach((id, n) => {
+    lines.push(
+      `   ${n + 1}. #${id}: ${describe(vs[id])}: $${rows[id].end.toFixed(0)}, worst drop ${f(rows[id].drop * 100)}%; by year: ${yearLine(acc[id])}`,
+    )
+  })
+  const sold = vs.find(isAsSold)
+  if (sold)
+    lines.push(
+      `The as-sold version flipped (#${sold.id}): $${rows[sold.id].end.toFixed(0)}, worst drop ${f(rows[sold.id].drop * 100)}%; by year: ${yearLine(acc[sold.id])}`,
+    )
+  results.mirrorChoose = { rows, candidates }
+  writeFileSync(join(OUT, 'mirror-choose.json'), JSON.stringify({ rows, candidates }, null, 1))
+}
+
+const mirrorCandidates = () =>
+  (JSON.parse(readFileSync(join(OUT, 'mirror-choose.json'), 'utf8')) as { candidates: number[] })
+    .candidates
+
+/** The flipped study, side check on years already seen: 2023 to 2024, and 2025 to 2026 for the record. */
+function partMirrorSide(d: Data, lines: string[], results: Record<string, unknown>) {
+  const vs = variants()
+  const ids = mirrorCandidates()
+  const acc = runAll(
+    d,
+    ids.map((id) => vs[id]),
+    'typical',
+    CHECK_FROM,
+    TO,
+    { mirror: { slip: 0 }, mid: FAST_FROM },
+  )
+  lines.push('FLIPPED, side check at the typical cost (not blind):')
+  const side = ids.map((id, n) => {
+    const a = acc[n]
+    const early = (a.mid ? a.mid.balance : a.balance) - START
+    lines.push(
+      `   #${id}: 2023 to 2024 ${money(early)}; 2025 to 2026 ${money(a.balance - START - early)} (not used)`,
+    )
+    return { id, early, late: a.balance - START - early }
+  })
+  results.mirrorSide = side
+  writeFileSync(join(OUT, 'mirror-side.json'), JSON.stringify(side, null, 1))
+}
+
+/** The flipped study, main check: the candidates on gold 2012 to 2018, run once. */
+function partMirrorCheck(d: Data, lines: string[], results: Record<string, unknown>) {
+  const marker = join(OUT, 'MIRROR-CHECK-DONE.json')
+  if (existsSync(marker))
+    throw new Error(`${marker} exists: the untouched years were already examined once`)
+  const vs = variants()
+  const ids = mirrorCandidates()
+  const side = JSON.parse(readFileSync(join(OUT, 'mirror-side.json'), 'utf8')) as {
+    id: number
+    early: number
+  }[]
+  writeFileSync(marker, JSON.stringify({ candidates: ids, note: 'run once' }))
+  const cands = ids.map((id) => vs[id])
+  const run = (cost: CostKey, slip: number) =>
+    runAll(d, cands, cost, OLD_FROM, OLD_TO, { mirror: { slip } })
+  const typical = run('typical', 0)
+  const scaled = run('scaled', 0)
+  const slow = run('typical', 0.2)
+  const fine = (a: Account) => a.balance >= START * 1.05 && a.drop <= 0.2
+  let passed = 0
+  lines.push(
+    `FLIPPED, main check on gold 2012 to 2018 (never used in an Owl test). Each candidate starts at $${START}.`,
+  )
+  const rows = ids.map((id, n) => {
+    const t = typical[n]
+    const up = yearsOf(t).filter((y) => t.perYear[y].pnl > 0).length
+    const early = side.find((s) => s.id === id)?.early ?? 0
+    const ok = fine(t) && fine(scaled[n]) && fine(slow[n]) && up >= 5 && early >= 0
+    if (ok) passed++
+    lines.push(`   ${n + 1}. #${id}: ${describe(vs[id])}`)
+    lines.push(
+      `        typical $${t.balance.toFixed(0)} (worst drop ${f(t.drop * 100)}%), price-scaled $${scaled[n].balance.toFixed(0)}, slow hands $${slow[n].balance.toFixed(0)}; years up ${up} of ${yearsOf(t).length}; 2023 to 2024 ${money(early)}: ${ok ? 'PASS' : 'fail'}`,
+    )
+    lines.push(`        by year: ${yearLine(t)}`)
+    return { id, typical: t, scaled: scaled[n], slow: slow[n], up, early, ok }
+  })
+  const need = ids.length >= 10 ? 7 : Math.max(3, Math.ceil(0.7 * ids.length))
+  const reading =
+    ids.length >= 3 && passed >= need
+      ? 'A FLIPPED ROBOT WORTH A PLAY ACCOUNT'
+      : ids.length === 0 || passed < ids.length / 2
+        ? 'THE FLIP DOES NOT SURVIVE'
+        : 'UNCLEAR'
+  lines.push(
+    `The reading fixed in the plan: ${reading} (candidates passing: ${passed} of ${ids.length}; needed ${need})`,
+  )
+  results.mirrorCheck = { rows, passed, need, reading }
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true })
   const d = await load()
@@ -652,7 +819,13 @@ async function main() {
   else if (PART === 'b') partB(d, lines, results)
   else if (PART === 'choose') partChoose(d, lines, results)
   else if (PART === 'check') partCheck(d, lines, results)
-  else throw new Error('--part must be a, b, choose or check')
+  else if (PART === 'mirror-choose') partMirrorChoose(d, lines, results)
+  else if (PART === 'mirror-side') partMirrorSide(d, lines, results)
+  else if (PART === 'mirror-check') partMirrorCheck(d, lines, results)
+  else
+    throw new Error(
+      '--part must be a, b, choose, check, mirror-choose, mirror-side or mirror-check',
+    )
   const tag =
     PART === 'a' && UNTIL < TO
       ? '-early'
