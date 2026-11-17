@@ -31,6 +31,8 @@ export const OWL = {
   eveningDays: [1, 2, 3],
   /** A window sits out with fewer than this share of its minutes present. */
   minShare: 0.9,
+  /** The grid walks a price move in steps of at most this many dollars, so the account stop is checked inside a fast candle too. */
+  grain: 0.1,
 } as const
 
 export interface Window {
@@ -76,6 +78,11 @@ export interface BounceCount {
   bounces: number
   /** Steps that continued the way of the last one. */
   onward: number
+  /** Steps that came two or more inside one price move of a candle: there the candle cannot show a bounce in between. */
+  fast: number
+  /** Bounces and onward steps counting only the first step of each price move (added after the first run, as an upper bound on the bounce rate). */
+  firstBounces: number
+  firstOnward: number
 }
 
 /**
@@ -84,7 +91,14 @@ export interface BounceCount {
  * one is a bounce (against the last step) or an onward step (with it).
  */
 export function bounceCount(candles: OHLCCandle[], step: number = OWL.step): BounceCount {
-  const out: BounceCount = { steps: 0, bounces: 0, onward: 0 }
+  const out: BounceCount = {
+    steps: 0,
+    bounces: 0,
+    onward: 0,
+    fast: 0,
+    firstBounces: 0,
+    firstOnward: 0,
+  }
   let anchor: number | null = null
   let level = 0
   let last = 0
@@ -94,6 +108,7 @@ export function bounceCount(candles: OHLCCandle[], step: number = OWL.step): Bou
         anchor = p
         continue
       }
+      let n = 0
       for (;;) {
         const dir =
           p >= anchor + (level + 1) * step - EPS
@@ -104,12 +119,18 @@ export function bounceCount(candles: OHLCCandle[], step: number = OWL.step): Bou
         if (!dir) break
         level += dir
         out.steps++
+        n++
         if (last) {
           if (dir === last) out.onward++
           else out.bounces++
+          if (n === 1) {
+            if (dir === last) out.firstOnward++
+            else out.firstBounces++
+          }
         }
         last = dir
       }
+      if (n >= 2) out.fast += n
     }
   return out
 }
@@ -130,6 +151,13 @@ export interface GridEvening {
 interface Order {
   price: number
   oz: number
+}
+
+/** The prices from `a` to `b` in moves of at most `OWL.grain`, ending exactly on `b`. */
+function walk(a: number | null, b: number): number[] {
+  if (a == null) return [b]
+  const n = Math.max(1, Math.ceil(Math.abs(b - a) / OWL.grain - EPS))
+  return Array.from({ length: n }, (_, k) => (k === n - 1 ? b : a + ((b - a) * (k + 1)) / n))
 }
 
 /**
@@ -162,41 +190,42 @@ export function gridEvening(candles: OHLCCandle[], balance: number, cost: number
 
   let lastPrice: number | null = null
   for (const b of candles)
-    for (const p of pathOf(b)) {
-      lastPrice = p
-      for (const s of sides) {
-        for (;;) {
-          if (!s.orders.length) {
-            // A side starts (again) at the price, unless the evening is in caution.
-            if (total(p) <= cautionAt) break
-            s.orders.push({ price: p, oz: OWL.firstOz })
-            continue
+    for (const end of pathOf(b))
+      for (const p of walk(lastPrice, end)) {
+        lastPrice = p
+        for (const s of sides) {
+          for (;;) {
+            if (!s.orders.length) {
+              // A side starts (again) at the price, unless the evening is in caution.
+              if (total(p) <= cautionAt) break
+              s.orders.push({ price: p, oz: OWL.firstOz })
+              continue
+            }
+            const oz = s.orders.reduce((a, o) => a + o.oz, 0)
+            maxOz = Math.max(maxOz, oz)
+            const avg = s.orders.reduce((a, o) => a + o.price * o.oz, 0) / oz
+            const target = s.long ? avg + OWL.target : avg - OWL.target
+            if (s.long ? p >= target - EPS : p <= target + EPS) {
+              realized += oz * (OWL.target - cost)
+              closes++
+              s.orders = []
+              if (total(p) <= cautionAt) break
+              s.orders.push({ price: target, oz: OWL.firstOz })
+              continue
+            }
+            const lastOrder = s.orders[s.orders.length - 1]
+            const next = s.long ? lastOrder.price - OWL.step : lastOrder.price + OWL.step
+            if (s.long ? p <= next + EPS : p >= next - EPS) {
+              s.orders.push({ price: next, oz: Math.min(OWL.maxOz, lastOrder.oz * OWL.factor) })
+              continue
+            }
+            break
           }
-          const oz = s.orders.reduce((a, o) => a + o.oz, 0)
-          maxOz = Math.max(maxOz, oz)
-          const avg = s.orders.reduce((a, o) => a + o.price * o.oz, 0) / oz
-          const target = s.long ? avg + OWL.target : avg - OWL.target
-          if (s.long ? p >= target - EPS : p <= target + EPS) {
-            realized += oz * (OWL.target - cost)
-            closes++
-            s.orders = []
-            if (total(p) <= cautionAt) break
-            s.orders.push({ price: target, oz: OWL.firstOz })
-            continue
-          }
-          const lastOrder = s.orders[s.orders.length - 1]
-          const next = s.long ? lastOrder.price - OWL.step : lastOrder.price + OWL.step
-          if (s.long ? p <= next + EPS : p >= next - EPS) {
-            s.orders.push({ price: next, oz: Math.min(OWL.maxOz, lastOrder.oz * OWL.factor) })
-            continue
-          }
-          break
         }
+        const now = total(p)
+        if (now < worst) worst = now
+        if (now <= stopAt) return result(p, true)
       }
-      const now = total(p)
-      if (now < worst) worst = now
-      if (now <= stopAt) return result(p, true)
-    }
   return lastPrice == null
     ? { pnl: 0, stopped: false, closes: 0, worst: 0, maxOz: 0 }
     : result(lastPrice, false)

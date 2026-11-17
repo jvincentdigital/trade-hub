@@ -44,18 +44,34 @@ describe('owl study: clock and candles', () => {
 
 describe('owl study, part 1: the bounce count', () => {
   it('a zigzag is all bounces', () => {
-    expect(bounceCount(legs([100, 101, 100, 101, 100]))).toEqual({
+    expect(bounceCount(legs([100, 101, 100, 101, 100]))).toMatchObject({
       steps: 4,
       bounces: 3,
       onward: 0,
+      fast: 0,
+      firstBounces: 3,
     })
   })
   it('a straight run is all onward steps, also inside one candle', () => {
-    expect(bounceCount(legs([100, 101, 102, 103]))).toEqual({ steps: 3, bounces: 0, onward: 2 })
-    expect(bounceCount(legs([100, 103.2]))).toEqual({ steps: 3, bounces: 0, onward: 2 })
+    expect(bounceCount(legs([100, 101, 102, 103]))).toMatchObject({
+      steps: 3,
+      bounces: 0,
+      onward: 2,
+      fast: 0,
+      firstOnward: 2,
+    })
+    // Three steps inside one move: the candle cannot show a bounce in between, so they count as fast.
+    expect(bounceCount(legs([100, 103.2]))).toMatchObject({
+      steps: 3,
+      bounces: 0,
+      onward: 2,
+      fast: 3,
+      firstBounces: 0,
+      firstOnward: 0,
+    })
   })
   it('a move that does not reach the next level is no step', () => {
-    expect(bounceCount(legs([100, 100.9, 99.1, 100.5]))).toEqual({
+    expect(bounceCount(legs([100, 100.9, 99.1, 100.5]))).toMatchObject({
       steps: 0,
       bounces: 0,
       onward: 0,
@@ -76,13 +92,27 @@ describe('owl study, part 2: a grid with the passive numbers', () => {
     expect(r.maxOz).toBeCloseTo(sellOz, 9)
   })
   it('a run against one side hits the account stop, and in caution a closed side does not start again', () => {
-    // A $100 account: caution at -$2, stop at -$4. Price runs from 100 to 102.
+    // A $100 account: caution at -$2, stop at -$4. Price runs from 100 toward 102.
+    // At 101 the buy side has won once and started again, the sell side holds 2 oz from 100 and
+    // 2.714 oz from 101. Past 101 the evening loses 2.714 dollars per dollar, so the stop comes
+    // at the first 10-cent mark past 101.83: at 101.9, before the buy side can win again.
     const r = gridEvening(legs([100, 101, 102]), 100, cost)
-    const sellOz = 2 + 2 * OWL.factor + 2 * OWL.factor ** 2
+    const sellOz = 2 + 2 * OWL.factor
     expect(r.stopped).toBe(true)
-    expect(r.closes).toBe(2)
-    expect(r.pnl).toBeCloseTo(2 * 2 * (1 - cost) - (2 * 2 + 2 * OWL.factor) - sellOz * cost, 9)
+    expect(r.closes).toBe(1)
+    expect(r.pnl).toBeCloseTo(
+      2 * (1 - cost) + 2 * (0.9 - cost) - 2 * 1.9 - 2 * OWL.factor * 0.9 - sellOz * cost,
+      6,
+    )
     expect(r.pnl).toBeLessThan(-4)
+    expect(r.pnl).toBeGreaterThan(-4.3)
+  })
+  it('a fast candle cannot jump the account stop: the loss stays near 4%', () => {
+    // One candle runs 40 dollars against the sell side on a $50,000 account (stop at -$2,000).
+    const r = gridEvening(legs([2000, 2040]), OWL.startMoney, cost)
+    expect(r.stopped).toBe(true)
+    expect(r.pnl).toBeLessThan(-2000)
+    expect(r.pnl).toBeGreaterThan(-2100)
   })
   it('added trades never pass the 0.5 lot cap', () => {
     const r = gridEvening(legs([100, 130]), 1e9, cost)

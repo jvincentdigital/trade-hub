@@ -44,6 +44,8 @@ const COSTS = [
   { key: 'typical', label: 'typical, $0.35 a round trip', c: 0.35 },
 ] as const
 const YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+/** The grid run ends when the account is under this share of its start. */
+const RUIN_SHARE = 0.1
 
 const f = (x: number, d = 1) => (Number.isFinite(x) ? x.toFixed(d) : 'n/a')
 const money = (x: number) => `${x < 0 ? '-' : '+'}$${Math.abs(x).toFixed(0)}`
@@ -52,8 +54,20 @@ const add = (a: BounceCount, b: BounceCount): BounceCount => ({
   steps: a.steps + b.steps,
   bounces: a.bounces + b.bounces,
   onward: a.onward + b.onward,
+  fast: a.fast + b.fast,
+  firstBounces: a.firstBounces + b.firstBounces,
+  firstOnward: a.firstOnward + b.firstOnward,
 })
-const ZERO: BounceCount = { steps: 0, bounces: 0, onward: 0 }
+const ZERO: BounceCount = {
+  steps: 0,
+  bounces: 0,
+  onward: 0,
+  fast: 0,
+  firstBounces: 0,
+  firstOnward: 0,
+}
+/** The upper bound added after the first run: only the first step of each price move counts. */
+const firstRate = (c: BounceCount) => c.firstBounces / (c.firstBounces + c.firstOnward)
 const rate = (c: BounceCount) => c.bounces / (c.bounces + c.onward)
 /** Plus or minus, in percentage points: two standard errors of a share (steps treated as independent). */
 const margin = (c: BounceCount) => {
@@ -111,8 +125,14 @@ function grid(ss: Session[], cost: number, from: number) {
       worst: number
     }
   > = {}
+  let ruined: string | null = null
   for (const s of ss) {
     if (s.w.day < from) continue
+    // An account under a tenth of its start cannot run this grid any more: the run ends there.
+    if (balance < RUIN_SHARE * OWL.startMoney) {
+      ruined = new Date(s.w.day * 1000).toISOString().slice(0, 10)
+      break
+    }
     const y = yearOf(s.w.day)
     const e = (per[y] ??= { n: 0, up: 0, upSum: 0, stops: 0, pnl: 0, start: balance, worst: 0 })
     const r = gridEvening(s.candles, balance, cost)
@@ -128,7 +148,7 @@ function grid(ss: Session[], cost: number, from: number) {
     peak = Math.max(peak, balance)
     drop = Math.max(drop, (peak - balance) / peak)
   }
-  return { per, end: balance, drop }
+  return { per, end: balance, drop, ruined }
 }
 
 async function main() {
@@ -157,6 +177,9 @@ async function main() {
   lines.push(
     'PART 1: the bounce count ($1 steps). A fade needs over 60.0% at the best cost and over 67.5% at the typical cost.',
   )
+  lines.push(
+    '   "Too fast" = steps that came two or more inside one price move of a 1-minute candle, where a bounce in between cannot be seen. The upper bound counts only the first step of each move (added after the first run).',
+  )
   const table = (name: string, x: { out: Session[]; skipped: number }) => {
     const per = byYear(x.out)
     let all = ZERO
@@ -166,11 +189,11 @@ async function main() {
       if (!e) continue
       all = add(all, e.c)
       lines.push(
-        `   ${y}: ${String(e.n).padStart(3)} sessions  ${String(e.c.steps).padStart(6)} steps (${f(e.c.steps / e.n)} a session)  bounce rate ${f(100 * rate(e.c))}% (plus or minus ${f(margin(e.c))})`,
+        `   ${y}: ${String(e.n).padStart(3)} sessions  ${String(e.c.steps).padStart(6)} steps (${f(e.c.steps / e.n)} a session)  bounce rate ${f(100 * rate(e.c))}% (plus or minus ${f(margin(e.c))})  | too fast for 1-minute candles: ${f((100 * e.c.fast) / e.c.steps, 0)}% of steps; upper bound ${f(100 * firstRate(e.c))}%`,
       )
     }
     lines.push(
-      `   all: ${all.steps} steps  bounce rate ${f(100 * rate(all))}% (plus or minus ${f(margin(all), 2)})`,
+      `   all: ${all.steps} steps  bounce rate ${f(100 * rate(all))}% (plus or minus ${f(margin(all), 2)})  | too fast: ${f((100 * all.fast) / all.steps, 0)}% of steps; upper bound ${f(100 * firstRate(all))}%`,
     )
     results[name] = { per, all, sessions: x.out.length, skipped: x.skipped }
     return per
@@ -192,7 +215,7 @@ async function main() {
     ] as const) {
       const g = grid(owl.out, k.c, from)
       lines.push(
-        `${k.label}; ${label}: $${OWL.startMoney} became $${g.end.toFixed(0)}, worst drop ${f(g.drop * 100)}%`,
+        `${k.label}; ${label}: $${OWL.startMoney} became $${g.end.toFixed(0)}, worst drop ${f(g.drop * 100)}%${g.ruined ? `; ACCOUNT UNDER A TENTH OF ITS START, the run ended before ${g.ruined}` : ''}`,
       )
       for (const y of YEARS) {
         const e = g.per[y]
