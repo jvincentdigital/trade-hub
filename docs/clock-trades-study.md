@@ -1,0 +1,108 @@
+# Three clock trades: plan
+
+Lab study, play money only. **Plan written 2026-11-17 before any result of
+this study was computed.** The price files were being downloaded while it was
+written; none had been opened. Results go at the bottom; the plan above them
+is not edited.
+
+## Why
+
+`docs/strategy-search.md`: after everything else failed, a search of the
+published evidence left three small effects worth one cheap test each. All
+three are trades at fixed clock times. Their rules come from the papers, not
+from our data, so there is nothing to tune and no choosing step: each rule is
+written down here and run once.
+
+## Data
+
+Free 1-minute files from HistData (Bid quotes), converted with the clock rule
+found in the v1 exam (New York winter time plus the European summer hour):
+
+- EUR/USD 2005 to 2025 (never used in this lab)
+- gold 2009 to 2025 (2019 to 2025 were used by the Owl studies, never for a
+  clock rule; 2009 to 2018 never opened)
+- S&P 500 index quotes (SPX/USD) 2010 to 2025 (never used)
+
+Before any test, each file's clock is checked without looking at returns: the
+weekly gap must sit between Friday 17:00 and Sunday 17:00 to 18:05 New York
+time in every year. A file that fails is not used.
+
+## How a trade is measured
+
+- New York time, with US daylight saving.
+- A trade at clock time T is made at the open of the first 1-minute candle
+  stamped at or after T, if that candle is stamped within 5 minutes of T.
+  Otherwise that leg is skipped for the day.
+- A leg's result in basis points (hundredths of a percent) is 10,000 times
+  (exit price / entry price - 1), with the sign turned for a short, minus the
+  leg's cost.
+- Cost of one leg, in and out: EUR/USD 1.0 basis point (0.8 spread, 0.2
+  slippage), gold 2.0, S&P 500 1.5. Every test is also run at double cost.
+- A day's result is the sum of its legs. Days are Monday to Friday.
+
+## The three rules
+
+**Test 1, EUR/USD local hours** (Breedon and Ranaldo 2013, in the hours used
+by the 2019 re-run): short from 03:00 to 11:00, then long from 11:00 to
+16:00. Flat by 16:00, so no overnight financing.
+
+**Test 2, gold night and day** (Blose and Gondhalekar 2014, 2018: gold gains
+outside the New York day session and loses inside it): long from 18:05 to
+08:20 the next morning (Sunday to Thursday evenings), and short from 08:20 to
+13:30 (Monday to Friday). Nothing is open at the 17:00 rollover, so no
+financing. The day belongs to the date of the 08:20 moment.
+
+**Test 3, the index's last half-hour** (Gao, Han, Li, Zhou 2018): the signal
+is the move from the previous trading day's 16:00 price to today's 15:30
+price. Up: long from 15:30 to 16:00. Down: short. Flat at 16:00.
+
+For tests 1 and 2 each leg is also reported alone.
+
+## What luck looks like
+
+- **Random clocks (tests 1 and 2).** 1,000 made-up strategies with the same
+  number of legs and the same leg lengths, each leg at a random start time on
+  a 5-minute mark inside the same daily span (test 1: 00:00 to 17:00; test 2:
+  18:05 to 17:00 the next day), each with a random direction kept for the
+  whole sample, same costs. Seed 1.
+- **Shuffled signals (test 3).** 1,000 runs with the same days and the same
+  number of long and short days, in random order. Also shown: always long
+  and always short for that half-hour.
+
+## Reading fixed now
+
+Periods: early (start to 2012), middle (2013 to 2018), recent (2019 to 2025).
+The t-statistic is the average daily result divided by its standard error.
+
+A test **passes** when all five hold, after costs:
+
+1. Recent period: the average daily result is above zero with t of 2 or more.
+2. Whole period: t of 3 or more. (Three rules are tried, on top of everything
+   tried before; a bar of 2 is too easy.)
+3. Whole period: the average daily result is above the 95th percentile of
+   its luck runs.
+4. At least 5 of the 7 years 2019 to 2025 end above zero.
+5. At double cost the recent period's average is still above zero.
+
+- **"Worth a play account"**: passes. Before John is told so, a second
+  implementation written by someone who has not seen ours must agree, and two
+  reviewers must fail to break it.
+- **"Real but too small to trade"**: before costs it clears 1, 2 and 3, but
+  after costs it does not pass.
+- **"Not there"**: anything else.
+
+## Limits, said in advance
+
+- One free price feed with Bid quotes only; costs are assumed constant. Real
+  spreads are wider at 03:00 and at the 18:05 reopen.
+- SPX/USD is a broker-style index quote, not the futures or the fund the
+  papers used.
+- These are small effects. A pass at 1 to 2 basis points a day is roughly
+  2.5% to 5% a year on the money exposed, before any leverage.
+- The gold years 2019 to 2025 are not blind in the strict sense: the Owl
+  study printed gold's average evening drift for those years.
+- Play money only. No broker is connected. This is not financial advice.
+
+## Results
+
+Not run yet.
