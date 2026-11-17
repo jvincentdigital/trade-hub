@@ -105,6 +105,60 @@ not lose in 2023 to 2024 at the typical cost.
 - Our copy follows public code, not the compiled Owl.
 - Play money only. No broker is connected. This is not financial advice.
 
-## Results
+## Results (2026-11-17)
 
-Not run yet.
+**The flip does not survive.** None of the 1,080 flipped versions ended the
+choosing years (2019 to 2022) above its start at the typical cost. There are
+no candidates, so by the plan the study ends here. The untouched years (2012
+to 2018) were not downloaded and not looked at.
+
+| Hours and the shadow's signal        | Versions | Made money | Median end | Best end |
+| ------------------------------------ | -------- | ---------- | ---------- | -------- |
+| Owl evenings, signal as sold         | 180      | 0          | $44,328    | $48,344  |
+| Owl evenings, short average inverted | 180      | 0          | $44,711    | $48,470  |
+| London hours, signal as sold         | 180      | 0          | $21,723    | $45,066  |
+| London hours, short average inverted | 180      | 0          | $25,609    | $44,609  |
+| Whole trading day, signal as sold    | 180      | 0          | $6,287     | $43,100  |
+| Whole trading day, inverted          | 180      | 0          | $13,309    | $44,701  |
+
+### Why flipping changes nothing
+
+The as-sold version on 2019 to 2022 at the typical cost, on the 27,219 ounces
+it traded:
+
+|                            | Before costs | Spread and commission | After costs |
+| -------------------------- | ------------ | --------------------- | ----------- |
+| The Owl (the shadow)       | +$409        | -$9,527               | -$9,117     |
+| The Owl turned upside down | -$409        | -$9,527               | -$9,936     |
+
+Before costs the two sides are almost even over four years. Each side then
+pays about 35 cents an ounce to trade, and that is the whole loss. The
+flipped version lost in each of the four years (-$833, -$4,746, -$2,312,
+-$2,045).
+
+With no costs at all the flip is the exact negative of the copy, and 869 of
+the 1,080 flipped versions would have ended above their start. So the
+instinct behind the question points the right way: the Owl is a little more
+often on the wrong side than the right one. The size is what fails. That lean
+is worth a few cents an ounce, and a trade costs 35.
+
+### What this means
+
+1. **It was never about the direction.** The Owl does not lose because it
+   buys where it should sell. It loses because it trades very often for an
+   edge that is close to zero, and both sides of such a trade pay the costs.
+2. **No setting can fix that.** Step, size growth, stop, hours and direction
+   only change how often it trades and how the loss arrives. Counting both
+   studies, 2,160 robots built from these rules were tested and none made
+   money after costs.
+3. **A better robot needs a different idea, not a different setting:** an
+   entry whose average gain per trade is clearly bigger than what the trade
+   costs, which also means trading far less often for bigger moves.
+
+### Checks and deviations
+
+- The flip arithmetic has a unit test on hand-made prices, and the two losses
+  above add up to twice the costs, as they must.
+- After the first run one printed line was added (the shadow's own result and
+  its costs). The result file is identical before and after.
+- The main check and the side check were not run: there was nothing to check.

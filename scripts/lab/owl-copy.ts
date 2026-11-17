@@ -721,10 +721,26 @@ function partMirrorChoose(d: Data, lines: string[], results: Record<string, unkn
     )
   })
   const sold = vs.find(isAsSold)
-  if (sold)
+  if (sold) {
     lines.push(
       `The as-sold version flipped (#${sold.id}): $${rows[sold.id].end.toFixed(0)}, worst drop ${f(rows[sold.id].drop * 100)}%; by year: ${yearLine(acc[sold.id])}`,
     )
+    // The shadow itself (constant paper balance), to show where both sides' money goes.
+    let net = 0
+    let ounces = 0
+    let costs = 0
+    for (const s of d.owl.out) {
+      if (s.w.day < FROM || s.w.day >= CHECK_FROM) continue
+      const cfg = configOf(sold, d.m1[s.from].open, 'typical')
+      const r = runSession(momentsOf(d.m1, d.avg, s.from, s.to), cfg, START)
+      net += r.pnl
+      ounces += r.ounces
+      costs += (cfg.spread + cfg.commission) * r.ounces
+    }
+    lines.push(
+      `   its shadow over the same years: ${money(net)} after costs, on ${ounces.toFixed(0)} ounces traded; spread and commission on those ounces ${money(-costs)}; before costs ${money(net + costs)}`,
+    )
+  }
   results.mirrorChoose = { rows, candidates }
   writeFileSync(join(OUT, 'mirror-choose.json'), JSON.stringify({ rows, candidates }, null, 1))
 }
