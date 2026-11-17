@@ -58,6 +58,8 @@ const COSTS = {
     label: 'price-scaled ($0.28 spread at $1,800, growing with the price)',
     spreadOf: (first: number) => (0.28 * first) / 1800,
   },
+  /** A sanity check only (added after the freeze; choosing years only): no spread and no commission. */
+  free: { label: 'no costs at all', spreadOf: () => 0 },
 } as const
 type CostKey = keyof typeof COSTS
 const YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
@@ -228,7 +230,7 @@ function configOf(v: Variant, firstPrice: number, cost: CostKey): CopyConfig {
     stopPct: v.stopPct,
     maxTrades: v.maxTrades,
     spread: COSTS[cost].spreadOf(firstPrice),
-    commission: COMMISSION,
+    commission: cost === 'free' ? 0 : COMMISSION,
     hedgeFirst: 'rounded',
     afterStop: 'end',
   }
@@ -504,7 +506,8 @@ function partB(d: Data, lines: string[], results: Record<string, unknown>) {
 
 function partChoose(d: Data, lines: string[], results: Record<string, unknown>) {
   const vs = variants()
-  const acc = runAll(d, vs, 'typical', FROM, CHECK_FROM)
+  const cost: CostKey = has('cost') ? (arg('cost') as CostKey) : 'typical'
+  const acc = runAll(d, vs, cost, FROM, CHECK_FROM)
   const rows = vs.map((v, i) => ({
     id: v.id,
     end: acc[i].balance,
@@ -517,7 +520,7 @@ function partChoose(d: Data, lines: string[], results: Record<string, unknown>) 
     .slice(0, 10)
     .map((r) => r.id)
   lines.push(
-    `PART C, choosing years (2019 to 2022), typical cost: ${vs.length} versions; ${rows.filter((r) => r.end > START).length} ended above $${START}; ${inRows.length} did so with a worst drop of 20% or less`,
+    `PART C, choosing years (2019 to 2022), ${COSTS[cost].label}: ${vs.length} versions; ${rows.filter((r) => r.end > START).length} ended above $${START}; ${inRows.length} did so with a worst drop of 20% or less`,
   )
   lines.push('The candidates, ranked by gain divided by worst drop:')
   candidates.forEach((id, n) => {
@@ -533,8 +536,26 @@ function partChoose(d: Data, lines: string[], results: Record<string, unknown>) 
       `The as-sold version (#${sold.id}): $${r.end.toFixed(0)}, worst drop ${f(r.drop * 100)}%, place ${rows.filter((q) => q.end > r.end).length + 1} of ${rows.length} by end balance`,
     )
   }
+  // How the versions are spread, by hours and by the two signal settings.
+  const median = (x: number[]) => [...x].sort((a, b) => a - b)[Math.floor(x.length / 2)]
+  for (const h of HOURS)
+    for (const inverted of [false, true]) {
+      const mine = rows.filter((r) => vs[r.id].hours === h && vs[r.id].inverted === inverted)
+      const ends = mine.map((r) => r.end)
+      lines.push(
+        `   ${HOURS_LABEL[h]}, ${inverted ? 'short average inverted' : 'signal as sold'}: ${mine.length} versions, ${ends.filter((e) => e > START).length} above $${START}, median end $${median(ends).toFixed(0)}, best $${Math.max(...ends).toFixed(0)}`,
+      )
+    }
+  lines.push('The five highest end balances:')
+  for (const r of [...rows].sort((a, b) => b.end - a.end).slice(0, 5))
+    lines.push(
+      `   #${r.id}: ${describe(vs[r.id])}: $${r.end.toFixed(0)}, worst drop ${f(r.drop * 100)}%`,
+    )
   results.choose = { rows, candidates }
-  writeFileSync(join(OUT, 'choose.json'), JSON.stringify({ rows, candidates }, null, 1))
+  writeFileSync(
+    join(OUT, cost === 'typical' ? 'choose.json' : `choose-${cost}.json`),
+    JSON.stringify({ rows, candidates }, null, 1),
+  )
 }
 
 function partCheck(d: Data, lines: string[], results: Record<string, unknown>) {
@@ -632,7 +653,13 @@ async function main() {
   else if (PART === 'choose') partChoose(d, lines, results)
   else if (PART === 'check') partCheck(d, lines, results)
   else throw new Error('--part must be a, b, choose or check')
-  const name = `results-${PART}${PART === 'a' && UNTIL < TO ? '-early' : ''}`
+  const tag =
+    PART === 'a' && UNTIL < TO
+      ? '-early'
+      : PART === 'choose' && has('cost')
+        ? `-${arg('cost')}`
+        : ''
+  const name = `results-${PART}${tag}`
   const text = lines.join('\n') + '\n'
   writeFileSync(join(OUT, `${name}.txt`), text)
   writeFileSync(join(OUT, `${name}.json`), JSON.stringify(results, null, 1))
