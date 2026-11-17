@@ -129,7 +129,7 @@ describe('compare rows', () => {
   it('tags each strategy by its past test', () => {
     const rows = compareRows(state, now)
     const tag = (id: string) => rows.find((r) => r.id === id)!.past.evidence
-    expect(tag('johns-london-v1')).toBe('passed')
+    expect(tag('johns-london-v1')).toBe('lost')
     expect(tag('lab-rsi-us30')).toBe('lost')
     expect(tag('ema50-pullback')).toBe('live')
     expect(EVIDENCE_TEXT).toEqual({

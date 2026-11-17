@@ -47,10 +47,14 @@ day was visible only on Compare. Now:
   "1 of 30" (30 = `FIRST_READ`, the count before the live numbers mean
   anything), won, average per trade in R, average loss in R (the plan is -1R;
   more than that means stops filled past their price or fees are heavy), worst
-  drop and fees. For v1 only, each tile shows the test-year number next to it
-  (`YARDSTICKS`: 58% won, +0.28R a trade, worst drop 9.6%, about 2 trades a
-  week; the same source as `PAST_TESTS` in `race/compare.ts`). The breakout
-  trades have no past test, so that test shows "no past test".
+  drop and fees. For v1 only, each tile shows a past-test number next to it
+  (`YARDSTICKS`). Since 2026-11-17 that is the exam on six older years the
+  rule had never seen (2019 to 2024, `docs/v1-older-years-exam.md` on branch
+  `lab/v1-older-years`): 656 trades, 42% won, -0.03R a trade, worst drop
+  44.5%, about 2 trades a week. The rule lost there, and the caption says so.
+  Before that the tiles showed its one good year (58% won, +0.28R, 9.6%),
+  which the exam says was most likely luck. The breakout trades have no past
+  test, so that test shows "no past test".
 - **One row per closed trade** of the shown account (test and size switches),
   newest first, a half at the first target and the rest counted as one trade
   (`historyTrades`). A row opens in place (`History.tsx`): 1-hour candles from

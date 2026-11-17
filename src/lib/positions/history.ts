@@ -131,19 +131,25 @@ export interface Yardstick {
 }
 
 /**
- * John's London v1 on its clean year (November 2024 to November 2025): 97
- * trades, 58% won, +0.28R a trade, worst drop 9.6% (the same numbers as
- * PAST_TESTS in race/compare.ts; source: London strategy report, 2026-11-11).
- * The breakout trades in the second test have no past test, so that test has
- * no yardstick.
+ * John's London v1 on the six older years it was examined on (2019-01-01 to
+ * 2024-11-10, run once on 2026-11-17, docs/v1-older-years-exam.md on branch
+ * lab/v1-older-years): 656 trades, 42% won, -0.03R a trade, worst drop 44.5%.
+ * The rule lost there, so that is what the live numbers are held against.
+ * Its one good year (November 2024 to November 2025) showed 58% won and
+ * +0.28R with the 16:30 London close, 51% and +0.27R with the hold rule the
+ * live account uses; the exam says that year was most likely luck. Trades a
+ * week: 656 over the about 282 weeks the exam traded (thin days of 2023 sat
+ * out). The breakout trades in the second test have no past test, so that
+ * test has no yardstick.
  */
 export const YARDSTICKS: Record<FundedTestId, Yardstick | null> = {
   v1: {
-    winRate: 0.58,
-    avgR: 0.28,
-    maxDrawdown: 0.096,
-    tradesPerWeek: 97 / 52,
-    source: 'its test year, November 2024 to November 2025',
+    winRate: 0.42,
+    avgR: -0.03,
+    maxDrawdown: 0.445,
+    tradesPerWeek: 656 / 282,
+    source:
+      'the six older years it was examined on (2019 to 2024, 656 trades). The rule lost there; its one good year (November 2024 to November 2025) was most likely luck',
   },
   breakouts: null,
 }

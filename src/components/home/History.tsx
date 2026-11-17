@@ -48,7 +48,7 @@ interface Props {
 
 /**
  * Today's trade history: a scorecard (live numbers next to the strategy's
- * test year), then every closed trade of the shown funded account, newest
+ * past test: for v1 the six older years of its exam), then every closed trade of the shown funded account, newest
  * first. A row opens in place to its chart and where the money went.
  */
 export function History(p: Props) {
@@ -98,19 +98,19 @@ export function History(p: Props) {
           <Tile
             title="Won"
             value={s.winRate == null ? '-' : `${s.wins} of ${s.trades}`}
-            sub={y ? `test year: ${pctText(y.winRate)}` : 'no past test'}
+            sub={y ? `older years: ${pctText(y.winRate)}` : 'no past test'}
           />
           <Tile
             title="Average per trade"
             value={rText(s.avgR)}
             color={tone(s.avgR)}
-            sub={y ? `test year: ${rText(y.avgR)}` : 'no past test'}
+            sub={y ? `older years: ${rText(y.avgR)}` : 'no past test'}
           />
           <Tile title="Average loss" value={rText(s.avgLossR)} sub={`the plan is ${MINUS}1R`} />
           <Tile
             title="Worst drop"
             value={pctText(s.maxDrawdown)}
-            sub={y ? `test year: ${pctText(y.maxDrawdown)}` : 'no past test'}
+            sub={y ? `older years: ${pctText(y.maxDrawdown)}` : 'no past test'}
           />
           <Tile title="Fees paid" value={usdShort(s.fees)} sub="inside every result" />
         </dl>
