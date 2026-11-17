@@ -319,8 +319,8 @@ in the years used for choosing or in the years kept for checking.**
 
 - A helper wrote its own Part A from the plan page alone, in Python. Its
   result and ours agree on all 621 evenings of 2019 to 2022 to the cent
-  (result, stops, targets, trades). The helper's list of 16 places where it
-  had to make a choice matched ours in every case.
+  (result, stops, targets, trades). The helper listed 16 places where the plan
+  left it a choice; none of them produced a difference.
 - 18 unit tests on hand-made prices.
 
 ### Part A: the Owl as sold (passive 50k file, the seller's hours)
@@ -373,7 +373,7 @@ ounce (plus or minus two standard errors across evenings).
 | 2026 | 8,045         | $0.87    | +$0.110 (0.195)       | -$0.187 (0.182)                          |
 
 **The reading fixed in the plan: the signal does not pay its cost over 15
-minutes** (0 of 8 years above the bar; the best year is a tenth of the bar).
+minutes** (0 of 8 years above the bar; the best year reaches about an eighth of its bar).
 With the evening's drift taken out, the move is against the signal in all 8
 years, and by more than two standard errors in 6 of them. After the robot's
 "go" moment the price tends to slip back a little. The 5 and 60 minute moves
