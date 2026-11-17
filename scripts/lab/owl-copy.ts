@@ -133,9 +133,23 @@ class Account {
   }
 }
 
+/** Owl evenings, London hours, or the whole trading day (amendment 1). */
+type Hours = 'owl' | 'london' | 'day'
+const HOURS: readonly Hours[] = ['owl', 'london', 'day']
+const HOURS_LABEL: Record<Hours, string> = {
+  owl: 'Owl evenings',
+  london: 'London hours',
+  day: 'whole trading day',
+}
+/** The whole trading day: from the evening's start (18:05 New York) to 16:55 New York the next afternoon. */
+const tradingDayOf = (day: number): Window => {
+  const e = eveningOf(day)
+  return { day, from: e.from, to: e.from + 1370 * 60 }
+}
+
 interface Variant {
   id: number
-  hours: 'owl' | 'london'
+  hours: Hours
   gridKind: 'dollars' | 'percent'
   gridValue: number
   takeShare: number
@@ -155,7 +169,7 @@ function variants(): Variant[] {
     ['percent', 0.1],
     ['percent', 0.2],
   ]
-  for (const hours of ['owl', 'london'] as const)
+  for (const hours of HOURS)
     for (const [gridKind, gridValue] of grids)
       for (const takeShare of [1, 0.5])
         for (const factor of [1, 1.357, 2])
@@ -184,7 +198,7 @@ const gridLabel = (v: Variant) =>
   v.gridKind === 'dollars' ? `$${v.gridValue.toFixed(2)}` : `${v.gridValue}% of price`
 const describe = (v: Variant) =>
   [
-    v.hours === 'owl' ? 'Owl evenings' : 'London hours',
+    HOURS_LABEL[v.hours],
     `grid ${gridLabel(v)}`,
     `take ${v.takeShare === 1 ? 'one step' : 'half a step'}`,
     `factor ${v.factor}`,
@@ -225,6 +239,7 @@ interface Data {
   avg: Averages
   owl: { out: Session[]; skipped: number }
   london: { out: Session[]; skipped: number }
+  day: { out: Session[]; skipped: number }
 }
 
 /** A small seeded random number generator (mulberry32). */
@@ -258,7 +273,7 @@ function runAll(
   o: RunOptions = {},
 ): Account[] {
   const acc = vs.map(() => new Account())
-  for (const hours of ['owl', 'london'] as const) {
+  for (const hours of HOURS) {
     const mine = vs.map((v, i) => ({ v, a: acc[i] })).filter((x) => x.v.hours === hours)
     if (!mine.length) continue
     let passedMid = false
@@ -335,6 +350,7 @@ async function load(): Promise<Data> {
     avg: averages(m1),
     owl: sessions(m1, eveningOf, [1, 2, 3]),
     london: sessions(m1, londonHoursOf, [1, 2, 3, 4, 5]),
+    day: sessions(m1, tradingDayOf, [0, 1, 2, 3, 4]),
   }
 }
 
@@ -378,6 +394,7 @@ function partA(d: Data, lines: string[], results: Record<string, unknown>) {
     let trades = 0
     let kills = 0
     let deepest = 0
+    const from = { targets: 0, stops: 0, kills: 0, end: 0 }
     for (const s of mine) {
       if (!a.alive(s.w.day)) break
       const m = momentsOf(d.m1, d.avg, s.from, s.to, run.reversed)
@@ -395,12 +412,19 @@ function partA(d: Data, lines: string[], results: Record<string, unknown>) {
       trades += r.trades
       kills += r.kills
       deepest = Math.max(deepest, r.deepest)
+      from.targets += r.fromTargets
+      from.stops += r.fromStops
+      from.kills += r.fromKills
+      from.end += r.fromEnd
       csv.push(
         `${dateOf(s.w.day)},${r.pnl.toFixed(4)},${r.stopped ? 1 : 0},${r.targets},${r.trades}`,
       )
     }
     lines.push(
       `${run.label}: $${START} became $${a.balance.toFixed(0)}, worst drop ${f(a.drop * 100)}%, ${trades} trades, ${a.targets} sequences closed at target, ${a.stops} evenings stopped, hidden rule fired ${kills} times, deepest pile ${deepest} trades${a.ruined ? `; ACCOUNT UNDER A TENTH OF ITS START before ${a.ruined}` : ''}`,
+    )
+    lines.push(
+      `   where it came from: closes at a target ${money(from.targets)}, closes at the end of the evening ${money(from.end)}, stops ${money(from.stops)}, hidden rule ${money(from.kills)}`,
     )
     for (const y of YEARS) {
       const e = a.perYear[y]
@@ -601,7 +625,7 @@ async function main() {
   const lines: string[] = []
   const results: Record<string, unknown> = {}
   lines.push(
-    `Gold 1-minute candles: ${d.m1.length}; Owl evenings ${d.owl.out.length} (${d.owl.skipped} sat out), London sessions ${d.london.out.length} (${d.london.skipped} sat out)`,
+    `Gold 1-minute candles: ${d.m1.length}; Owl evenings ${d.owl.out.length} (${d.owl.skipped} sat out), London sessions ${d.london.out.length} (${d.london.skipped} sat out), trading days ${d.day.out.length} (${d.day.skipped} sat out)`,
   )
   if (PART === 'a') partA(d, lines, results)
   else if (PART === 'b') partB(d, lines, results)

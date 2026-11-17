@@ -179,6 +179,11 @@ export interface SessionResult {
   worst: number
   /** The most trades open on one side at once. */
   deepest: number
+  /** Where the result came from, in dollars after commission: closes at a target, the stop, the hidden rule, the end of the session. */
+  fromTargets: number
+  fromStops: number
+  fromKills: number
+  fromEnd: number
 }
 
 /**
@@ -222,6 +227,10 @@ export function runSession(
   let fB = false
 
   let realized = 0
+  let fromTargets = 0
+  let fromStops = 0
+  let fromKills = 0
+  let fromEnd = 0
   let targets = 0
   let trades = 0
   let kills = 0
@@ -237,14 +246,18 @@ export function runSession(
 
     // 1. Targets, at the broker; a jump past the target fills at the jump's price.
     if (nB > 0 && bid >= tpB) {
-      realized += ozB * (m.jump[k] ? bid : tpB) - sumB - commission * ozB
+      const got = ozB * (m.jump[k] ? bid : tpB) - sumB - commission * ozB
+      realized += got
+      fromTargets += got
       targets++
       nB = 0
       ozB = 0
       sumB = 0
     }
     if (nS > 0 && ask <= tpS) {
-      realized += sumS - ozS * (m.jump[k] ? ask : tpS) - commission * ozS
+      const got = sumS - ozS * (m.jump[k] ? ask : tpS) - commission * ozS
+      realized += got
+      fromTargets += got
       targets++
       nS = 0
       ozS = 0
@@ -256,7 +269,9 @@ export function runSession(
     // 2. Stop.
     let open = ozB * bid - sumB + (sumS - ozS * ask)
     if (open < 0 && -open > stop * (balance + realized + open)) {
-      realized += open - commission * (ozB + ozS)
+      const got = open - commission * (ozB + ozS)
+      realized += got
+      fromStops += got
       nB = nS = 0
       ozB = ozS = 0
       sumB = sumS = 0
@@ -270,7 +285,9 @@ export function runSession(
 
     // 3. The hidden rule.
     if (open >= KILL_PROFIT && (storedB > KILL_COUNT || storedS > KILL_COUNT)) {
-      realized += open - commission * (ozB + ozS)
+      const got = open - commission * (ozB + ozS)
+      realized += got
+      fromKills += got
       kills++
       nB = nS = 0
       ozB = ozS = 0
@@ -335,10 +352,23 @@ export function runSession(
 
   // 5. End of the session: what is still open closes at market.
   if (nB > 0 || nS > 0) {
-    realized += ozB * bid - sumB + (sumS - ozS * ask) - commission * (ozB + ozS)
+    fromEnd = ozB * bid - sumB + (sumS - ozS * ask) - commission * (ozB + ozS)
+    realized += fromEnd
     if (realized < worst) worst = realized
   }
-  return { pnl: realized, stopped, targets, trades, kills, worst, deepest }
+  return {
+    pnl: realized,
+    stopped,
+    targets,
+    trades,
+    kills,
+    worst,
+    deepest,
+    fromTargets,
+    fromStops,
+    fromKills,
+    fromEnd,
+  }
 }
 
 export const HORIZONS = [5, 15, 60] as const

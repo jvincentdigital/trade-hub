@@ -279,6 +279,31 @@ periods; and where the as-sold version stands among the 720.
   simulated; a daily goal is not in the preset files.
 - Play money only. No broker is connected. This is not financial advice.
 
+## Amendment 1 (2026-11-17, before any number from 2023 or later)
+
+Written after the cross-check on 2019 to 2022 and before the code was frozen.
+What had been seen at that point, and nothing else: the as-sold copy on 2019
+to 2022. It lost at every cost level ($50,000 became $41,729 at the best
+cost, $40,883 at the typical cost, $39,058 at the price-scaled cost), and the
+breakdown at the typical cost was: closes at a target +$15,860, closes at the
+end of the evening -$24,977, no stop at all. The two implementations agreed
+on all 621 evenings to the cent.
+
+So the money is lost when unfinished piles are closed at midnight, which is
+the seller's own rule. The 720 versions of Part C all share that handicap
+(London hours are only 9.5 hours long). One value is therefore added to the
+"Hours" knob of Part C:
+
+- **Whole trading day:** candles stamped 18:05 New York through 16:54 New
+  York the next afternoon, starting Sunday to Thursday evenings (five a week;
+  22 hours 50 minutes; sits out under 90% of its minutes). What is still open
+  is closed at market at the end of each trading day, before the daily break.
+
+Part C now has 1,080 versions. Everything else in the plan is unchanged: the
+choosing years, the ranking, the 10 candidates, the checks and the three
+readings. The preset files themselves leave the robot's clock off, so this is
+how the robot runs when nobody switches it off.
+
 ## Results
 
 Not run yet.
