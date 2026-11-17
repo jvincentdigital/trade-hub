@@ -135,6 +135,50 @@ Repaired files (sha256, first 16 characters): EUR/USD fdd9fe3c46956539, gold
 2ee908c82589366e, S&P 500 6722951418d34fcb. Everything else in the plan is
 unchanged.
 
-## Results
+## Results (2026-11-17)
 
-Not run yet.
+Run once on the repaired files. Output:
+`~/jvd-outputs/2026-11-17/clock-trades/`. Script at commit `5b83ff4`.
+
+**None of the three passes.** Each fails in its own way. Numbers are basis
+points a day (a basis point is a hundredth of a percent), with the
+t-statistic in brackets.
+
+| Test                                   | Before costs, all years | Before costs, 2019 to 2025 | After costs, 2019 to 2025 | Years up, of 7 | Reading   |
+| -------------------------------------- | ----------------------- | -------------------------- | ------------------------- | -------------- | --------- |
+| 1. EUR/USD local hours (2005 to 2025)  | +3.25 (4.8)             | +0.26 (0.3)                | -1.71 (-1.8)              | 3              | not there |
+| 2. Gold night and day (2009 to 2025)   | +2.61 (1.9)             | +5.06 (2.4)                | +1.13 (0.5)               | 4              | not there |
+| 3. Index last half-hour (2010 to 2025) | +1.08 (2.2)             | +0.98 (1.1)                | -0.52 (-0.6)              | 3              | not there |
+
+- **Test 1 was real and is gone.** Before costs it made +5.3 a day in 2005 to
+  2012 and +3.9 in 2013 to 2018, as the papers said, and +0.3 in 2019 to 2025.
+  Its last good years were 2015 and 2016. After 1 basis point of cost a leg,
+  the recent years lose 1.7 a day.
+- **Test 2 is mostly gold going up.** Over all years the night leg made +2.2
+  a day before costs and the day leg +0.4. After 2 basis points a leg the
+  pair loses 1.3 a day over the whole period. The recent years are above zero
+  only while gold tripled, not clearly (t 0.5), and not at double cost.
+- **Test 3 is a real lean that is smaller than its cost.** About +1.1 a day
+  before costs in every period, against a cost of 1.5.
+
+All three beat their luck runs before the bar on costs (ahead of 989, 969 and
+992 of 1,000), so these were not random ideas. The same script finds test 1's
+published effect in the years the papers covered, which is also a check on
+the clock repair and on the code.
+
+### What this means
+
+1. The best-documented small effects we could find are gone, or are the
+   market's own rise, or are smaller than what a small account pays to trade.
+2. With the earlier studies, every idea tested in this lab has now failed
+   after costs: chart methods, a bought robot, and published clock effects.
+3. One idea from the search is still untested: slow trend following on daily
+   prices across every market we can reach. The skeptic rated it weak, its
+   record has been poor since 2009, and with about four independent markets
+   its odds here are low.
+
+### Deviations from the plan
+
+- Amendment 1 (the clock repair), written before any return was computed.
+- No other. Because nothing passed, the second implementation and the
+  reviewers were not needed.
