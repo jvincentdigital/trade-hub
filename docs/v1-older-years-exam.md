@@ -270,3 +270,107 @@ The download, conversion and check scripts are kept next to the results in
 
 The rule, the exam years, Check 2's three lines, the six-line verdict, the two
 declared runs without a verdict, what each result means, and one run.
+
+## Check 2, the splice (2026-11-17): passed
+
+Frozen v1 on the seen year 2024-11-11 to 2025-11-10, HistData files against
+the frozen files: 97 trades and +27.6R on both, $16,896, worst drop 9.6%. All
+97 trades have a twin, and the two trade lists are identical byte for byte.
+The HistData side sat out two holidays per market (2024-12-25, 2025-01-01).
+All three lines of the gate pass.
+
+## The exam (run once, 2026-11-17): fail
+
+Code `e5187ce`. Output: `~/jvd-outputs/2026-11-17/v1-older-years/` and a copy
+in `~/.local/share/trade-hub/histdata-1m/exam-results/`. The marker
+`EXAM-DONE.json` is written; the runner refuses a second run.
+
+**Frozen v1 on 2019-01-01 to 2024-11-10: 656 trades, -18.3R. $10,000 became
+$5,863, with a worst drop of 44.5%.**
+
+| Line                                               | Result                 |      |
+| -------------------------------------------------- | ---------------------- | ---- |
+| 1. at least 80 trades                              | 656                    | pass |
+| 2. ends above $10,000 and averages at least +0.10R | $5,863, average -0.03R | FAIL |
+| 3. profit factor at least 1.20                     | 0.95                   | FAIL |
+| 4. max drawdown at most 25%                        | 44.5%                  | FAIL |
+| 5. total R above the coin flips' 95th percentile   | -18.3R against -59.0R  | pass |
+| 6. mirror z at least 1.0                           | 1.38                   | pass |
+
+Verdict by the plan: **fail** (it lost money, so not "made money, not
+proven").
+
+### Year by year
+
+| Year             | Trades | Total  | Avg R | Won | GBP/USD      | Gold         |
+| ---------------- | ------ | ------ | ----- | --- | ------------ | ------------ |
+| 2019             | 85     | -3.0R  | -0.04 | 45% | 77 / -1.1R   | 8 / -1.9R    |
+| 2020             | 182    | -3.5R  | -0.02 | 42% | 136 / -6.8R  | 46 / +3.2R   |
+| 2021             | 112    | +1.3R  | +0.01 | 43% | 87 / +12.1R  | 25 / -10.8R  |
+| 2022             | 160    | +3.7R  | +0.02 | 44% | 131 / +10.9R | 29 / -7.2R   |
+| 2023 (thin year) | 60     | -8.3R  | -0.14 | 40% | 54 / -10.5R  | 6 / +2.2R    |
+| 2024 to Nov 10   | 57     | -8.4R  | -0.15 | 39% | 39 / -7.0R   | 18 / -1.4R   |
+| **All**          | 656    | -18.3R | -0.03 | 42% | 524 / -2.5R  | 132 / -15.8R |
+
+For comparison, the two years the rule was built and first tested on: the
+test year (2024-11 to 2025-11) +27.6R on 97 trades, +0.28R a trade, 58% won;
+the settings year (2025-11 to 2026-11) +24.1R on 121 trades, +0.20R a trade.
+No older year comes near either.
+
+2023 sat out 115 weekdays for GBP/USD and 117 for gold (thin data), so it has
+about half a year of trades. Leaving 2023 out entirely does not change the
+picture: the other five years together made -10.0R.
+
+How the trades ended: 332 at the stop (-316.9R), 172 on the 16:30 close
+(+73.5R), 118 at the final target (+209.9R), 34 before red news (+15.3R).
+Buys made -16.9R (294 trades), sells -1.4R (362). The longest losing run was
+12 trades. Without its best three trades the total is -25.6R.
+
+### How sure this is
+
+The average is -0.03R a trade with a standard error of 0.044R, so the range
+that fits the data runs from about -0.11R to +0.06R. The test year's +0.28R
+is far outside it, and so is the +0.10R the rule needed. This is not a close
+call that more data might flip: 656 trades are enough to say the rule had no
+edge after costs on these six years.
+
+Two things are worth keeping, without over-reading them:
+
+- **The entries are better than random.** Coin-flip entries with the same
+  stops and targets lost much more (95 in 100 runs ended below -59.0R), and
+  the same trades taken the other way lost -89.7R. So the Fib pullback does
+  pick a side better than chance.
+- **It is not enough to pay the costs.** With every cost doubled the total is
+  -72.2R, so costs took about 54R of these 656 trades, about 0.08R a trade.
+  Before costs the rule made roughly +0.05R a trade: too thin to trade.
+
+### The two declared runs (no verdict)
+
+| Run                        | Trades | Total  | $10,000 became | Max drop | Six lines |
+| -------------------------- | ------ | ------ | -------------- | -------- | --------- |
+| Main: frozen v1            | 656    | -18.3R | $5,863         | 44.5%    | fail      |
+| No news list at all        | 705    | -20.1R | $5,540         | 46.2%    | fail      |
+| Hold rule, overnight costs | 639    | -37.7R | $3,854         | 65.1%    | fail      |
+
+The main run and the no-news run agree, so the result does not depend on the
+news list. The hold rule, which the live account uses, did worse than the
+clock on these years (its 2023 numbers are weaker, as said in Amendment 1,
+but every year except 2019 is below the clock version).
+
+### What it means
+
+By the plan: the test year was most likely luck or a passing market mood.
+Both years the rule was built and first tested on (late 2024 to late 2026)
+were unusually kind to it; the six years before were not.
+
+- The live v1 account should no longer be treated as a proof in progress.
+  Thirty live trades cannot overturn 656.
+- The hold study's "holding is fine" stands only as a description of the two
+  seen years. On the older years holding was worse.
+- No rule is tuned on these years now. They are used up for v1 and its close
+  relatives (other k and b, the hold exit, the 30-minute chart, the thirds).
+- What is still untested is not a rule: John's own calls, scored in play
+  money on the same terms.
+
+Nothing here touches the live race. What the app says about v1, and whether
+its accounts keep running, are John's decisions.
