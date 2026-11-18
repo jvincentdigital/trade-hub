@@ -50,8 +50,10 @@ export const REPL_CANDIDATES: HarmonicMarket[] = ['AUDJPY', 'CADJPY', 'NZDJPY', 
  * work leaves it out (clock check failed, or first candle at or after
  * 2009-07-01 00:00 UTC). The run refuses with fewer than 3. The tests
  * only ask that this list keeps the candidates' order and has 3 or more.
+ * Amendment 5a: AUD/JPY is left out (the source has no data for eleven
+ * months of 2012), so the test runs on three pairs.
  */
-export const REPL_MARKETS: HarmonicMarket[] = ['AUDJPY', 'CADJPY', 'NZDJPY', 'CHFJPY']
+export const REPL_MARKETS: HarmonicMarket[] = ['CADJPY', 'NZDJPY', 'CHFJPY']
 
 /** The pair whose daily changes the others are compared with. */
 export const REPL_REFERENCE: HarmonicMarket = 'GBPJPY'

@@ -961,3 +961,40 @@ GBP/JPY's file is already open).
 - Holds of 120 hours cross week boundaries, so neighbouring weeks are linked
   and the weekly t can come out higher than it should.
 - Play money only. No broker is connected. This is not financial advice.
+
+## Amendment 5a: AUD/JPY is left out (2026-11-18, after step 2 and before the marker; no price was read)
+
+Step 2 of Amendment 5 found this, from the row counts and the time stamps of
+the four files alone:
+
+| Pair    | First candle (UTC) | Rows      | Gaps of more than four days from 2010 on           | Clock check | SHA-256 of the repaired file                                     |
+| ------- | ------------------ | --------- | -------------------------------------------------- | ----------- | ---------------------------------------------------------------- |
+| AUD/JPY | 2005-01-03 06:48   | 7,302,679 | 2011-12-30 to 2012-10-01, 2012-11-01 to 2013-01-01 | passes      | 92567a6b1ab1e4750a8a6a22b9ce77adcaf1680aa67acba24ffb7fe7c8cc4941 |
+| CAD/JPY | 2007-03-18 22:00   | 6,880,483 | none                                               | passes      | 08319b2f964c42d3663668da53f7d1c42c6d4d969c2d1353ad12a7f4a97efbbc |
+| NZD/JPY | 2006-09-03 21:00   | 7,024,661 | none                                               | passes      | d278cb950434463048bd9941a8d553cbaba852211e0d75eda512902a6f0cf7c2 |
+| CHF/JPY | 2005-01-03 06:48   | 7,627,048 | none                                               | passes      | 86f9ce4d5bcb36398490e510260d15b897ddea50ac6843be562587b6e55aca4a |
+
+The source has no file for CAD/JPY before 2007 and none for NZD/JPY before
+2006; both start well before July 2009. Every file ends on 2025-12-31 at 21:57
+UTC.
+
+**AUD/JPY's file has a hole.** The source's file for 2012 holds 33,047 rows
+where a year has about 370,000: October 2012 and a few minutes of November.
+The source's monthly pages for 2012 give no file either. So eleven months of
+a year under test are missing.
+
+This is "a failure that the rules above do not cover", and the work stopped
+there, before the marker. The two rules for leaving a pair out (the clock
+check; a first candle after June 2009) were written so that a pair offers the
+whole of the years under test, and AUD/JPY does not. A hole of that size would
+also do harm inside the test: a trade open when it starts would be closed nine
+months later at an unrelated price, and patterns would form across it.
+
+**So AUD/JPY is left out, and the test runs on three pairs**, as Amendment 5
+provides: CAD/JPY, NZD/JPY and CHF/JPY, with line 6 at 2 of the 3. Everything
+else in Amendment 5 stands.
+
+The decision rests on row counts and time stamps. Nobody has read a price of
+any of the four files, apart from the one row the conversion prints to show a
+file's format, and the rule has not been run on any of them. AUD/JPY's file
+stays unread.
