@@ -799,3 +799,165 @@ account would see about five trades a month, far too few to tell anything in
 weeks or months. A quicker and harder test is to run the same frozen rule,
 once, on yen pairs this study never opened (AUD/JPY, CAD/JPY, NZD/JPY and
 CHF/JPY have the same free 1-minute files), with the lines written first.
+
+## Amendment 5: the lead on four yen pairs this study never opened (2026-11-18, written before any price of theirs was read)
+
+**Why.** John chose this as the next test of the lead (2026-11-18). The lead
+of Amendment 4 was the best of 42 cells and read "Positive, not proven" on one
+pair. If it is a real tendency of yen pairs and not the luck of that pick, the
+same frozen rule should make money on other yen pairs whose prices this study
+has never read.
+
+**The rule, frozen.** Amendment 4's lead with nothing changed: an order at D
+(E0); all four patterns, both charts, both swing sizes; the pattern's stop;
+closed at market at the first minute at or after 120 hours from the fill.
+
+**Markets.** AUD/JPY, CAD/JPY, NZD/JPY and CHF/JPY: 1-minute files from the
+same source, from the first year it offers (2005 at the earliest) to its last
+candle of 2025, with the same conversion, the same clock repair and the same
+clock check (weekly reopen at 17:00 New York). Which pairs are used is decided
+in step 2 of the order of work, from the clock check and the first time stamp
+alone: a pair is left out, and named, when its file fails the clock check or
+its first candle is stamped at or after 2009-07-01 00:00 UTC. The list is
+written into the committed script, and the run refuses unless exactly those
+files are there. A pip is 0.01. Spreads, assumed typical and set before any
+result, from broker listings read on 2026-11-18 (IG's listed minimum and
+average spreads, CMC Markets' average for AUD/JPY): AUD/JPY 1.6 pips, CAD/JPY
+2.5, NZD/JPY 2.5, CHF/JPY 2.5. Everything else about prices and costs is the
+plan's (0.2 pip on every market fill; double cost doubles the spread and the
+0.2 pip; a trade whose R is under 5 times its round-trip cost is skipped).
+
+**Years.** Trades filled from 2010-01-01 to 2025-12-31: the study's choosing
+and checking years together. None of these sixteen years has been seen for
+these pairs. The swings and indicators run over each whole file from its
+first candle, as always. The files end with the source's last candle of 2025,
+as the other markets' do; a trade still open then is closed there (Amendment 3
+point 11). The figures are also shown for 2010 to 2018 and for 2019 to 2025
+apart.
+
+**The reading is on the pairs together.** Every trade of the pairs used goes
+into one list.
+
+- **Weeks** are the plan's (Saturday 00:00 UTC to the next, by fill minute),
+  with the trades of all the pairs summed in each week.
+- **"Above zero."** A year is above zero when the sum, in R after costs at 120
+  hours, of all the pairs' trades filled in that UTC year is above zero. A
+  pair is above zero when the sum of its trades over 2010 to 2025 is, and a
+  period when the sum of all the pairs' trades filled in it is. A year with
+  no trade is not above zero.
+- **The pooled twins.** For the pairs together a twin moves every trade
+  filled on one UTC date by the same whole number of days, whatever its pair:
+  one draw per UTC fill date, dates in order, from the plan's generator with
+  seeds 1 to 200, with the plan's moves and the plan's rule for a minute that
+  does not exist (looked for in the trade's own pair). The average of pooled
+  twin `k` is the sum of the after-cost results of its twin trades divided by
+  the number of those twin trades; a trade left out of a twin counts in
+  neither. This is not the plan's draw, which is one per market and date:
+  here trades of different pairs that fill on the same day stay together, as
+  the real trades do, which is the harder test when the pairs' trades bunch
+  on the same days. The plan's own way (each pair's twins made as in
+  Amendment 4, the generator started again for each pair, then summed) is
+  printed beside it as description.
+
+After costs, at 120 hours:
+
+1. at least 200 trades (the plan's line for markets together);
+2. a weekly t-statistic of 2.5 or more;
+3. at least 12 of the 16 years above zero (5 of 7 is 71%; 12 of 16 is 75%);
+4. ahead of at least 190 of the 200 pooled twins;
+5. still above zero at double cost;
+6. at least 3 of the 4 pairs above zero (the plan's line 6: more than half of
+   the markets used);
+7. above zero in each of the two periods, 2010 to 2018 and 2019 to 2025.
+
+Readings, the plan's four, tried in this order:
+
+- **"Worth a play account"**: all seven lines hold. Before John is told so, a
+  second implementation and two reviewers must fail to break it.
+- **"Positive, not proven"**: not all seven hold, but after costs the average
+  result of the pairs together is above zero, they are ahead of at least 100
+  of the 200 pooled twins, and lines 6 and 7 hold. In those words the rule
+  may be offered to John for a play-money account as the next test, never as
+  a proven rule.
+- **"Real but too small to trade"**: neither reading above applies, and
+  before costs the pairs together clear lines 2 and 4.
+- **"Not there"**: anything else. Then the GBP/JPY result is most likely the
+  luck of picking the best of 42 cells, and the lead is closed.
+
+The lines and the reading are new code in the script; the functions that
+worked out Amendment 4's five lines are not reused for them.
+
+If one pair is left out, the test runs on three: line 6 is then at least 2 of
+the 3. With fewer than three pairs no reading is given, and the lead stays at
+Amendment 4's "Positive, not proven".
+
+**Also reported, as description only:** each pair alone with Amendment 4's
+figures and its own 200 twins made as in Amendment 4 (trades; what a trade
+was worth after 24, 48, 72 and 120 hours; weekly t; years above zero; ahead
+of how many of its twins; double cost); buys and sells apart, for the pairs
+together and for each pair; the share of trades that ended at their stop; how
+much of the sum the ten best trades made; every year; and the correlation of
+each pair's daily changes with GBP/JPY's over 2010 to 2025 (the change in
+percent of the last Bid close of each UTC date, dates present in both files;
+GBP/JPY's file is already open).
+
+**Order of work.**
+
+1. This amendment is pushed.
+2. The four files are downloaded, converted and repaired with the tools used
+   for the other markets, and their SHA-256 written into the results. The
+   conversion prints the first row of a file to show its format and checks
+   the shape of every row; the repair and the clock check read time stamps.
+   None of them computes a result. A failure here that the rules above do not
+   cover stops the work before the marker.
+3. Code. The four markets are added to the engine's type of markets and to
+   its table of prices and costs (spreads 0.016, 0.025, 0.025 and 0.025 in
+   price; the 0.5 pip and the 0.2 pip follow from the pip, as for the other
+   yen pairs). The list of the study's seven markets is not changed, so the
+   study's own runner behaves as before. Nothing else in the engine changes.
+   A small script runs the lead on the pairs used. Before the run it must
+   reproduce, with the functions it will use: Amendment 4's table for GBP/JPY
+   from the copy that ends at 2018-12-31 (628 trades, +0.323 R, weekly t
+   1.46), and Amendment 4's check from GBP/JPY's full file (422 trades, +0.244
+   R, weekly t 1.07, ahead of 196 of its 200 twins). That file is already
+   open and nothing new is read from it. The pooled part is rehearsed on the
+   development copies of GBP/JPY and EUR/JPY, 2010 to 2018, with 20 twins;
+   that rehearsal's reading is not a result. A second person reads the
+   change.
+4. The code is committed and pushed. Then the test runs once: it writes its
+   own marker before any bar of the four files is read, writes no figure
+   before it has them all, and refuses to run again. If it stops with an
+   error before any figure is written, the error and the fix are written into
+   the results and it runs once more with a second marker. Once a figure is
+   written there is no second run.
+
+**Limits, said in advance.**
+
+- All the pairs have the yen on one side, like GBP/JPY, and the lead's profit
+  came from a few large moves of the yen. The same moves show on every yen
+  pair. So these are not four independent tests, and they are not independent
+  of GBP/JPY's result. The twins guard against the yen's own drift in those
+  weeks, because they keep each trade's direction and its weeks. They do not
+  guard against pattern timing that is lucky on every yen pair at once: where
+  GBP/JPY's patterns caught a large move, the other yen pairs' patterns tend
+  to form at similar times. In 2010 to 2018 that luck can carry over from the
+  pick, which is why 2019 to 2025 must hold on its own (line 7). Even there,
+  GBP/JPY's result was known before this test was chosen.
+- The calendar is not new: 2010 to 2018 are the years the lead was picked on
+  with GBP/JPY, and 2019 to 2025 the years it was checked on. Only the prices
+  are new.
+- The middle reading asks little: an average above zero in both periods and
+  in 3 of the 4 pairs, and no worse than the median twin. It says that the
+  sign repeated, not that the rule works.
+- The spreads are assumed, and wider crosses cost more than that at the
+  rollover hour and around news. The spread also decides which trades exist,
+  through the skip rule, so a wrong spread changes the list of trades and not
+  only their results.
+- No overnight financing is counted. On AUD/JPY, NZD/JPY and CAD/JPY a sell
+  has usually paid it and a buy earned it, on the order of a pip a night; on
+  CHF/JPY the sign changed over the years. A result that rests on sells of
+  the high-rate pairs would shrink. Stops on the calmer pairs are likely
+  smaller than GBP/JPY's 21 pips, so financing weighs more there.
+- Holds of 120 hours cross week boundaries, so neighbouring weeks are linked
+  and the weekly t can come out higher than it should.
+- Play money only. No broker is connected. This is not financial advice.
