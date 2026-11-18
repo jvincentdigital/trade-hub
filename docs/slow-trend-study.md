@@ -117,6 +117,17 @@ risk target, with losing stretches of several years. Not a robot that makes
 - One free price feed; assumed costs; an assumed dividend; a flat markup.
 - Play money only. No broker is connected. This is not financial advice.
 
+## Amendment 1: 2026 (2026-11-17 night, before any run)
+
+John asked whether the prices reach today. They stop at 2025-12-31: the free
+source gives finished years as one file and the running year month by month,
+and only finished years were fetched.
+
+Before the run, 2026 is added for all six markets up to the last complete
+month the source offers, with the same clock repair and check. It is shown as
+its own line in the results. The reading stays on 2010 to 2025 and 2019 to
+2025 as fixed above, so a partial year cannot tip it either way.
+
 ## Results
 
 Not run yet.
