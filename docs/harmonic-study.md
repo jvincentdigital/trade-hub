@@ -350,6 +350,70 @@ what holding a position for days would have done. Nothing has been computed.
    choosing years more easily than the candidate. The spreads of the four new
    pairs are assumed typical values.
 
+## Amendment 3: points made exact for the two programmers (2026-11-18 morning, before any code was written)
+
+The plan was read once more while the build was being set up. Each point
+below could be read two ways, or was left unsaid. Nothing has been computed.
+
+1. **The first candle of a file** has no previous close: its true range is
+   its high minus its low. So the first ATR exists at the 14th candle and no
+   swing is confirmed before it. Until then the candidate still moves.
+2. **A pattern's year** (Part 1) is the year of its confirming candle's close
+   (UTC). A trade's year is still the year of its fill minute.
+3. **The cross-check of the two pattern finders** covers both swing sizes and
+   every pattern whose confirming candle closes in 2015: its four points, D,
+   the stop, and what the wait did (skipped by the confirming-candle rule,
+   completed and in which minute, or cancelled and why). Prices must agree to
+   1e-9, times and outcomes exactly.
+4. **The 0.2 pip is a cost, not part of a price.** A market entry is at the
+   minute's open (the Bid for a sell, the Bid plus the spread for a buy). R,
+   the targets at 1 to 3 R and the twins' distances are measured from that
+   price. A stop fills at the stop level, or at the minute's open when the
+   open is already beyond it. Each market fill then lowers the result by 0.2
+   pip.
+5. **The time exit** closes the trade at the open of the first 1-minute
+   candle of the 481st chart candle, before any other test in that minute.
+6. **X3.** In the minute the first half is taken, nothing else happens to the
+   rest. From the next minute on the rest has its stop at the entry price and
+   X2's target, the stop first. A stop at the entry price is a stop fill.
+   Each half carries half of every cost.
+7. **Look-back measures** (Parts 2 and 3). "How far price went" is a move of
+   the Bid, measured from the Bid at the entry, before costs. The minute that
+   hits the stop counts as the full distance to the stop and adds nothing in
+   favour. "Worth after N hours" is the result of closing at market at the
+   open of the first minute at or after that time; a trade already closed by
+   its stop or by the time exit keeps that result. Targets in R and in pips
+   are measured from the entry price and tested like any target, with the
+   stop and the time exit.
+8. **Pooling in Parts 2 and 3.** Each table pools both charts, both swing
+   sizes and all four patterns, per market and for all markets together. The
+   same tables split by chart, swing size and pattern go into the result
+   files.
+9. **"Above zero"** for a year, a half or a market means the sum of its
+   results in R is above zero; one with no trade is not above zero. A tie in
+   the ranking goes to the version that comes first in this order: pattern
+   set (Butterfly alone, then all four), chart, swing size, entry, exit.
+10. **Thirds by size of R** use R divided by the entry price, so that markets
+    can be compared.
+11. **The end of the data.** In the checking run a trade still open at the
+    last minute of the file is closed there at market, as the choosing run
+    does at the last minute of 2018. A pattern still waiting then gives no
+    trade.
+12. **Twins.** The moved minute must exist in the file with exactly that
+    stamp. The twin enters at that minute's open. The random moves come from
+    one fixed generator, named in the results, with seeds 1 to 200.
+13. **The checking run computes all 336 versions on 2019 to 2025** in its
+    single run, because the count of versions above zero and the rank
+    correlation (Spearman, over versions with a trade in both periods) need
+    them. Nothing from it is used to choose.
+14. **Indicators.** RSI does not exist before 14 changes; until then its test
+    is false. With no losses in its average, RSI is 100. The 4-hour candles
+    are built from the 1-minute file on New York time with daylight saving,
+    and their EMA(50) is seeded with the first 4-hour close.
+15. **Keeping the checking years out of reach while the code is written.**
+    The programmers work on copies of the files that end at 2018-12-31. The
+    full files are made unreadable until the check.
+
 ## Results
 
 Not run yet.
