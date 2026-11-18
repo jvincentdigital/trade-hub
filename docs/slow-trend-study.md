@@ -128,6 +128,32 @@ month the source offers, with the same clock repair and check. It is shown as
 its own line in the results. The reading stays on 2010 to 2025 and 2019 to
 2025 as fixed above, so a partial year cannot tip it either way.
 
+## Amendment 2: the interest rates (2026-11-18, before any run)
+
+The download can be automated, so no rate is entered by hand.
+
+- **The series.** The monthly central bank policy rates collected by the Bank
+  for International Settlements from the Federal Reserve, the European
+  Central Bank, the Bank of England and the Bank of Japan (data set "Central
+  bank policy rates", end of month), 2004-01 to 2026-10. For the dollar it is
+  the middle of the Federal Reserve's target range; for the euro the main
+  refinancing rate. Downloaded 2026-11-18 and kept, with its address, in
+  `~/.local/share/trade-hub/rates/`.
+- **The yen's empty months.** The series has no value for Japan in 66 months
+  (2004-01 to 2006-02 and 2013-05 to 2016-08), when the Bank of Japan steered
+  by the amount of money and had no rate target. Those months use the monthly
+  average of the Bank of Japan's overnight call rate (OECD series
+  `IRSTCI01JPM156N`), which lay between -0.06% and +0.08% in them.
+- **Which month's rate.** A month's financing uses the rates at the end of
+  the month before, the ones in force when the position was opened, as one
+  twelfth of the yearly rate.
+- **A second look, as description only.** From 2015 to 2022 the euro's
+  overnight rate stood about half a point under its main refinancing rate. So
+  the results also show the sized portfolio with the overnight rates of all
+  four currencies (OECD "call money / interbank rate", monthly averages; the
+  euro's ends in 2026-01 and is carried forward). The reading uses the policy
+  rates above; if the two differ in any of the five lines, that is said.
+
 ## Results
 
 Not run yet.
