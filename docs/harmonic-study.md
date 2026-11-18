@@ -274,6 +274,44 @@ correlation between a version's result in the two periods.
 - One free price feed; assumed costs; no overnight financing counted.
 - Play money only. No broker is connected. This is not financial advice.
 
+## Amendment 1: points made exact (2026-11-17, before any code was written)
+
+The pushed plan was read once more the way the two programmers will read it.
+Seven points could be read two ways, and one thing John asked for was
+missing. Nothing has been computed.
+
+1. **C1 and C5, the trigger.** The trigger is the first candle, among candles
+   1 to 12, that closes above the EMA(20) at or after a candle (candle 1 or
+   later) on which RSI(14) closed at or below 30. A close above the EMA before
+   RSI has been that low is ignored. Sells: below the EMA, RSI at or above 70.
+   This is the plain "RSI is low" form of the method. The form in which RSI
+   fails to make a new low with the price is not tested.
+2. **"Reaches"**, in the cancel rule for C1, C2 and C5, means the same tests
+   as the stop and target fills.
+3. **Gold's spread.** During the wait and for an order at D it is $0.28 x D /
+   $1,800. For a market entry it is $0.28 x the Bid at entry / $1,800.
+4. **Double cost and before costs use the same trades.** Nothing is simulated
+   again. At double cost each result is lowered by one more round-trip cost
+   and by one more 0.2 pip for every market fill the trade had (market entry,
+   stop fill, time exit). Before costs, the round-trip cost and those 0.2
+   pips are added back.
+5. **Weeks** run from Saturday 00:00 UTC to the next, by fill minute. The
+   standard error is the standard deviation of the weekly sums (n - 1)
+   divided by the square root of the number of weeks.
+6. **The choosing run reads no price after 2018-12-31.** A trade still open
+   then is closed at market at the last minute of 2018. In the checking run
+   the swings and indicators run over the whole file, and the trades are
+   those filled from 2019-01-01 on.
+7. **Twins.** A twin's stop and targets sit at the same price distances from
+   its entry as the trade's did. It pays the entry slip its trade paid (none
+   for an order at D). Its time exit counts from its own entry candle. "Ahead
+   of a twin" means a higher average result per trade after costs.
+8. **Parts 2 and 3, in pips as John asked.** Besides the targets in R, each
+   market gets fixed targets of 5, 10, 15, 20, 30 and 50 pips (gold: $1, $2,
+   $3, $5, $8 and $12), each with the pattern's stop: how many trades reached
+   it and the average result after costs, in pips and in R. The same fixed
+   wording applies. These are descriptions, not among the 336 versions.
+
 ## Results
 
 Not run yet.
