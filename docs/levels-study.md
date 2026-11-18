@@ -1048,43 +1048,47 @@ John's questions, on 2005 to 2018 and seven markets:
 - **Do the floors and ceilings of the bigger charts turn price?** Not more
   than prices with no memory do. A 4-hour zone that had turned price three
   times or more was visited 938 times. At the quick distance 57.6 of 100
-  visits turned against 55.3 at nearby prices (+2.33, t 1.08), and prices with
-  no memory give +1.96 and +2.64 from the way a zone is built, so nothing is
-  left (+0.36 and -0.31). At the hold distance it was 52.8 against 45.2
-  (+7.56), of which +3.88 and +3.54 is the build; what is left (+3.68 and
-  +4.01) is 1.2 standard errors: "not seen at 9.6 points or more". 938 visits
-  in fourteen years cannot show less than that. On 2019 to 2025, as
+  visits turned against 55.3 at nearby prices (+2.33, t 1.08), and prices
+  with no memory give +1.96 and +2.64 from the way a zone is built, so
+  nothing is left (+0.36 and -0.31). At the hold distance it was 52.8 against
+  45.2 (+7.56), of which +3.88 and +3.54 is the build; what is left (+3.68
+  and +4.01) is 1.2 standard errors: "not seen at 9.6 points or more". 938
+  visits in fourteen years cannot show less than that. On 2019 to 2025, as
   description only, the quick lift was -4.43 and the hold lift +4.77. Daily
   zones (228 visits) turned price less often than nearby prices (59.7 against
   67.1). More turns did not make a zone stronger: quick lift with two turns
   -2.8 (4,843 visits), three +3.1 (696), four or more -5.0 (178); daily +2.4
-  (1,162), -6.0 (164), -12.5 (43). These splits have no baseline of their own,
-  and for the two-turn zones Placebo 1 lay outside its limit (cause found in
-  part, see below). - **Round numbers and yesterday's high and low** turned
-  price less often than nearby prices: 48.0 of 100 against 50.3 at the 00
-  levels (-2.36, t -7.8, in all seven markets), 49.0 against 50.3 at the 50
-  levels (-1.28, t -5.1, in five of the seven), 47.7 against 50.5 at
-  yesterday's high and low (-2.78, t -6.6, in all seven). Prices with no
-  memory do not show it (their largest figure is -0.49, for yesterday's high
-  and low on shuffled days), and 2019 to 2025 showed it again (-2.46, -1.76,
-  -2.31). Last week's high and low: 49.3 against 49.8. - **How far a turn
-  goes.** The quick distance was 27 to 39 pips on average and the hold
-  distance 107 to 154. Where price turned at the quick distance, the median
-  distance it then went was 53 to 85 pips. - **The plain trades.** The order
-  at the level (T0, quick) lost 1.3 to 5.3 pips a trade before costs in all
-  ten kinds, and 2.7 to 6.9 after. All kinds together, after costs: T0 -0.110
-  R (136,410 trades), T1 -0.092 R (85,399), B0 -0.102 R (103,194). - **What
-  waiting for the close back out adds.** T1 lost less than T0 in nine of the
-  ten kinds (yesterday's high and low: T0 -0.136 R, T1 -0.107 R; the classic
-  daily Fibonacci levels: T0 -0.168 R, T1 -0.044 R) and still lost in every
-  one. - **Quick against hold.** Almost no difference: T0 -0.110 R quick and
-  -0.111 R hold; T1 -0.092 R and -0.088 R; B0 -0.102 R and -0.082 R, the hold
-  a little less bad. - **Fibonacci.** Nothing. Quick Turn lifts: F4C -1.9 (t
-  -1.87), FDC 0.0, F4J -2.6 (prices with no memory give -3.1 and -2.6 for
-  John's 0.786 to 0.886 area, so the rest is +0.5 and 0.0), FDJ -0.2. - **The
-  best pair.** None under Amendment 1's reading. Under the plan's own:
-  USD/JPY, breaks of yesterday's high or low. Real, and too small to trade. -
-  **Pairs that move alike.** EUR/JPY and GBP/JPY are close to one bet: their
+  (1,162), -6.0 (164), -12.5 (43). These splits have no baseline of their
+  own, and for the two-turn zones Placebo 1 lay outside its limit (cause
+  found in part, see below).
+- **Round numbers and yesterday's high and low** turned price less often than
+  nearby prices: 48.0 of 100 against 50.3 at the 00 levels (-2.36, t -7.8, in
+  all seven markets), 49.0 against 50.3 at the 50 levels (-1.28, t -5.1, in
+  five of the seven), 47.7 against 50.5 at yesterday's high and low (-2.78, t
+  -6.6, in all seven). Prices with no memory do not show it (their largest
+  figure is -0.49, for yesterday's high and low on shuffled days), and 2019 to
+  2025 showed it again (-2.46, -1.76, -2.31). Last week's high and low: 49.3
+  against 49.8.
+- **How far a turn goes.** The quick distance was 27 to 39 pips on average
+  and the hold distance 107 to 154. Where price turned at the quick distance,
+  the median distance it then went was 53 to 85 pips.
+- **The plain trades.** The order at the level (T0, quick) lost 1.3 to 5.3
+  pips a trade before costs in all ten kinds, and 2.7 to 6.9 after. All kinds
+  together, after costs: T0 -0.110 R (136,410 trades), T1 -0.092 R (85,399),
+  B0 -0.102 R (103,194).
+- **What waiting for the close back out adds.** T1 lost less than T0 in nine
+  of the ten kinds (yesterday's high and low: T0 -0.136 R, T1 -0.107 R; the
+  classic daily Fibonacci levels: T0 -0.168 R, T1 -0.044 R) and still lost
+  in every one.
+- **Quick against hold.** Almost no difference: T0 -0.110 R quick and -0.111 R
+  hold; T1 -0.092 R and -0.088 R; B0 -0.102 R and -0.082 R, the hold a little
+  less bad.
+- **Fibonacci.** Nothing. Quick Turn lifts: F4C -1.9 (t -1.87), FDC 0.0, F4J
+  -2.6 (prices with no memory give -3.1 and -2.6 for John's 0.786 to 0.886
+  area, so the rest is +0.5 and 0.0), FDJ -0.2.
+- **The best pair.** None under Amendment 1's reading. Under the plan's own:
+  USD/JPY, breaks of yesterday's high or low. Real, and too small to trade.
+- **Pairs that move alike.** EUR/JPY and GBP/JPY are close to one bet: their
   daily changes move together 0.82 (2005 to 2011), 0.74 (2012 to 2018) and
   0.76 (2019 to 2025). USD/JPY and GBP/JPY reached 0.71 in 2005 to 2011 only;
   EUR/USD and GBP/USD 0.66, 0.56 and 0.70.
@@ -1128,11 +1132,12 @@ the ten mirrored series say which of the three written causes it is:
   spread 1.20; mirrored -0.76). In the practice runs it was R50 and F4C at the
   same distance. The spread between shuffles is again as wide as one shuffle's
   standard error there, or wider (R00: 0.41 against 0.31; F4C: 1.20 against
-  1.21). - **The shuffled series itself**: PD turn 0.10 (-0.89), turn 0.25
-  (-1.18) and run 0.25 (+1.25); the ten shuffles agree (-0.64, -0.49, +0.57)
-  and the mirrored series show nothing (-0.04, +0.09, -0.20). - **How the kind
-  is built**: Z4 turn 1.00 (+6.72; ten shuffles +3.88, mirrored +3.54) and F4J
-  turn 0.10 (-3.05; -3.96 and -2.99).
+  1.21).
+- **The shuffled series itself**: PD turn 0.10 (-0.89), turn 0.25 (-1.18) and
+  run 0.25 (+1.25); the ten shuffles agree (-0.64, -0.49, +0.57) and the
+  mirrored series show nothing (-0.04, +0.09, -0.20).
+- **How the kind is built**: Z4 turn 1.00 (+6.72; ten shuffles +3.88,
+  mirrored +3.54) and F4J turn 0.10 (-3.05; -3.96 and -2.99).
 
 The means of the ten series stand off zero where Amendment 1's table says
 they would: the zones (Z4, ZD, Z4x2, ZDx2), FDC and F4J, in both kinds of
@@ -1316,26 +1321,28 @@ to any of the six (0.39 at most, either way).
   above what prices with no memory give. No kind has one. The zones look like
   it on a chart because any price that was a turning point three times looks
   like a floor afterwards; made-up prices with no memory produce the same
-  picture: 2 to 4 points for the 4-hour zones, 4 to 9 for the daily ones. -
-  **The plainest levels do the opposite.** At a 00 level and at yesterday's
+  picture: 2 to 4 points for the 4-hour zones, 4 to 9 for the daily ones.
+- **The plainest levels do the opposite.** At a 00 level and at yesterday's
   high and low, price went through more often than at a nearby price, on both
-  periods. Fading them is worse than fading a random price. - **One thing is
-  real, and small.** A break of yesterday's high or low runs on more often
-  than a break of a nearby price: in all seven markets, on both periods, most
-  on USD/JPY. It is worth 2 to 3 runs in 100 across the seven markets and 4 to
-  7 on USD/JPY. A plain trade with the break breaks even before costs and
-  loses after them. - **By this page's own rule the confirmations are not
-  tested.** "What comes after" was only for rules whose level lines hold as
-  turning points. None does. - **If anything here is taken further**, it is
-  the break of yesterday's high or low as a condition inside another rule
-  (never fade it; lean with it), not as a trade of its own. That would be a
-  new plan, written before its code, on data this study has not used for
-  choosing. Nothing is started. - **The method lesson.** A comparison with
-  nearby prices is not neutral for levels made from past turning points. Every
-  such test needs prices with no memory beside it, several series of them,
-  before a single real table is read. Without that step the tables would have
-  shown 4-hour zones turning price 8 points more often at the hold distance,
-  about half of which is the way a zone is built.
+  periods. Fading them is worse than fading a random price.
+- **One thing is real, and small.** A break of yesterday's high or low runs
+  on more often than a break of a nearby price: in all seven markets, on both
+  periods, most on USD/JPY. It is worth 2 to 3 runs in 100 across the seven
+  markets and 4 to 7 on USD/JPY. A plain trade with the break breaks even
+  before costs and loses after them.
+- **By this page's own rule the confirmations are not tested.** "What comes
+  after" was only for rules whose level lines hold as turning points. None
+  does.
+- **If anything here is taken further**, it is the break of yesterday's high
+  or low as a condition inside another rule (never fade it; lean with it),
+  not as a trade of its own. That would be a new plan, written before its
+  code, on data this study has not used for choosing. Nothing is started.
+- **The method lesson.** A comparison with nearby prices is not neutral for
+  levels made from past turning points. Every such test needs prices with no
+  memory beside it, several series of them, before a single real table is
+  read. Without that step the tables would have shown 4-hour zones turning
+  price 8 points more often at the hold distance, about half of which is the
+  way a zone is built.
 
 Limits as said in advance, and two more. The years 2019 to 2025 have now been
 opened once for this study, for one candidate; the figures of the other
