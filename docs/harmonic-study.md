@@ -474,8 +474,16 @@ the seven markets, with or without a confirmation.
   (one hold, 72 hours, was a little above zero before costs and below it
   after).
 - **Per pair.** All seven lost at 1 R. The best was EUR/GBP at about zero
-  before costs. No pair stands out, and the best pair of the old years
-  (GBP/JPY, below) lost in the new ones.
+  before costs. The best pair rule of the old years (GBP/JPY, below) lost in
+  the new ones.
+- **Held longer, per pair.** For all markets together no hold paid. On single
+  pairs some long holds were above zero after costs in 2010 to 2018: GBP/JPY
+  from 12 to 120 hours (up to +0.32 R a trade at 120 hours, 628 trades),
+  EUR/JPY at 72 and 120 hours, EUR/GBP at 48 and 72 hours and at its 50-pip
+  target. On GBP/JPY 87% of those trades hit their stop and the ten best
+  made more than the whole sum (+229 R of +203 R): a few large moves caught
+  with a small stop, weekly t 1.46. These cuts were not part of the check.
+  They are a lead, not a result; Amendment 4 below takes it up.
 - **With a confirmation.** RSI and EMA, the method as John remembered it,
   triggers rarely: 167 trades in nine years on seven markets, 16 to 34 a
   market. It lost a little at 1 R. At a far target (3 R) it showed +0.18 R a
@@ -492,7 +500,9 @@ the seven markets, with or without a confirmation.
   chart, swing size 2, order at D, target at 0.618), lost 0.091 R a trade
   over 152 trades in the new years and was ahead of 47 of its 200 twins.
 - **Costs, one line.** The stops are small here (about 15 pips), so the
-  spread takes about 0.10 R a trade; but the trades lose before costs too.
+  spread takes about 0.10 R a trade; but the trades lose before costs too,
+  all markets together. (The GBP/JPY pair rule was a little above zero before
+  costs, +0.030 R a trade in 2019 to 2025, and below zero after them.)
 
 ### What was run
 
@@ -616,7 +626,10 @@ won before costs, +0.103 R a trade before costs and +0.025 R after, sums of
 +9.16 R and +0.90 R in the two halves, weekly t 0.29. Of the 2,352 versions
 on one market alone, 4 qualified; the best by weekly t was GBP/JPY, all four
 patterns, 15-minute chart, swing size 2, entry E0, exit X2: 250 trades, 32.0%
-won before costs, +0.142 R before costs and +0.021 R after, weekly t 0.22.
+won before costs, +0.142 R before costs and +0.021 R after, weekly t 0.22. The
+runner-up was gold (all four patterns, 30-minute chart, swing size 2, entry
+E0, exit X7: 159 trades, +0.021 R after costs, weekly t 0.14); only the best
+goes to the check.
 
 **The check, 2019 to 2025.**
 
@@ -650,3 +663,68 @@ The five-point shape, the confirmations and the choice of target do not turn
 a coin flip into an edge on these seven markets. The next test asks the
 question one step earlier: does price turn at a level at all, more often than
 at a nearby price (`docs/levels-study.md`, branch `lab/indicator-research`).
+
+## Amendment 4: a lead from the tables, and one more check (2026-11-18, written after the results above and before the lead was computed on any year after 2018)
+
+**What was seen.** Part 2's tables per market, on 2010 to 2018, for the order
+at D (all four patterns, both charts, both swing sizes) and what the trade
+was worth after a hold, stop in place, after costs:
+
+| Market  | Trades | After 24 hours | 48 hours | 72 hours | 120 hours | Weekly t at 120 hours |
+| ------- | ------ | -------------- | -------- | -------- | --------- | --------------------- |
+| GBP/JPY | 628    | +0.072 R       | +0.136 R | +0.282 R | +0.323 R  | 1.46                  |
+| EUR/JPY | 668    | -0.243 R       | -0.070 R | +0.073 R | +0.086 R  | 0.42                  |
+| EUR/GBP | 448    | -0.068 R       | +0.051 R | +0.090 R | -0.050 R  | -0.25                 |
+| USD/JPY | 698    | -0.252 R       | -0.168 R | -0.097 R | -0.182 R  | -0.91                 |
+| EUR/USD | 707    | -0.230 R       | -0.352 R | -0.242 R | -0.380 R  | -2.85                 |
+| GBP/USD | 664    | -0.089 R       | -0.120 R | -0.154 R | -0.184 R  | -1.20                 |
+| Gold    | 559    | -0.216 R       | -0.295 R | -0.322 R | -0.399 R  | -2.69                 |
+
+On GBP/JPY at 120 hours, 87% of the trades ended at their stop, the median
+trade lost 1 R, and the ten best trades made +229 R of the +203 R total (the
+best one +28 R). By year: 2010 +34 R, 2011 -6, 2012 +24, 2013 -8, 2014 +71,
+2015 +25, 2016 +86, 2017 -22, 2018 -1.
+
+**Said in advance.** This is the best of 42 cells (seven markets, six holds),
+with a weekly t of 1.46, carried by ten trades. A small stop held for days is
+a lottery ticket: it loses 1 R most of the time and now and then catches a
+large move. The likely answer is "Not there". It is checked because John
+asked what holding longer would have done, and this is the one place in the
+study where the old years say "made money".
+
+**The lead.** GBP/JPY; an order at D (E0); all four patterns, both charts,
+both swing sizes; the pattern's stop; closed at market at the first minute
+at or after 120 hours from the fill, exactly as "worth after N hours" is
+defined (Amendment 3 point 7).
+
+**The check, once,** on trades filled from 2019-01-01 to 2025-12-31, after
+costs, with the pair candidate's lines:
+
+1. at least 100 trades;
+2. a weekly t-statistic of 2.5 or more;
+3. at least 5 of the 7 years above zero;
+4. ahead of at least 190 of its 200 twins;
+5. still above zero at double cost.
+
+A twin is the plan's: the same market, direction and stop distance, its entry
+moved by a whole number of days (1 to 5 either way, the same move for all
+trades of one UTC date, one more day the same way up to 4 times if that
+minute does not exist), entered at market, closed 120 hours after its own
+entry; seeds 1 to 200 of the same generator. The readings are the plan's, in
+the order of Amendment 2 point 5.
+
+Also reported, as description only: the same figures for EUR/JPY, buys and
+sells apart, the share of trades that ended at their stop, and how much of
+the sum the ten best trades made.
+
+**Order of work.** A small separate script; the reviewed engine is changed
+only to hand out the position a twin starts from. It must first reproduce the
+table above for GBP/JPY (628 trades, +0.323 R) from the copy of the file that
+ends at 2018-12-31. The code is committed and pushed, then the check runs
+once with its own marker.
+
+**Limits.** This is a second look at 2019 to 2025 inside one study, for a
+rule picked after the first results were known. The first check printed no
+hold result for any market, so these numbers have not been seen. A pass here
+would still be one pair, a rule picked from 42 cells, and a result that leans
+on a few trades.
