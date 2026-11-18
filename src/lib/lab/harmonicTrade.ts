@@ -661,25 +661,20 @@ export function runHarmonic(ctx: HarmonicContext, k: number): HarmonicRun {
 // ---------------------------------------------------------------- twins
 
 /**
- * A twin of a filled trade (Amendment 1 point 7, Amendment 3 point 12):
- * enters at market at the open of minute `entryMinute` (an exact stamp the
- * caller found), with the trade's direction, stop distance (R), target
- * distances and exit rule, and the entry slip its trade paid. Gold's spread
- * is set from the twin's own entry Bid. Its time exit counts from its own
- * entry candle.
+ * The position a twin of a filled trade starts from (Amendment 1 point 7,
+ * Amendment 3 point 12): it enters at market at the open of minute
+ * `entryMinute` (an exact stamp the caller found), with the trade's direction
+ * and stop distance (R) and the entry slip its trade paid. Gold's spread is
+ * set from the twin's own entry Bid. Its time exit counts from its own entry
+ * candle.
  */
-export function simulateTwin(
-  ctx: HarmonicContext,
-  trade: Trade,
-  exit: number,
-  entryMinute: number,
-): Outcome {
+export function twinPosition(ctx: HarmonicContext, trade: Trade, entryMinute: number): Position {
   const { bars, chart, costs } = ctx
   const dir = trade.dir
   const bid = bars.open[entryMinute]
   const spread = costs.spreadAt(bid)
   const entry = dir === 1 ? bid + spread : bid
-  const pos: Position = {
+  return {
     dir,
     fill: entryMinute,
     entry,
@@ -691,6 +686,19 @@ export function simulateTwin(
     last: bars.n - 1,
     costs,
   }
+}
+
+/** A twin of a filled trade, from twinPosition, with the trade's target distances and exit rule. */
+export function simulateTwin(
+  ctx: HarmonicContext,
+  trade: Trade,
+  exit: number,
+  entryMinute: number,
+): Outcome {
+  const { bars } = ctx
+  const dir = trade.dir
+  const pos = twinPosition(ctx, trade, entryMinute)
+  const entry = pos.entry
   const t1 = entry + (trade.target1 - trade.entryPrice)
   const t2 = entry + (trade.target2 - trade.entryPrice)
   if (exit === 0) return runSingle(bars, pos, t1)
