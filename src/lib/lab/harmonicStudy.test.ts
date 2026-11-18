@@ -5,6 +5,7 @@ import {
   aheadOf,
   enumerateVersions,
   inEntry,
+  lookTable,
   mulberry32,
   NO_SWEET_SPOT,
   part1Rows,
@@ -27,6 +28,8 @@ import {
   versionRows,
   VERSIONS,
   yearStart,
+  type LookRec,
+  type OutRec,
   type PassFacts,
   type Stats,
   type TradeRec,
@@ -395,5 +398,74 @@ describe('Part 1 counts', () => {
     expect(all.twoPatternCs).toBe(1)
     expect(get(2015, 'crab').fromTwoPatternC).toBe(1)
     expect(part1Rows([p('bat', u(2019, 1, 1), 'completed', 1, 1)], (y) => y < 2019)).toEqual([])
+  })
+})
+
+describe('Parts 2 and 3 tables', () => {
+  const out = (how: OutRec['how'], after: number): OutRec => ({
+    how,
+    time: 0,
+    after,
+    before: after + 0.1,
+    double: after - 0.1,
+    slips: 0,
+  })
+  const look = (path: OutRec['how'], r: OutRec[], p: OutRec[], worth: OutRec[]): LookRec => ({
+    favour: 0,
+    against: 0,
+    favourR: 0.5,
+    againstR: 1,
+    favourPips: 5,
+    againstPips: 10,
+    path: out(path, -1),
+    targetsR: r,
+    targetsPips: p,
+    worth,
+  })
+  const stop5 = [1, 2, 3, 4, 5].map(() => out('stop', -1))
+
+  it("pools two markets in R, turns R into each trade's own pips, and counts the statuses", () => {
+    // EUR/USD with R = 20 pips; gold with R = 15 gold pips ($1.50).
+    const eu = rec({
+      market: 'EURUSD',
+      rPips: 20,
+      look: look(
+        'stop',
+        [out('target', 0.5), ...stop5.slice(1)],
+        [out('target', 0.25), ...stop5],
+        [out('close', -0.2), ...stop5],
+      ),
+    })
+    const au = rec({
+      market: 'XAUUSD',
+      rPips: 15,
+      look: look(
+        'time',
+        [out('target', 0.5), out('target', 1), ...stop5.slice(2)],
+        [out('target', 0.4), ...stop5],
+        [out('close', 0.3), ...stop5],
+      ),
+    })
+    const st = (status: TradeRec['status']) => rec({ status, exits: null, look: null })
+    const t = lookTable(
+      [eu, au, st('skipRisk'), st('skipEntry'), st('cancelled'), st('noTrigger'), st('noData')],
+      'ALL',
+    )
+    expect([t.trades, t.skips, t.skipEntry, t.cancelled, t.noTrigger, t.noData]).toEqual([
+      2, 1, 1, 1, 1, 1,
+    ])
+    expect([t.stopFirst, t.stopShare]).toEqual([1, 0.5])
+    expect(t.targetsR.map((x) => x.reached)).toEqual([2, 1, 0, 0, 0])
+    expect(t.targetsR[0].meanAfter).toBeCloseTo(0.5, 12)
+    expect(t.targetsR[1].meanAfter).toBeCloseTo(0, 12) // (-1 + 1) / 2
+    expect(t.targetsPips[0].label).toBe('5 pips (gold $1)')
+    expect(t.targetsPips[0].reached).toBe(2)
+    expect(t.targetsPips[0].meanAfter).toBeCloseTo(0.325, 12)
+    expect(t.targetsPips[0].meanAfterPips).toBeCloseTo((0.25 * 20 + 0.4 * 15) / 2, 12) // 5.5
+    expect(t.targetsPips[0].meanBeforePips).toBeCloseTo((0.35 * 20 + 0.5 * 15) / 2, 12) // 7.25
+    expect(t.worth[0].wonBefore).toBe(0.5)
+    expect(t.worth[0].meanAfterPips).toBeCloseTo((-0.2 * 20 + 0.3 * 15) / 2, 12) // 0.25
+    expect(t.sweetR).toEqual({ index: 0, made: true, text: 'sweet spot: 0.5 R' })
+    expect(lookTable([au], 'XAUUSD').targetsPips[0].label).toBe('$1')
   })
 })

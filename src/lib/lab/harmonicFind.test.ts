@@ -316,6 +316,27 @@ describe('patterns on candles', () => {
       [138, 'completed', 139],
     ])
   })
+
+  it('a sell: a confirming candle whose high reaches D gives no pattern (skipped)', () => {
+    // The zigzag turned upside down (v -> 2500 - v): a Gartley sell with X 1500,
+    // A 1000, B 1310, C 1060, D = 1000 + 0.786 x 500 = 1393, stop 1525.
+    const flip = (rs: Row[]) =>
+      rs.map(([t, o, h, l, c]): Row => [t, 2500 - o, 2500 - l, 2500 - h, 2500 - c])
+    const rows = zigzag(LEVELS).slice(0, 139)
+    rows[138] = [T(138), 1430, 1430, 1107, 1420] // flipped: high 1393, exactly D
+    const b = bars(flip([...rows, [T(139), 1420, 1420, 1100, 1100]]))
+    const p = findPatterns(b, buildChart(b, 15), TESTC, 2)
+    expect(p.map((x) => [x.dir, x.d, x.stop, x.confirm, x.wait.outcome])).toEqual([
+      [-1, 1393, 1525, 138, 'skipped'],
+    ])
+    // Half a point below D it waits, and candle 139 (high 1400 >= D + pen) completes it.
+    rows[138] = [T(138), 1430, 1430, 1107.5, 1420]
+    const b2 = bars(flip([...rows, [T(139), 1420, 1420, 1100, 1100]]))
+    const p2 = findPatterns(b2, buildChart(b2, 15), TESTC, 2)
+    expect(p2.map((x) => [x.confirm, x.wait.outcome, x.wait.minute])).toEqual([
+      [138, 'completed', 139],
+    ])
+  })
 })
 
 describe('the wait', () => {

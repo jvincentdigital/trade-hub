@@ -4,10 +4,7 @@
  * swing sizes, sends back the trade records and Part 1 counts, then answers
  * twin jobs from the same runs. Offline, play money only.
  */
-import { createReadStream } from 'node:fs'
-import { createGunzip } from 'node:zlib'
 import {
-  barsBefore,
   fourHourCandles,
   harmonicContext,
   minuteAt,
@@ -17,7 +14,7 @@ import {
   type HarmonicMarket,
   type Trade,
 } from '../../src/lib/lab/harmonic'
-import { loadBars } from '../../src/lib/lab/harmonicLoad'
+import { readMarket } from '../../src/lib/lab/harmonicLoad'
 import {
   CHARTS,
   part1Rows,
@@ -76,38 +73,6 @@ export type WorkerReply =
   | { kind: 'twins'; results: { name: string; seeds: TwinSeed[] }[]; ms: number }
   | { kind: 'error'; error: string }
 
-/** First stamp at or after t in a gzip CSV, reading only up to it (the file is not read further), or null. */
-export async function firstStampAtOrAfter(file: string, t: number): Promise<number | null> {
-  const stream = createReadStream(file).pipe(createGunzip())
-  stream.setEncoding('utf8')
-  let rest = ''
-  let header = true
-  try {
-    for await (const chunk of stream as AsyncIterable<string>) {
-      const s = rest + chunk
-      let from = 0
-      for (let at = s.indexOf('\n'); at >= 0; at = s.indexOf('\n', from)) {
-        const line = s.slice(from, at)
-        from = at + 1
-        if (header) {
-          header = false
-          continue
-        }
-        const stamp = Number(line.slice(0, line.indexOf(',')))
-        if (stamp >= t) return stamp
-      }
-      rest = s.slice(from)
-    }
-    if (rest !== '' && !header) {
-      const stamp = Number(rest.slice(0, rest.indexOf(',')))
-      if (stamp >= t) return stamp
-    }
-    return null
-  } finally {
-    stream.destroy()
-  }
-}
-
 const send = (m: WorkerReply) => process.send?.(m)
 
 let ctxs: Map<number, HarmonicContext> | null = null
@@ -115,19 +80,16 @@ let trades: Trade[] = []
 
 async function load(job: LoadJob) {
   const t0 = Date.now()
-  if (job.refuseFrom !== null) {
-    const hit = await firstStampAtOrAfter(job.file, job.refuseFrom)
-    if (hit !== null) {
-      send({
-        kind: 'refused',
-        market: job.market,
-        reason: `${job.file} holds a bar stamped ${new Date(hit * 1000).toISOString()}, at or after ${new Date(job.refuseFrom * 1000).toISOString()}`,
-      })
-      return
-    }
+  const read = await readMarket(job.file, job.refuseFrom, job.readBefore)
+  if ('refusedAt' in read) {
+    send({
+      kind: 'refused',
+      market: job.market,
+      reason: `${job.file} holds a bar stamped ${new Date(read.refusedAt * 1000).toISOString()}, at or after ${new Date(job.refuseFrom! * 1000).toISOString()}`,
+    })
+    return
   }
-  const whole = await loadBars(job.file)
-  const bars = job.readBefore === null ? whole : barsBefore(whole, job.readBefore)
+  const { bars } = read
   const four = fourHourCandles(bars)
   ctxs = new Map(CHARTS.map((c) => [c, harmonicContext(bars, job.market, c, four)]))
   trades = []

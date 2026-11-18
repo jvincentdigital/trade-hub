@@ -3,21 +3,21 @@
  * Offline, play money only: reads local 1-minute files, nothing else.
  *
  *   ./node_modules/.bin/tsx scripts/lab/harmonic-study.ts choose --data <dir> --out <dir>
- *   ./node_modules/.bin/tsx scripts/lab/harmonic-study.ts check --data <dir> --choose <choose.json> --out <dir> --commit <sha> [--marker <file>]
+ *   ./node_modules/.bin/tsx scripts/lab/harmonic-study.ts check --data <dir> --choose <choose.json> --out <dir> --commit <sha>
  *   ./node_modules/.bin/tsx scripts/lab/harmonic-study.ts rehearse --data <dir> --out <dir>
  *
  * choose: Parts 1 to 3 and Part 4's choosing on 2010 to 2018; refuses a file
  * with any bar from 2019 on. check: Part 4's single check on 2019 to 2025 for
  * the candidate and the pair candidate; refuses unless the tree is clean, HEAD
- * is <sha> and on a remote branch, and the marker does not exist; writes the
- * marker before any bar is read. rehearse: both, inside the development years
+ * is <sha> and on a remote branch, choose.json was made by HEAD, the market
+ * files are the ones the choosing run used, and the fixed marker does not
+ * exist; writes the marker before any bar is read. rehearse: both, inside the development years
  * (choose 2010 to 2014, check 2015 to 2018, 20 twins), through the same code.
  * One worker per market (scripts/lab/harmonic-study-worker.ts).
  */
 import { execFileSync, fork, type ChildProcess } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { createGzip } from 'node:zlib'
 import {
   EXIT_NAMES,
@@ -25,6 +25,7 @@ import {
   LOOK_HOURS,
   type HarmonicMarket,
 } from '../../src/lib/lab/harmonic'
+import { gitTest, markerPath, openCheck } from '../../src/lib/lab/harmonicCheckGate'
 import {
   aboveZero,
   aheadOf,
@@ -65,7 +66,6 @@ import {
 import type { LoadJob, TwinJob, TwinSeed, WorkerReply } from './harmonic-study-worker'
 
 const REPO = resolve(__dirname, '../..')
-const DEFAULT_MARKER = join(homedir(), '.local/share/trade-hub/harmonic-check/CHECK-RAN.json')
 const NOT_EVEN_CHOOSING = 'it did not make money even in the years used for choosing'
 const NO_PAIR = 'no version on any one market qualified'
 
@@ -766,18 +766,9 @@ interface CheckOpts {
 }
 
 function checkGit(sha: string) {
-  const g = gitState()
-  if (!g.clean) fail('the git tree is not clean: commit first')
-  let want: string
-  try {
-    want = git('rev-parse', '--verify', `${sha}^{commit}`)
-  } catch {
-    fail(`${sha} is not a commit`)
-  }
-  if (g.head !== want) fail(`HEAD is ${g.head}, not ${want}`)
-  const remote = git('branch', '-r', '--contains', g.head)
-  if (!remote) fail(`${g.head} is not on a remote branch: push first`)
-  return { head: g.head, remote: remote.split('\n').map((s) => s.trim()) }
+  const g = gitTest(sha, git)
+  if ('refuse' in g) fail(g.refuse)
+  return g
 }
 
 interface Candidacy {
@@ -799,28 +790,27 @@ async function runCheck(o: CheckOpts, P: StudyPeriods) {
   // Which files exist (nothing is read): a wrong --data must not use up the check.
   const { used, missing, file } = marketsIn(o.data)
   if (!used.length) fail(`no market file in ${o.data}`)
-  if (existsSync(o.marker)) fail(`the check already ran: ${o.marker} exists`)
-  mkdirSync(dirname(o.marker), { recursive: true })
-  mkdirSync(o.out, { recursive: true })
   // The marker is written before any bar is read.
-  writeFileSync(
-    o.marker,
-    JSON.stringify(
-      {
-        label: P.label,
-        time: new Date().toISOString(),
-        commit: gitInfo?.head ?? null,
-        remote: gitInfo?.remote ?? null,
-        choose: resolve(o.choosePath),
-        marketsUsed: used,
-        marketsMissing: missing,
-        candidates: cands.map((c) => ({ role: c.role, market: c.pick.market, key: c.pick.key })),
-      },
-      null,
-      2,
-    ),
-    { flag: 'wx' },
-  )
+  const refusal = openCheck({
+    rehearsal: P.rehearsal,
+    marker: o.marker,
+    head: gitInfo?.head ?? null,
+    chooseCommit: choose.commit,
+    chooseMarkets: choose.marketsUsed,
+    used,
+    content: {
+      label: P.label,
+      time: new Date().toISOString(),
+      commit: gitInfo?.head ?? null,
+      remote: gitInfo?.remote ?? null,
+      choose: resolve(o.choosePath),
+      marketsUsed: used,
+      marketsMissing: missing,
+      candidates: cands.map((c) => ({ role: c.role, market: c.pick.market, key: c.pick.key })),
+    },
+  })
+  if (refusal) fail(refusal)
+  mkdirSync(o.out, { recursive: true })
 
   const pool = new Pool()
   await pool.start(used)
@@ -1185,7 +1175,7 @@ async function main() {
         choosePath: need('choose'),
         out: need('out'),
         commit: need('commit'),
-        marker: arg('marker') ?? DEFAULT_MARKER,
+        marker: markerPath(false, ''),
         gitTest: true,
       },
       REAL_PERIODS,
@@ -1200,7 +1190,7 @@ async function main() {
         choosePath,
         out: join(out, 'check'),
         commit: null,
-        marker: join(out, 'CHECK-RAN.json'),
+        marker: markerPath(true, out),
         gitTest: false,
       },
       REHEARSAL_PERIODS,
@@ -1208,7 +1198,7 @@ async function main() {
   } else {
     console.error(
       'usage: harmonic-study.ts choose --data <dir> --out <dir>\n' +
-        '       harmonic-study.ts check --data <dir> --choose <choose.json> --out <dir> --commit <sha> [--marker <file>]\n' +
+        '       harmonic-study.ts check --data <dir> --choose <choose.json> --out <dir> --commit <sha>\n' +
         '       harmonic-study.ts rehearse --data <dir> --out <dir>',
     )
     process.exit(2)

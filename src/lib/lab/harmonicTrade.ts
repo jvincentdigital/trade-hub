@@ -229,8 +229,11 @@ export function timeExitIdx(chart: Chart, fill: number): number {
  * anything else; then the stop (buys: Bid low <= stop, fills at the stop or
  * the open beyond it; sells: Bid high + spread >= stop); then, except in the
  * first minute when `stopOnlyFirst`, the target (buys: Bid high >= target;
- * sells: Bid low + spread <= target, fills at the target). After the last
- * minute the position closes at that minute's close.
+ * sells: Bid low + spread <= target, fills at the target). The end of the
+ * data (Amendment 1 point 6, Amendment 3 point 11): a position already open
+ * at the last minute's open closes there at market, before any other test,
+ * like the time exit; one that opened inside the last minute closes at its
+ * close.
  */
 function walk(
   bars: Bars,
@@ -245,6 +248,7 @@ function walk(
   if (p.dir === 1) {
     for (let m = from; m <= p.last; m++) {
       if (m === p.timeIdx) return { how: 'time', at: m, price: open[m] }
+      if (m === p.last && m > p.fill) return { how: 'end', at: m, price: open[m] }
       if (low[m] <= stop) return { how: 'stop', at: m, price: open[m] < stop ? open[m] : stop }
       if (m === from && stopOnlyFirst) continue
       if (high[m] >= target) return { how: 'target', at: m, price: target }
@@ -253,6 +257,7 @@ function walk(
   }
   for (let m = from; m <= p.last; m++) {
     if (m === p.timeIdx) return { how: 'time', at: m, price: open[m] + sp }
+    if (m === p.last && m > p.fill) return { how: 'end', at: m, price: open[m] + sp }
     if (high[m] + sp >= stop)
       return { how: 'stop', at: m, price: open[m] + sp > stop ? open[m] + sp : stop }
     if (m === from && stopOnlyFirst) continue
@@ -383,11 +388,12 @@ export function lookBack(bars: Bars, p: Position): Look {
   let against = 0
   let leg: Leg | null = null
   for (let m = p.fill; m <= p.last && !leg; m++) {
-    if (m === p.timeIdx) {
+    if (m === p.timeIdx || (m === p.last && m > p.fill)) {
       const mv = p.dir * (open[m] - bid)
       if (mv > favour) favour = mv
       if (-mv > against) against = -mv
-      leg = { how: 'time', at: m, price: p.dir === 1 ? open[m] : open[m] + p.spread }
+      const how = m === p.timeIdx ? 'time' : 'end'
+      leg = { how, at: m, price: p.dir === 1 ? open[m] : open[m] + p.spread }
       break
     }
     const stopHit = p.dir === 1 ? low[m] <= p.stop : high[m] + p.spread >= p.stop
@@ -444,7 +450,7 @@ export type TradeStatus =
   | 'cancelled'
   /** C1, C2: no trigger in candles 1 to 12. */
   | 'noTrigger'
-  /** C1, C2: the data ended before the entry candle. */
+  /** C1, C2: the data ended before the entry candle, or before candle 12 with no trigger. */
   | 'noData'
 
 export interface Trade {
@@ -587,7 +593,11 @@ export function findTrigger(ctx: HarmonicContext, p: Pattern, entry: 'C1' | 'C2'
 export function entryConfirmed(ctx: HarmonicContext, p: Pattern, entry: 'C1' | 'C2'): Trade {
   const { bars, chart, costs } = ctx
   const trig = findTrigger(ctx, p, entry)
-  if (trig < 0) return makeTrade(ctx, p, entry, 'noTrigger')
+  if (trig < 0) {
+    // Candles 1 to 12 did not all exist: the data ended first (Amendment 3 point 11).
+    const cut = chart.ofMinute[p.wait.minute] + CONFIRM_CANDLES - 1 >= chart.n
+    return makeTrade(ctx, p, entry, cut ? 'noData' : 'noTrigger')
+  }
   const [t1] = patternTargets(p)
   const sw = costs.spreadAt(p.d)
   const { high, low } = bars

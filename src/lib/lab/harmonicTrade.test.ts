@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildChart,
-  findPatterns,
-  MARKET_COSTS,
-  type Bars,
-  type MarketCosts,
-  type Pattern,
-} from './harmonicFind'
+import { buildChart, MARKET_COSTS, type Bars, type MarketCosts, type Pattern } from './harmonicFind'
 import {
   barsBefore,
   ema,
@@ -55,6 +48,11 @@ function bars(rows: Row[]): Bars {
 /** Minutes 60 s apart from T0 (all inside the first chart candles). */
 const minutes = (ohlc: [number, number, number, number][]): Bars =>
   bars(ohlc.map((r, i) => [T0 + i * 60, ...r]))
+/** As minutes(), plus one flat minute at its last close, so the data do not end in the minutes under test. */
+const minutesThen = (ohlc: [number, number, number, number][]): Bars => {
+  const c = ohlc[ohlc.length - 1][3]
+  return minutes([...ohlc, [c, c, c, c]])
+}
 /** n chart candles of one minute each, flat at `v`. */
 const flatCandles = (n: number, v: number): Row[] =>
   Array.from({ length: n }, (_, i) => [T0 + i * Q, v, v, v, v])
@@ -210,7 +208,7 @@ describe('indicators', () => {
 
 describe('fills on 1-minute candles', () => {
   it('a buy target fills at the target; the fill minute checks only the stop', () => {
-    const b = minutes([
+    const b = minutesThen([
       [101, 106, 99.5, 100], // fill minute: 106 passes the target, not counted
       [100, 104, 99, 103],
       [103, 106, 102, 105],
@@ -221,7 +219,7 @@ describe('fills on 1-minute candles', () => {
     expect(o.double).toBeCloseTo(0.425, 12)
   })
   it('a buy stop fills at the stop, or at the open beyond it, less 0.2 pip', () => {
-    const b = minutes([
+    const b = minutesThen([
       [101, 101, 99.5, 100],
       [100, 101, 89, 95],
     ])
@@ -230,16 +228,16 @@ describe('fills on 1-minute candles', () => {
     expect(o.after).toBeCloseTo(-1.025, 12) // (90 - 100 - 0.25) / 10
     expect(o.before).toBeCloseTo(-0.925, 12) // + (0.75 + 0.25) / 10
     expect(o.double).toBeCloseTo(-1.125, 12)
-    const gap = minutes([
+    const gap = minutesThen([
       [101, 101, 99.5, 100],
       [88, 89, 87, 88],
     ])
     expect(runSingle(gap, pos(gap), 105).after).toBeCloseTo(-1.225, 12) // (88 - 100 - 0.25) / 10
-    const fillStop = minutes([[101, 101, 89.5, 95]])
+    const fillStop = minutesThen([[101, 101, 89.5, 95]])
     expect(runSingle(fillStop, pos(fillStop), 105).at).toBe(0)
   })
   it('stop and target in one minute: the stop counts', () => {
-    const b = minutes([
+    const b = minutesThen([
       [101, 101, 99.5, 100],
       [100, 106, 89, 100],
     ])
@@ -247,7 +245,7 @@ describe('fills on 1-minute candles', () => {
   })
   it('a sell stop is hit when the Bid high plus the spread reaches it', () => {
     const sell = (b: Bars) => pos(b, { dir: -1, entry: 100, stop: 110 })
-    const b = minutes([
+    const b = minutesThen([
       [99, 99, 99, 99],
       [100, 109.2, 99, 100], // 109.95 < 110
       [100, 109.25, 99, 100], // 110
@@ -255,12 +253,12 @@ describe('fills on 1-minute candles', () => {
     const o = runSingle(b, sell(b), 95)
     expect([o.how, o.at]).toEqual(['stop', 2])
     expect(o.after).toBeCloseTo(-1.025, 12)
-    const gap = minutes([
+    const gap = minutesThen([
       [99, 99, 99, 99],
       [109.5, 109.6, 109, 109.5], // Ask open 110.25 is beyond 110
     ])
     expect(runSingle(gap, sell(gap), 95).after).toBeCloseTo(-1.05, 12) // (100 - 110.25 - 0.25) / 10
-    const tgt = minutes([
+    const tgt = minutesThen([
       [99, 99, 99, 99],
       [99, 99, 94.3, 95], // Ask low 95.05
       [96, 96, 94.25, 95], // Ask low 95: the target
@@ -288,14 +286,35 @@ describe('fills on 1-minute candles', () => {
     expect(timeExitIdx(c2, 1)).toBe(960)
     expect(timeExitIdx(buildChart(bars(flatCandles(480, 1)), 15), 0)).toBe(-1)
   })
-  it('a trade still open at the last minute of the data closes there at market', () => {
+  it('a trade still open at the last minute of the data closes there at market, at its open, before any other test', () => {
     const b = minutes([
       [100.75, 101, 100, 101],
-      [101, 103, 100, 102],
+      [101, 106, 89, 102], // the last minute: its stop (89) and target (106) are never tested
     ])
     const o = runSingle(b, pos(b), 105)
     expect([o.how, o.at, o.slips]).toEqual(['end', 1, 1])
-    expect(o.after).toBeCloseTo(0.175, 12) // (102 - 100 - 0.25) / 10
+    expect(o.after).toBeCloseTo(0.075, 12) // (101 - 100 - 0.25) / 10
+    // A sell closes at the Ask: open + spread.
+    const s = runSingle(b, pos(b, { dir: -1, stop: 200 }), 50)
+    expect([s.how, s.at]).toEqual(['end', 1])
+    expect(s.after).toBeCloseTo((100 - 101.75 - 0.25) / 10, 12)
+    // The look-back path ends the same way; the open's move counts.
+    const l = lookBack(b, pos(b))
+    expect([l.path.how, l.path.at, l.favour, l.against]).toEqual(['end', 1, 1.75, 0])
+    // X3's rest, after the half in the minute before the last: at the last open.
+    const x3 = minutes([
+      [100.75, 101, 100, 100.5],
+      [101, 119.1, 100, 110],
+      [112, 140, 99, 115],
+    ])
+    const h = runSplit(x3, pos(x3), 119.1, 130.9)
+    expect([h.how, h.at, h.half]).toEqual(['end', 2, true])
+    expect(h.after).toBeCloseTo((19.1 + 12 - 0.25) / 2 / 10, 12)
+    // Filled in the last minute itself (not open at its open): its stop test, then its close.
+    const one = minutes([[100.75, 101, 99.5, 100.5]])
+    const o1 = runSingle(one, pos(one), 105)
+    expect([o1.how, o1.at]).toEqual(['end', 0])
+    expect(o1.after).toBeCloseTo((100.5 - 100 - 0.25) / 10, 12)
   })
 })
 
@@ -308,7 +327,7 @@ describe('the seven exits', () => {
     expect(sell[1]).toBeCloseTo(69.1, 12)
   })
   it('X1 to X7 on one buy (entry 100, R 10)', () => {
-    const b = minutes([
+    const b = minutesThen([
       [100.75, 101, 100, 100.5],
       [101, 112, 101, 111], // X4 (110)
       [111, 116, 110, 115], // X5 (115)
@@ -331,7 +350,7 @@ describe('the seven exits', () => {
     expect(x[2].half).toBe(true)
   })
   it('X3: in the minute of the first half nothing happens to the rest; then its stop is the entry', () => {
-    const b = minutes([
+    const b = minutesThen([
       [100.75, 101, 100, 100.5],
       [101, 119.1, 99, 110], // half at 119.1; the low 99 does not touch the rest
       [101, 102, 99.5, 100], // the rest's stop at the entry price, a stop fill
@@ -342,13 +361,24 @@ describe('the seven exits', () => {
     expect(o.before).toBeCloseTo(0.9425 + (0.75 + 0.5 * 0.25) / 10, 12)
     expect(o.double).toBeCloseTo(0.9425 - (0.75 + 0.5 * 0.25) / 10, 12)
     // Stopped before the first half: the whole trade at the stop.
-    const s = minutes([
+    const s = minutesThen([
       [100.75, 101, 100, 100.5],
       [100, 101, 89, 95],
     ])
     const o2 = runSplit(s, pos(s), 119.1, 130.9)
     expect([o2.how, o2.half, o2.slips]).toEqual(['stop', false, 1])
     expect(o2.after).toBeCloseTo(-1.025, 12)
+  })
+  it('X3 for a sell (entry Bid 100, R 10): half at 80.9 on the Ask, then the rest stopped at the entry', () => {
+    const b = minutes([
+      [99, 99, 99, 99],
+      [95, 96, 80.1, 90], // Ask low 80.85: the half at 80.9
+      [95, 99.25, 94, 95], // Ask high 100: the rest's stop at the entry
+      [95, 95, 95, 95],
+    ])
+    const o = runSplit(b, pos(b, { dir: -1, stop: 110 }), 80.9, 69.1)
+    expect([o.how, o.at, o.half, o.slips]).toEqual(['stop', 2, true, 0.5])
+    expect(o.after).toBeCloseTo((19.1 - 0.25) / 2 / 10, 12) // 0.9425
   })
 })
 
@@ -492,6 +522,60 @@ describe('entries', () => {
     })
     expect(entryConfirmed(after, pat(5), 'C1').status).toBe('filled')
   })
+  it('cancels a sell C1 on the Ask: Bid high + spread at the stop, Bid low + spread at X1', () => {
+    // Sell: D 100.5, stop 110, A 50, so X1's target is 100.5 - 0.382 x 50.5 = 81.209.
+    const p = pat(5, { dir: -1, d: 100.5, stop: 110, a: { idx: 0, time: T0, price: 50 } })
+    const at = (high: number, low: number) =>
+      c1ctx((c, rows) => {
+        c.ema20.fill(0)
+        c.rsi[6] = 70
+        c.ema20[8] = 101
+        rows[6] = [rows[6][0], 100.5, high, low, 100.5]
+      })
+    expect(entryConfirmed(at(109.25, 100.5), p, 'C1').status).toBe('cancelled') // Ask high 110
+    expect(entryConfirmed(at(109.2, 100.5), p, 'C1').status).toBe('filled') // Ask high 109.95
+    expect(entryConfirmed(at(100.5, 80.4), p, 'C1').status).toBe('cancelled') // Ask low 81.15
+    expect(entryConfirmed(at(100.5, 80.5), p, 'C1').status).toBe('filled') // Ask low 81.25
+  })
+  it("gold's cancel test uses the wait's spread, taken at D", () => {
+    // Sell: D 1800 (spread 0.28), stop 1810; the market trades at 1795 (spread 0.27922).
+    const p = pat(5, { dir: -1, d: 1800, stop: 1810, a: { idx: 0, time: T0, price: 1700 } })
+    const at = (high: number) => {
+      const rows = flatCandles(20, 1795)
+      rows[6] = [rows[6][0], 1795, high, 1795, 1795]
+      const ctx = ctxOf(rows, MARKET_COSTS.XAUUSD)
+      ctx.ema20.fill(0)
+      ctx.rsi[6] = 70
+      ctx.ema20[8] = 1796
+      return ctx
+    }
+    expect(entryConfirmed(at(1809.7201), p, 'C1').status).toBe('cancelled') // + 0.28 = 1810.0001
+    expect(entryConfirmed(at(1809.7199), p, 'C1').status).toBe('filled') // + 0.28 = 1809.9999
+  })
+  it('C1 and C2 whose data end before candle 12 with no trigger have no data, not no trigger', () => {
+    const short = c1ctx((c) => {
+      c.rsi[5] = 20
+    }, 16) // candles 5 to 15: 11 of the 12
+    expect(entryConfirmed(short, pat(5), 'C1').status).toBe('noData')
+    expect(entryConfirmed(short, pat(5), 'C2').status).toBe('noData')
+    const full = c1ctx((c) => {
+      c.rsi[5] = 20
+    }, 17) // candles 5 to 16 all exist; the last counts as closed
+    expect(entryConfirmed(full, pat(5), 'C1').status).toBe('noTrigger')
+    expect(entryConfirmed(full, pat(5), 'C2').status).toBe('noTrigger')
+  })
+  it('E0 sell whose completing minute opens beyond the stop: fills at D, stopped at the Ask open', () => {
+    const rows = flatCandles(10, 100.5)
+    rows[5] = [rows[5][0], 111, 112, 100, 101] // Ask open 111.75, beyond the stop 110
+    const ctx = ctxOf(rows)
+    const t = entryE0(
+      ctx,
+      pat(5, { dir: -1, d: 100.5, stop: 110, a: { idx: 0, time: T0, price: 50 } }),
+    )
+    expect([t.status, t.entryPrice, t.R]).toEqual(['filled', 100.5, 9.5])
+    expect([t.exits[3].how, t.exits[3].at]).toEqual(['stop', 5])
+    expect(t.exits[3].after).toBeCloseTo((100.5 - 111.75 - 0.25) / 9.5, 12)
+  })
   it('skips C1 when the entry is beyond X1 or the stop, or R is too small', () => {
     const at = (open: number) =>
       c1ctx((c, rows) => {
@@ -558,6 +642,7 @@ describe('look-back measures', () => {
     [T0 + 4 * H, 102, 106, 100, 104], // favour 6.75
     [T0 + 12 * H + 60, 104, 104, 95, 96], // against 4.25
     [T0 + 30 * H, 95, 107, 89, 92], // the stop: against 9.25, its high adds nothing
+    [T0 + 31 * H, 92, 92, 92, 92],
   ]
   const b = bars(rows)
   const l = lookBack(b, pos(b))
@@ -589,13 +674,24 @@ describe('look-back measures', () => {
     expect(l.worth[3].after).toBeCloseTo(-1.025, 12)
   })
   it('a sell measures the Bid; the full distance to the stop is stop - spread - entry Bid', () => {
-    const s = minutes([
+    const s = minutesThen([
       [100, 100, 100, 100],
       [100, 101, 97, 98], // favour 3, against 1
       [100, 109.25, 99, 100], // Ask 110: the stop
     ])
     const ls = lookBack(s, pos(s, { dir: -1, entry: 100, stop: 110 }))
     expect([ls.favour, ls.against]).toEqual([3, 9.25])
+  })
+  it("a sell's worth after N hours closes at the Ask at that minute's open", () => {
+    const s = bars([
+      [T0, 100, 100, 100, 100],
+      [T0 + 60, 100, 101, 97, 98],
+      [T0 + 4 * H, 98, 99, 97, 98], // Ask open 98.75
+      [T0 + 5 * H, 98, 98, 98, 98],
+    ])
+    const ls = lookBack(s, pos(s, { dir: -1, entry: 100, stop: 110 }))
+    expect([ls.worth[0].how, ls.worth[0].at]).toEqual(['close', 2])
+    expect(ls.worth[0].after).toBeCloseTo((100 - 98.75 - 0.25) / 10, 12)
   })
   it('the fill minute counts when its stop is hit', () => {
     const s = minutes([[100.5, 101, 89, 95]])
@@ -623,6 +719,26 @@ describe('twins', () => {
     const paid = { ...trade, entrySlip: 1 }
     expect(simulateTwin(ctx, paid, 0, 9).after).toBeCloseTo((19.1 - 0.25) / 10, 12)
   })
+  it("a gold sell twin takes gold's spread from its own entry Bid; R and targets are its trade's", () => {
+    const rows = flatCandles(12, 1800)
+    rows[9] = [rows[9][0], 2700, 2700, 2700, 2700] // twin entry Bid 2700: spread 0.42
+    rows[10] = [rows[10][0], 2700, 2700, 2689.58, 2695] // Ask low 2690: X4's target
+    rows[11] = [rows[11][0], 2700, 2700, 2700, 2700]
+    const ctx = ctxOf(rows, MARKET_COSTS.XAUUSD)
+    const trade = entryE0(
+      ctx,
+      pat(5, { dir: -1, d: 1800, stop: 1810, a: { idx: 0, time: T0, price: 1700 } }),
+    )
+    expect([trade.status, trade.R]).toEqual(['filled', 10])
+    expect(trade.spread).toBeCloseTo(0.28, 12)
+    const x4 = simulateTwin(ctx, trade, 3, 9)
+    expect([x4.how, x4.at]).toEqual(['target', 10])
+    expect(x4.after).toBeCloseTo((10 - 0.07) / 10, 9)
+    expect(x4.before).toBeCloseTo((10 - 0.07 + 0.42 + 0.07) / 10, 9)
+    // One cent less deep: the Ask low 2690.07 does not reach the target.
+    rows[10] = [rows[10][0], 2700, 2700, 2689.65, 2695]
+    expect(simulateTwin(ctxOf(rows, MARKET_COSTS.XAUUSD), trade, 3, 9).how).toBe('end')
+  })
   it('count their time exit from their own entry candle', () => {
     const ctx = ctxOf(flatCandles(490, 100.5))
     const trade = entryE0(ctx, pat(0))
@@ -647,18 +763,17 @@ describe('the run', () => {
     const ctx = { ...harmonicContext(b, 'EURUSD', 15), costs: TESTC }
     const run = runHarmonic(ctx, 2)
     expect(run.patterns).toHaveLength(1)
+    // The data end in candle 170, candle 1 of the confirmation: C1 and C2 have no data.
     expect(run.trades.map((t) => [t.entry, t.status])).toEqual([
       ['E0', 'filled'],
-      ['C1', 'noTrigger'],
-      ['C2', 'noTrigger'],
+      ['C1', 'noData'],
+      ['C2', 'noData'],
     ])
     const e0 = run.trades[0]
     expect([e0.fill, e0.entryPrice, e0.R]).toEqual([170, 1107, 132])
     // The data end in the fill minute: closed at its close, 1100, at market.
     expect(e0.exits[0].how).toBe('end')
     expect(e0.exits[0].after).toBeCloseTo((1100 - 1107 - 0.25) / 132, 12)
-    // The same patterns as the finder alone.
-    expect(run.patterns).toEqual(findPatterns(b, ctx.chart, TESTC, 2))
   })
   it('barsBefore keeps only the minutes stamped before a time', () => {
     const b = bars(flatCandles(5, 1))

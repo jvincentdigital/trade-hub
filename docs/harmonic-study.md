@@ -416,4 +416,48 @@ below could be read two ways, or was left unsaid. Nothing has been computed.
 
 ## Results
 
-Not run yet.
+### Written before the choosing tables were read (2026-11-18)
+
+**How the code was checked.** The engine and a second pattern finder were
+written by two programmers who did not see each other's code (TypeScript and
+Python). Their pattern lists match exactly on GBP/USD 15-minute candles for
+2015, for both swing sizes (196 and 117 patterns), and on three wider cases
+(gold 30-minute 2012, USD/JPY 15-minute 2016, EUR/GBP 30-minute 2011). Two
+reviewers then read the code against this page, one for anything that could
+see the future, one for trades, costs and statistics; a third re-worked 309
+and then 1,754 trades from the 1-minute candles with a program of his own.
+They found no look-ahead and no wrong number. Their thirteen findings were
+about guards, missing tests and the two readings below; all are fixed, each
+with a test. All of this used copies of the files that end at 2018-12-31,
+while the full files were unreadable.
+
+**Readings taken where this page left a point open.** None was chosen by
+looking at a result.
+
+1. _The end of the data_ (Amendment 1 point 6, Amendment 3 point 11): a trade
+   that is open at the last minute closes at that minute's open, before any
+   other test, as the time exit does. A trade that only opened inside the
+   last minute closes at that minute's close, after its stop test.
+2. _The pair candidate_ (Amendment 2 point 2) is checked whether or not a
+   version qualifies on all markets together.
+3. _C2_, the reversal candle, has no RSI condition: its trigger replaces
+   C1's.
+4. _Gold_: between the completing minute and the trigger, the cancel tests of
+   C1 and C2 use the spread taken at D. A twin's spread comes from its own
+   entry Bid.
+5. _Twins_: one draw per market and UTC fill date, from the generator
+   mulberry32 with seeds 1 to 200; a twin whose trades are all left out does
+   not count as beaten; a twin may land in the last days of 2018.
+6. _New York time_ follows each year's daylight-saving law (before 2007 the
+   older rule).
+7. _Thirds by size of R_ are cut at one third and two thirds of the trades,
+   rounded down, the largest third taking the rest.
+8. _Part 1_ counts every year in the files; "formed" includes patterns
+   skipped by the confirming-candle rule.
+9. _The splits_ by chart, swing size and pattern are one at a time, not
+   crossed.
+10. _A tie between pair candidates_ goes to the version order of Amendment 3
+    point 9, then the markets in the order EUR/USD, GBP/USD, gold, USD/JPY,
+    EUR/GBP, EUR/JPY, GBP/JPY.
+
+Not run yet beyond this point.

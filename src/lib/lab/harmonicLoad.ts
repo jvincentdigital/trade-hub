@@ -6,6 +6,7 @@
 import { createReadStream } from 'node:fs'
 import { createGunzip } from 'node:zlib'
 import type { Bars } from './harmonicFind'
+import { barsBefore } from './harmonicTrade'
 
 const HEADER = 'time,open,high,low,close,volume'
 
@@ -92,4 +93,54 @@ export async function loadBars(file: string): Promise<Bars> {
     low: low.slice(0, n),
     close: close.slice(0, n),
   }
+}
+
+/** First stamp at or after t in a gzip CSV, reading only up to it (the file is not read further), or null. */
+export async function firstStampAtOrAfter(file: string, t: number): Promise<number | null> {
+  const stream = createReadStream(file).pipe(createGunzip())
+  stream.setEncoding('utf8')
+  let rest = ''
+  let header = true
+  try {
+    for await (const chunk of stream as AsyncIterable<string>) {
+      const s = rest + chunk
+      let from = 0
+      for (let at = s.indexOf('\n'); at >= 0; at = s.indexOf('\n', from)) {
+        const line = s.slice(from, at)
+        from = at + 1
+        if (header) {
+          header = false
+          continue
+        }
+        const stamp = Number(line.slice(0, line.indexOf(',')))
+        if (stamp >= t) return stamp
+      }
+      rest = s.slice(from)
+    }
+    if (rest !== '' && !header) {
+      const stamp = Number(rest.slice(0, rest.indexOf(',')))
+      if (stamp >= t) return stamp
+    }
+    return null
+  } finally {
+    stream.destroy()
+  }
+}
+
+/**
+ * The study worker's read of one market: refuse the file, before it is
+ * parsed, if a bar is stamped at or after `refuseFrom`; keep no bar stamped
+ * at or after `readBefore`. Null skips either test.
+ */
+export async function readMarket(
+  file: string,
+  refuseFrom: number | null,
+  readBefore: number | null,
+): Promise<{ refusedAt: number } | { bars: Bars }> {
+  if (refuseFrom !== null) {
+    const hit = await firstStampAtOrAfter(file, refuseFrom)
+    if (hit !== null) return { refusedAt: hit }
+  }
+  const whole = await loadBars(file)
+  return { bars: readBefore === null ? whole : barsBefore(whole, readBefore) }
 }
