@@ -728,3 +728,74 @@ rule picked after the first results were known. The first check printed no
 hold result for any market, so these numbers have not been seen. A pass here
 would still be one pair, a rule picked from 42 cells, and a result that leans
 on a few trades.
+
+## Result of Amendment 4's check (2026-11-18)
+
+Run once, at 16:42 UTC, from commit `a8ac1f5`, on trades filled from
+2019-01-01 to 2025-12-31. Marker
+`~/.local/share/trade-hub/harmonic-check/LEAD-RAN.json`; the two files have
+the checksums recorded before the first check. Output in
+`~/.local/share/trade-hub/harmonic-results/lead-check/`.
+
+**"Positive, not proven."** The lead made money again on years it was not
+picked on, and it beat almost all of its twins, but the profit rests on a few
+large trades and the line that asks for steadiness (line 2) fails clearly.
+
+What a trade was worth after a hold, stop in place, after costs:
+
+| Market                     | Trades | After 24 hours | 48 hours | 72 hours | 120 hours | Weekly t at 120 hours |
+| -------------------------- | ------ | -------------- | -------- | -------- | --------- | --------------------- |
+| GBP/JPY (the lead)         | 422    | -0.131 R       | +0.009 R | +0.074 R | +0.244 R  | 1.07                  |
+| EUR/JPY (description only) | 425    | -0.169 R       | -0.153 R | -0.113 R | +0.182 R  | 0.59                  |
+
+The lines, at 120 hours, after costs:
+
+| Line                                      | GBP/JPY (the lead) | EUR/JPY (description) |
+| ----------------------------------------- | ------------------ | --------------------- |
+| 1. at least 100 trades                    | 422, holds         | 425, holds            |
+| 2. a weekly t-statistic of 2.5 or more    | 1.07, **no**       | 0.59, no              |
+| 3. at least 5 of the 7 years above zero   | 5, holds           | 4, no                 |
+| 4. ahead of at least 190 of its 200 twins | 196, holds         | 192, holds            |
+| 5. still above zero at double cost        | +57.2 R, holds     | +31.8 R, holds        |
+
+GBP/JPY at 120 hours:
+
+- **How it worked.** +0.244 R a trade after costs (+0.353 R before, +0.136 R
+  at double cost), +103.0 R in all. In the old years the stop was 21 pips at
+  the median; if it stayed near that, the average is about 5 pips a trade.
+- **How it is spread.** 85.1% of the trades ended at their stop and the
+  median trade lost 1 R. The ten best trades made +199.9 R, so the other 412
+  trades lost 96.9 R between them. The best trade made +32.6 R.
+- **By year** (sum, trades): 2019 +21.7 R (55), 2020 -15.0 (62), 2021 +26.8
+  (43), 2022 +20.9 (55), 2023 -2.4 (49), 2024 +20.7 (86), 2025 +30.3 (72).
+- **Buys and sells.** Buys 196 trades, +0.385 R; sells 226 trades, +0.122 R.
+- **Against the twins.** The median twin lost 0.158 R a trade; nine twins in
+  ten fell between -0.413 R and +0.130 R, and the best made +0.316 R. So the
+  point where the pattern ends was a better day to open this trade than a
+  day or a few days either side of it, in both periods.
+
+EUR/JPY, the sister pair, as description: +0.182 R a trade, 90.1% stopped,
+the ten best trades +264.9 R of a +77.3 R total. Its buys made +0.637 R (193
+trades) and its sells lost 0.197 R (232 trades). By year: 2019 +36.3 R, 2020
++58.1, 2021 -42.1, 2022 +63.1, 2023 -13.7, 2024 +21.8, 2025 -46.2.
+
+**How to read it.**
+
+- It is not a proven rule, and the reading says so. A weekly t of 1.07 means
+  the result is still inside what luck gives; 2.5 was the line.
+- Of the versions this study took to the unseen years, it is the one that
+  lost least of its old result: +0.323 R on 628 trades in 2010 to 2018,
+  +0.244 R on 422 trades in 2019 to 2025. The others fell to about zero or
+  below it.
+- It is a lottery-ticket shape. About 85 trades in 100 lose the stop, and a
+  handful a year pay for all of them by catching a move of several hundred
+  pips. A person would find that very hard to follow by hand.
+- The two yen pairs move together, so EUR/JPY is not a second proof.
+- The limits written in Amendment 4 stand: a rule picked from 42 cells after
+  the first results, on one pair, and a second look at 2019 to 2025.
+
+**What could come next** (nothing is started; John decides). A play-money
+account would see about five trades a month, far too few to tell anything in
+weeks or months. A quicker and harder test is to run the same frozen rule,
+once, on yen pairs this study never opened (AUD/JPY, CAD/JPY, NZD/JPY and
+CHF/JPY have the same free 1-minute files), with the lines written first.
