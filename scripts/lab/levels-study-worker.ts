@@ -18,7 +18,8 @@ import {
   type LevelsRun,
   type VisitRec,
 } from '../../src/lib/lab/levels'
-import { shuffleDays } from '../../src/lib/lab/levelsShuffle'
+import { mirrorMinutes } from '../../src/lib/lab/levelsMirror'
+import { SHUFFLE_SEED, shuffleDays } from '../../src/lib/lab/levelsShuffle'
 import { addVisitRec, Cells, levelCells, type Cell } from '../../src/lib/lab/levelsStudy'
 
 /** Placebo 2's shuffle of one market: days, days now in another's place, minutes dropped. */
@@ -33,14 +34,19 @@ export interface ShuffleInfo {
 /**
  * The price series the same pipeline can run on. 'real' is the file as it
  * is; 'shuffled' is Placebo 2's shuffled days, each day moving only inside
- * the job's blocks of years.
+ * the job's blocks of years; 'mirrored' is Amendment 1, A's mirrored minutes.
+ * Both take the job's seed (shuffled: the plan's seed 1 when none is given).
  */
 export const SERIES = {
   real: (bars: Bars): { bars: Bars; shuffle: ShuffleInfo | null } => ({ bars, shuffle: null }),
   shuffled: (bars: Bars, job: LevelsJob): { bars: Bars; shuffle: ShuffleInfo | null } => {
-    const s = shuffleDays(bars, job.blocks ?? [])
+    const s = shuffleDays(bars, job.blocks ?? [], job.seed ?? SHUFFLE_SEED)
     const { days, moved, minutes, outside, taken } = s
     return { bars: s.bars, shuffle: { days, moved, minutes, outside, taken } }
+  },
+  mirrored: (bars: Bars, job: LevelsJob): { bars: Bars; shuffle: ShuffleInfo | null } => {
+    if (job.seed === undefined) throw new Error('a mirrored series needs a seed')
+    return { bars: mirrorMinutes(bars, job.seed), shuffle: null }
   },
 } as const
 export type SeriesName = keyof typeof SERIES
@@ -55,15 +61,19 @@ export interface LevelsJob {
   series: SeriesName
   /** 'shuffled': the blocks of years ([from, to) in UTC seconds) a day may move inside. */
   blocks?: [number, number][]
+  /** 'shuffled' (default 1, the plan's) and 'mirrored' (Amendment 1, A): the seed. */
+  seed?: number
 }
 
 /**
- * What a Placebo 2 run sends back instead of records: the level visits'
- * cells, and the level and twin visit cells of the visits touched on days
+ * What a run on a series other than the real one sends back instead of
+ * records: the level visits' cells, and (shuffled seed 1 only, the plan's
+ * Placebo 2) the level and twin visit cells of the visits touched on days
  * whose range is at most 1.5 x the ATR in force (the limit line).
  */
 export interface Placebo2Cells {
-  shuffle: ShuffleInfo
+  /** Null for mirrored minutes. */
+  shuffle: ShuffleInfo | null
   lv: Cell[]
   lvCalm: Cell[]
   tvCalm: Cell[]
@@ -86,7 +96,7 @@ export interface MarketRun {
   four: { start: Float64Array; close: Float64Array }
   ms: number
   rssMB: number
-  /** Only for the 'shuffled' series, whose run then holds only the twins' visits by week. */
+  /** Only for a series other than the real one, whose run then holds only the twins' visits by week. */
   placebo2?: Placebo2Cells
 }
 
@@ -115,10 +125,13 @@ async function work(job: LevelsJob): Promise<MarketRun> {
   const fp = barsHash(bars, job.hashBefore)
   const calm = new Cells(TV.size)
   const calmDay = (v: VisitRec) => v.dayRangeAtr <= 1.5
+  const other = job.series !== 'real'
+  // The wide-day split matters only for the plan's Placebo 2 (shuffled, seed 1).
+  const withCalm = job.series === 'shuffled' && (job.seed ?? SHUFFLE_SEED) === SHUFFLE_SEED
   const run = runLevels(
     bars,
     job.market,
-    shuffle
+    withCalm
       ? {
           onTwinVisit: (v) => {
             if (calmDay(v))
@@ -130,9 +143,9 @@ async function work(job: LevelsJob): Promise<MarketRun> {
         }
       : {},
   )
-  if (shuffle) {
+  if (other) {
     const all = levelCells(job.market, run.visits)
-    const lvCalm = levelCells(job.market, run.visits.filter(calmDay))
+    const lvCalm = withCalm ? levelCells(job.market, run.visits.filter(calmDay)) : { visits: [] }
     return {
       market: job.market,
       series: job.series,

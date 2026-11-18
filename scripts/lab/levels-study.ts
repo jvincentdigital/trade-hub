@@ -4,14 +4,20 @@
  *
  *   ./node_modules/.bin/tsx scripts/lab/levels-study.ts choose --data <dir> --out <dir> [--jobs N]
  *   ./node_modules/.bin/tsx scripts/lab/levels-study.ts check --data <dir> --choose <dir>/choose.json --out <dir> --commit <sha> [--jobs N]
- *   ./node_modules/.bin/tsx scripts/lab/levels-study.ts rehearse --data <dir> --out <dir> [--jobs N]
+ *   ./node_modules/.bin/tsx scripts/lab/levels-study.ts rehearse --data <dir> --out <dir> [--jobs N] [--seeds N]
  *   ./node_modules/.bin/tsx scripts/lab/levels-study.ts cut --data <dir> [--jobs N] [--detail]
  *
  * cut: the cut test ("How the numbers are checked") on the choosing years:
  * one line per cut minute, exit 1 on any difference (scripts/lab/levels-cut-worker.ts).
  * choose and check also run the placebos (Placebo 1 on the engine's placebo
  * cells, Placebo 2 on the shuffled days, src/lib/lab/levelsShuffle.ts) and read
- * a rule whose Placebo 2 lift lies outside 2.5 standard errors on the rest.
+ * a rule whose Placebo 2 lift lies outside 2.5 standard errors on the rest (the
+ * plan's reading, "as written"). Amendment 1: they also run ten shuffled-days
+ * and ten mirrored-minutes series (src/lib/lab/levelsMirror.ts), one at a time,
+ * and read every rule on the rest against both (src/lib/lab/levelsBaseline.ts);
+ * that reading decides, and a rule chosen under either reading goes to the
+ * check. rehearse takes --seeds N (2 to 10) series of each kind; choose and
+ * check refuse it.
  *
  * choose: the summary, Parts 1, 2, 3 and 5 and Part 4's choosing on 2005 to
  * 2018; refuses a file with any bar from 2019 on. check: "The check, once, on
@@ -71,7 +77,6 @@ import {
   median,
   neitherMeasure,
   NOTHING_CHOSEN,
-  notSeenText,
   ON_ROUND,
   p2Bar,
   pairBar,
@@ -124,7 +129,30 @@ import {
   type PlaceboRow,
   type RestStats,
 } from '../../src/lib/lab/levelsPlacebo'
-import { SHUFFLE_GENERATOR } from '../../src/lib/lab/levelsShuffle'
+import { SHUFFLE_GENERATOR, SHUFFLE_SEED } from '../../src/lib/lab/levelsShuffle'
+import {
+  againstBoth,
+  BASELINE_NAMES,
+  BASELINE_SEEDS,
+  baselineOf,
+  baselineSeries,
+  liftsOf,
+  meanOutside,
+  notSeenBeside,
+  pairBarOnRest,
+  rankBySmallerT,
+  runNoteOnRest,
+  smallestOnRest,
+  spreadOf,
+  SHUFFLES_GENERATOR,
+  zoneSplitsLine,
+  type BaselineKind,
+  type BothReading,
+  type Lifts,
+  type RestReading,
+  type Spread,
+} from '../../src/lib/lab/levelsBaseline'
+import { MIRROR_GENERATOR } from '../../src/lib/lab/levelsMirror'
 import { CUT_GENERATOR, CUT_KINDS, pickCuts } from '../../src/lib/lab/levelsCut'
 import type { LevelsJob, MarketRun, SeriesName, WorkerReply } from './levels-study-worker'
 import type { CutJob, CutReply, CutResult } from './levels-cut-worker'
@@ -827,6 +855,13 @@ interface RuleRow extends RuleStats {
   p2?: { lift: number; se: number; t: number; outside: boolean } | null
   /** Read on the rest: the bar and the smallest lift seen are then the rest's; the lift's own are kept here. */
   onRest?: { rest: RestStats; plainBar: Line[]; plainSmallest: number } | null
+  /**
+   * Amendment 1, D and E: the bar (the choosing bar, or the pair candidate's
+   * bar) on the rest against both baselines, which decides; `ok` is chosen
+   * (qualifies) on the rest. bar, passes and smallest above stay the plan's
+   * own reading, "as written" (F).
+   */
+  amended?: BothReading & { smallest: number }
 }
 
 function ruleRow(rule: Rule, market: string, s: RuleStats, bar: Line[]): RuleRow {
@@ -888,53 +923,78 @@ const turnLiftAtSameDistance = (rows: RuleRow[], r: RuleRow) => {
   )
 }
 
+const marks = (lines: Line[]) => lines.map((l) => (l.ok ? 'Y' : 'n')).join(' ')
+
+/** Amendment 1: one baseline's cell: baseline (spread, n); rest (SE), t; markets above zero; halves; the lines. */
+const restCell = (x: RestReading) =>
+  `${fx(x.baseline.all.mean)} (${fn(x.baseline.all.spread, 2)}, ${x.baseline.all.n}); ${fx(x.rest.lift)} (${fn(x.rest.se, 2)}), t ${fn(x.rest.t, 2)}; ${x.rest.marketsAbove} of ${x.rest.marketsUsed}; ${fx(x.rest.halves[0])} / ${fx(x.rest.halves[1])}; ${marks(x.lines)}`
+
+/** The plain smallest lift seen (the plan's, before any reading on the rest). */
+const plainSmallest = (r: RuleRow) => r.onRest?.plainSmallest ?? r.smallest
+
 function ruleTable(rows: RuleRow[], withBar: boolean): string {
+  const lines = withBar ? 'bar 1 2 3 4' : 'bar a b c d'
   return table(
     [
       'Rule',
       'Market',
       'Lift',
       'Level / twins',
-      'Markets above zero',
-      'Half 1',
-      'Half 2',
       'SE',
       't',
       'Decided visits',
-      'Smallest lift seen',
+      `Against shuffled days: baseline (spread, n); rest (SE), t; markets above zero; halves; ${lines}`,
+      'Against mirrored minutes: the same',
+      withBar ? 'Chosen on the rest' : 'Qualifies on the rest',
+      'Smallest lift seen: on the rest (E) / plain',
       ...(withBar
         ? [
-            'Placebo 2 lift (SE)',
-            'On the rest: lift (SE), t, markets above zero, halves',
-            'Bar 1 2 3 4',
-            'Chosen',
+            'As written: markets above zero, halves',
+            'As written: Placebo 2 seed 1 lift (SE)',
+            'As written: on the rest of seed 1: lift (SE), t, markets above zero, halves',
+            'As written: bar 1 2 3 4',
+            'As written: chosen',
           ]
-        : ['Qualifies']),
+        : ['As written: halves, bar a b c d', 'As written: qualifies']),
     ],
     rows.map((r) => [
       r.key,
       r.market,
       fx(r.lift),
       `${fn(r.rate)} / ${fn(r.twinRate)}`,
-      `${r.marketsAbove} of ${r.marketsUsed}`,
-      fx(r.halves[0]),
-      fx(r.halves[1]),
       fn(r.se, 2),
       fn(r.t, 2),
       r.decided,
-      fn(r.smallest, 1),
+      r.amended ? restCell(r.amended.shuffled) : '-',
+      r.amended ? restCell(r.amended.mirrored) : '-',
+      r.amended ? yes(r.amended.ok) : '-',
+      `${fn(r.amended?.smallest, 1)} / ${fn(plainSmallest(r), 1)}`,
       ...(withBar
         ? [
+            `${r.marketsAbove} of ${r.marketsUsed}; ${fx(r.halves[0])} / ${fx(r.halves[1])}`,
             r.p2 ? `${fx(r.p2.lift)} (${fn(r.p2.se, 2)})${r.p2.outside ? ' outside' : ''}` : '-',
             r.onRest
               ? `${fx(r.onRest.rest.lift)} (${fn(r.onRest.rest.se, 2)}), t ${fn(r.onRest.rest.t, 2)}, ${r.onRest.rest.marketsAbove} of ${r.onRest.rest.marketsUsed}, ${fx(r.onRest.rest.halves[0])} / ${fx(r.onRest.rest.halves[1])}`
               : 'not read on the rest',
-            `${r.bar.map((l) => (l.ok ? 'Y' : 'n')).join(' ')}${r.onRest ? ' (rest)' : ''}`,
+            `${marks(r.bar)}${r.onRest ? ' (rest)' : ''}`,
             yes(r.passes),
           ]
-        : [yes(r.passes)]),
+        : [`${fx(r.halves[0])} / ${fx(r.halves[1])}; ${marks(r.bar)}`, yes(r.passes)]),
     ]),
   )
+}
+
+/** Amendment 1, F: a sentence wherever the two readings differ. */
+function differText(rows: RuleRow[], word: string): string {
+  const d = rows.filter((r) => r.amended && r.amended.ok !== r.passes)
+  if (!d.length)
+    return `The two readings agree on every row: ${word} on the rest exactly where ${word} as written.`
+  return `The two readings differ for: ${d
+    .map(
+      (r) =>
+        `${r.market === 'ALL' ? '' : r.market + ' '}${r.key} (${r.passes ? `${word} as written, not on the rest` : `${word} on the rest, not as written`})`,
+    )
+    .join('; ')}.`
 }
 
 // ---------------------------------------------------------------- placebos
@@ -1024,6 +1084,169 @@ function readOnRest(forty: RuleRow[], p2: P2Row[]): void {
 const shuffleInfo = (p2runs: MarketRun[]) =>
   p2runs.map((r) => ({ market: r.market, ...r.placebo2!.shuffle }))
 
+// ---------------------------------------------------------------- Amendment 1: every rule against prices with no memory
+
+/** One series' lifts (Amendment 1, B), each worked out like the lift itself (no draws). */
+interface SeriesLifts {
+  kind: BaselineKind
+  seed: number
+  /** Its runs: seconds from the first worker started to the last one done, and the largest worker's peak memory. */
+  seconds: number
+  peakMB: number
+  /** The forty rules on all markets, by rule index. */
+  forty: Lifts[]
+  /** The forty rules on each market alone: market, then rule index. */
+  perMarket: Record<string, Lifts[]>
+  /** Every Placebo 2 cell on all markets: kind, then measure, its lift. */
+  cells: Record<string, Record<string, number>>
+}
+
+const poolsOf = (cells: Cell[]) => {
+  const m = new Map<string, Cell[]>()
+  for (const c of cells) {
+    const a = m.get(c.pool)
+    if (a) a.push(c)
+    else m.set(c.pool, [c])
+  }
+  return (pool: string) => m.get(pool) ?? []
+}
+
+/**
+ * Amendment 1, B: reduce one series' runs to lifts over `span`, so its runs
+ * can be let go before the next series starts. perMarket: the markets whose
+ * forty rules are read alone; cells: also every Placebo 2 cell.
+ */
+function seriesLifts(
+  runs: MarketRun[],
+  P: LevelPeriods,
+  span: Span,
+  s: { kind: BaselineKind; seed: number; seconds: number },
+  opt: { perMarket: string[]; cells: boolean },
+): SeriesLifts {
+  const lv = poolsOf(runs.flatMap((r) => r.placebo2!.lv))
+  const tv = poolsOf(runs.flatMap((r) => twinCellsOf(r.market, r.run.twins.visitsByWeek)))
+  const markets = runs.map((r) => r.market)
+  const keep = keepSpan(span)
+  const halves: [Keep, Keep] = [keepHalf(P, 0), keepHalf(P, 1)]
+  // As fortyRules (m null) and perMarketRules (one market) read the real series.
+  const one = (rule: Rule, m: string | null) =>
+    liftsOf(
+      ruleStats(
+        m === null ? lv(rule.kind) : lv(rule.kind).filter((c) => c.market === m),
+        m === null
+          ? tv(twinPoolOf(rule.kind))
+          : tv(twinPoolOf(rule.kind)).filter((c) => c.market === m),
+        ruleMeasure(rule.reading),
+        m === null ? keep : keepAnd(keep, keepMarket(m)),
+        halves,
+        m === null ? markets : [m],
+        0,
+      ),
+    )
+  const perMarket: Record<string, Lifts[]> = {}
+  for (const m of opt.perMarket) perMarket[m] = RULES.map((rule) => one(rule, m))
+  const cells: Record<string, Record<string, number>> = {}
+  if (opt.cells)
+    for (const kind of REPORT_KINDS)
+      cells[kind] = Object.fromEntries(
+        P2_MEASURES.map((x) => [x.name, lift(unitsOf(lv(kind), tv(twinPoolOf(kind)), x.m, keep))]),
+      )
+  return {
+    kind: s.kind,
+    seed: s.seed,
+    seconds: s.seconds,
+    peakMB: Math.round(Math.max(...runs.map((r) => r.rssMB))),
+    forty: RULES.map((rule) => one(rule, null)),
+    perMarket,
+    cells,
+  }
+}
+
+/**
+ * Amendment 1, A and B: the series, one at a time: each one's workers, then
+ * its lifts, before the next starts, so memory stays flat. One progress line
+ * per series.
+ */
+async function runSeries(
+  list: { kind: BaselineKind; seed: number }[],
+  job: (m: HarmonicMarket, kind: BaselineKind, seed: number) => LevelsJob,
+  markets: HarmonicMarket[],
+  jobs: number,
+  reduce: (
+    runs: MarketRun[],
+    s: { kind: BaselineKind; seed: number; seconds: number },
+  ) => SeriesLifts,
+): Promise<SeriesLifts[]> {
+  const out: SeriesLifts[] = []
+  for (const s of list) {
+    const t = Date.now()
+    const runs = await runWorkers(
+      markets.map((m) => job(m, s.kind, s.seed)),
+      jobs,
+    )
+    out.push(reduce(runs, { ...s, seconds: (Date.now() - t) / 1000 }))
+    const x = out[out.length - 1]
+    console.error(
+      `series ${BASELINE_NAMES[s.kind]} seed ${s.seed}: ${markets.length} markets, ${x.seconds.toFixed(1)} s, largest worker ${x.peakMB} MB`,
+    )
+  }
+  return out
+}
+
+/** A rule's two baselines (Amendment 1, B) from the lifts `pick` takes from each series. */
+const basesOf = (series: SeriesLifts[], pick: (s: SeriesLifts) => Lifts, markets: string[]) => ({
+  shuffled: baselineOf(series.filter((s) => s.kind === 'shuffled').map(pick), markets),
+  mirrored: baselineOf(series.filter((s) => s.kind === 'mirrored').map(pick), markets),
+})
+
+/** Amendment 1, D and E: the choosing bar and the pair candidate's bar on the rest against both baselines. */
+function readOnBaselines(forty: RuleRow[], perMarket: RuleRow[], series: SeriesLifts[]): void {
+  const put = (r: RuleRow, b: BothReading) => (r.amended = { ...b, smallest: smallestOnRest(b) })
+  for (const r of forty)
+    put(
+      r,
+      againstBoth(
+        r,
+        basesOf(series, (s) => s.forty[r.index], Object.keys(r.marketLift)),
+        chooseBar,
+      ),
+    )
+  for (const r of perMarket)
+    put(
+      r,
+      againstBoth(
+        r,
+        basesOf(series, (s) => s.perMarket[r.market][r.index], [r.market]),
+        pairBarOnRest(r.decided),
+      ),
+    )
+}
+
+/** The rests of the Turn reading at the same distance as a Run rule, against shuffled days and mirrored minutes. */
+const turnRestsAtSameDistance = (rows: RuleRow[], r: RuleRow): [number, number] => {
+  const turn = r.reading === 'Run quick' ? 'Turn quick' : 'Turn hold'
+  const x = rows.find((y) => y.kind === r.kind && y.reading === turn && y.market === r.market)
+  return x?.amended ? [x.amended.shuffled.rest.lift, x.amended.mirrored.rest.lift] : [NaN, NaN]
+}
+
+/** Amendment 1, H: a Placebo 2 cell's mean and spread over the series of each kind. */
+const cellSpreads = (series: SeriesLifts[], kind: string, measure: string) => ({
+  shuffled: spreadOf(
+    series.filter((s) => s.kind === 'shuffled').map((s) => s.cells[kind]?.[measure]),
+  ),
+  mirrored: spreadOf(
+    series.filter((s) => s.kind === 'mirrored').map((s) => s.cells[kind]?.[measure]),
+  ),
+})
+
+const spreadText = (s: Spread) =>
+  `${fx(s.mean)} (${fn(s.spread, 2)})${meanOutside(s) ? ' **off zero**' : ''}`
+
+/** Which reading took a rule or a pair candidate to the check (Amendment 1, F); null for a rehearsal fallback. */
+type ChosenBy = 'rest' | 'as written' | 'both' | null
+const chosenBy = (rest: boolean, written: boolean): ChosenBy =>
+  rest && written ? 'both' : rest ? 'rest' : written ? 'as written' : null
+
 const statText = (s: { lift: number; se: number; t: number }) =>
   `${fx(s.lift)} (SE ${fn(s.se, 2)}, t ${fn(s.t, 2)})`
 
@@ -1033,7 +1256,9 @@ function placeboMd(
   shuffles: ReturnType<typeof shuffleInfo>,
   P: LevelPeriods,
   span: Span,
+  series: SeriesLifts[],
 ): string {
+  const nOf = (k: BaselineKind) => series.filter((s) => s.kind === k).length
   const out: string[] = [
     '## Placebos (a placebo outside its limits is explained before any real result is read)',
     '',
@@ -1063,10 +1288,15 @@ function placeboMd(
     '',
     `Shuffle per market (days, days moved, minutes dropped for their clock time, for a taken stamp): ${shuffles.map((s) => `${s.market} ${s.days}, ${s.moved}, ${s.outside}, ${s.taken}`).join('; ')}.`,
     '',
+    `**Prices with no memory (Amendment 1, A and H).** Beside each cell of seed 1: the mean (spread) of the lift over the ${nOf('shuffled')} shuffles (seeds 1 to ${nOf('shuffled')}, seed 1 the one before it) and over the ${nOf('mirrored')} mirrored-minutes series (seeds 1 to ${nOf('mirrored')}): the real 1-minute candles in their real order and at their real stamps, each minute kept or turned upside down (every move mirrored in ratio, the two wicks changing places), by ${MIRROR_GENERATOR}. **off zero** marks a mean more than 2.5 x spread / sqrt(n) from zero. Anything here that the causes written in Amendment 1 do not cover is looked into before the real tables are read. Seconds per series and the largest worker's peak memory: ${series.map((s) => `${s.kind} ${s.seed} ${s.seconds.toFixed(0)} s ${s.peakMB} MB`).join('; ')}.`,
+    '',
     table(
       [
         'Kind',
-        ...P2_MEASURES.map((m) => `${m.name[0].toUpperCase()}${m.name.slice(1)}: lift (SE, t)`),
+        ...P2_MEASURES.map(
+          (m) =>
+            `${m.name[0].toUpperCase()}${m.name.slice(1)}: seed 1 lift (SE, t); ${nOf('shuffled')} shuffles mean (spread); ${nOf('mirrored')} mirrored mean (spread)`,
+        ),
         'Note',
       ],
       p2.map((r) => [
@@ -1074,7 +1304,8 @@ function placeboMd(
         ...P2_MEASURES.map((m) => {
           const x = r.measures.find((y) => y.name === m.name)
           if (!x) return '-'
-          return `${statText(x.stats)}${x.outside ? ' **outside**' : ''}${x.onlyWide ? `, ${ONLY_WIDE_TEXT}` : ''}`
+          const sp = cellSpreads(series, r.kind, m.name)
+          return `${statText(x.stats)}${x.outside ? ' **outside**' : ''}${x.onlyWide ? `, ${ONLY_WIDE_TEXT}` : ''}; ${spreadText(sp.shuffled)}; ${spreadText(sp.mirrored)}`
         }),
         r.cautious ? P2_CAUTIOUS_TEXT : '',
       ]),
@@ -1094,7 +1325,7 @@ function placeboMd(
           .filter(({ kind, m }) => m.reading && (PLAN_KINDS as readonly string[]).includes(kind))
           .map(({ kind, m }) => `${kind} ${m.reading}`)
           .join(', ') || 'none (no rule reading is outside)'
-      }. **The cause is to be looked for and written down in the results before any real result below is read.**`,
+      } (the plan's reading, "as written"; under Amendment 1 every rule is read on the rest against both kinds of prices with no memory, Part 4). **The cause is to be looked for and written down in the results before any real result below is read.**`,
     )
   }
   return out.join('\n')
@@ -1440,9 +1671,14 @@ function summaryMd(
     const med = median(turns.map((v) => v.howFar / pipOf(v.market)))
     const t0 = p3[kind].all.cells.find((c) => c.trade === 'T0' && c.exit === 'quick')!
     const t1 = p3[kind].all.cells.find((c) => c.trade === 'T1' && c.exit === 'quick')!
+    // Amendment 1, H: the two baselines of the turn rate at 0.25 x ATR beside the lift.
+    const tq = rows.find((r) => r.kind === kind && r.reading === 'Turn quick')!
     return [
       kind,
       `${fn(a.turn[1].level, 0)} / ${fn(a.turn[1].twins, 0)}`,
+      tq.amended
+        ? `${fx(tq.lift, 1)}; ${fx(tq.amended.shuffled.baseline.all.mean, 1)} (${fn(tq.amended.shuffled.baseline.all.spread, 1)}); ${fx(tq.amended.mirrored.baseline.all.mean, 1)} (${fn(tq.amended.mirrored.baseline.all.spread, 1)})`
+        : fx(tq.lift, 1),
       fn(med, 1),
       `${fx(t0.beforePips, 1)} / ${fx(t0.afterPips, 1)}`,
       `${fx(t1.beforePips, 1)} / ${fx(t1.afterPips, 1)}`,
@@ -1457,6 +1693,7 @@ function summaryMd(
       [
         'Kind',
         'Out of 100 visits that turned or broke at 0.25 x ATR: turned at the level / at the nearby prices',
+        'Lift; baseline on shuffled days (spread); on mirrored minutes (spread)',
         'Median pips a turn went',
         'T0 quick, pips a trade before / after costs',
         'T1 quick, before / after',
@@ -1501,7 +1738,7 @@ function summaryMd(
     .join(', ')
   out.push(
     '',
-    `- **Floors and ceilings of the bigger charts** (lift of the turn rate at 0.25 x ATR, in points, and visits counted): ${zones}.`,
+    zoneSplitsLine(zones),
     `- **What waiting for the close back out adds** (T1 beside T0, quick, after costs): ${PLAN_KINDS.map((k) => `${k} T0 ${tq(k, 'T0', 'quick')}, T1 ${tq(k, 'T1', 'quick')}`).join('; ')}.`,
     `- **Quick against hold** (the ten kinds together, average after costs, trades): T0 quick ${pooled(0, 0)}, hold ${pooled(0, 1)}; T1 quick ${pooled(1, 0)}, hold ${pooled(1, 1)}; B0 quick ${pooled(2, 0)}, hold ${pooled(2, 1)}.`,
     `- **Fibonacci** (Turn quick lift): ${fib}.`,
@@ -1517,15 +1754,33 @@ interface Pick {
   index: number
   key: string
   market: string
+  /** Amendment 1, F: the reading that chose it (null: a rehearsal fallback). */
+  by: ChosenBy
   fallback: boolean
   row: RuleRow
 }
+
+const pickOf = (r: RuleRow, role: Pick['role'], by: ChosenBy, fallback = false): Pick => ({
+  role,
+  index: r.index,
+  key: r.key,
+  market: r.market,
+  by,
+  fallback,
+  row: r,
+})
+const pickJson = ({ row, ...p }: Pick) => ({ ...p, lift: row.lift, t: row.t })
+
+/** A rest reading in a few words: the two rests and their t's. */
+const restsText = (b: BothReading) =>
+  `rests ${fx(b.shuffled.rest.lift, 1)} / ${fx(b.mirrored.rest.lift, 1)}, t ${fn(b.shuffled.rest.t, 2)} / ${fn(b.mirrored.rest.t, 2)}`
 
 async function runChoose(
   data: string,
   out: string,
   P: LevelPeriods,
   jobs: number,
+  seeds: number,
 ): Promise<string> {
   const t0 = Date.now()
   const { used, missing, file } = marketsIn(data)
@@ -1544,6 +1799,16 @@ async function runChoose(
   )
   for (const r of runs) if (r.last >= P.boundary) fail(`${r.market}: a bar at ${iso(r.last)}`)
   // Placebo 2: the same markets on the shuffled days (each day moving inside its half).
+  const job = (m: HarmonicMarket, kind: BaselineKind, seed: number): LevelsJob => ({
+    market: m,
+    file: file(m),
+    readBefore: P.boundary,
+    hashBefore: P.boundary,
+    series: kind,
+    seed,
+    blocks: kind === 'shuffled' ? halvesOf(P, m) : undefined,
+  })
+  const tP2 = Date.now()
   const p2runs = await runWorkers(
     used.map((m) => ({
       market: m,
@@ -1555,6 +1820,36 @@ async function runChoose(
     })),
     jobs,
   )
+  const p2seconds = (Date.now() - tP2) / 1000
+  const p2rows = placebo2Rows(p2runs, P, P.choose, REPORT_KINDS)
+  // Amendment 1, A and B: the plan's Placebo 2 is shuffled seed 1; its lifts must be the ones above.
+  const reduce = (rs: MarketRun[], s: { kind: BaselineKind; seed: number; seconds: number }) =>
+    seriesLifts(rs, P, P.choose, s, { perMarket: used, cells: true })
+  const seed1 = reduce(p2runs, { kind: 'shuffled', seed: SHUFFLE_SEED, seconds: p2seconds })
+  console.error(
+    `series shuffled days seed 1: ${used.length} markets, ${p2seconds.toFixed(1)} s, largest worker ${seed1.peakMB} MB`,
+  )
+  const same = (a: number, b: number) => a === b || (Number.isNaN(a) && Number.isNaN(b))
+  for (const r of p2rows)
+    for (const m of r.measures)
+      if (!same(seed1.cells[r.kind][m.name], m.stats.lift))
+        fail(`shuffled seed 1: ${r.kind} ${m.name} is not the plan's Placebo 2 lift`)
+  for (const rule of RULES) {
+    const m = p2rows
+      .find((x) => x.kind === rule.kind)!
+      .measures.find((x) => x.reading === rule.reading.name)!
+    if (!same(seed1.forty[rule.index].lift, m.stats.lift))
+      fail(`shuffled seed 1: ${rule.key} is not the plan's Placebo 2 lift`)
+  }
+  const shuffles = shuffleInfo(p2runs)
+  const others = await runSeries(
+    baselineSeries(seeds).filter((s) => !(s.kind === 'shuffled' && s.seed === SHUFFLE_SEED)),
+    job,
+    used,
+    jobs,
+    reduce,
+  )
+  const allSeries = [seed1, ...others]
   const tRun = Date.now()
   const input = studyInput(runs)
   const label = P.rehearsal ? 'REHEARSAL: ' : ''
@@ -1565,90 +1860,86 @@ async function runChoose(
   const p3 = part3(input, P.choose, BOOT_DRAWS)
   const p5 = part5(input, P.part5Choose)
   const p1rows = placebo1Rows(runs, P, P.choose)
-  const p2rows = placebo2Rows(p2runs, P, P.choose, REPORT_KINDS)
   const forty = fortyRules(input, P, P.choose, BOOT_DRAWS)
   readOnRest(forty, p2rows)
   const perMarket = perMarketRules(input, P, P.choose, BOOT_DRAWS)
+  readOnBaselines(forty, perMarket, allSeries)
   const tCount = Date.now()
   const placebo = {
     label: P.label,
     span: spanText(P.choose),
     placebo1: p1rows,
     placebo2: p2rows,
-    shuffle: shuffleInfo(p2runs),
+    shuffle: shuffles,
     shuffleGenerator: SHUFFLE_GENERATOR,
     bootstrap: { draws: BOOT_DRAWS, generator: BOOT_GENERATOR },
   }
   writeFileSync(join(out, 'placebo.json'), json(placebo))
 
-  const chosenRows = forty.filter((r) => r.passes)
-  const pairRanked = rankByT(perMarket.filter((r) => r.passes))
-  let picks: Pick[] = chosenRows.map((r) => ({
-    role: 'rule',
-    index: r.index,
-    key: r.key,
-    market: 'ALL',
-    fallback: false,
-    row: r,
-  }))
-  let pair: Pick | null = pairRanked.length
-    ? {
-        role: 'pair candidate',
-        index: pairRanked[0].index,
-        key: pairRanked[0].key,
-        market: pairRanked[0].market,
-        fallback: false,
-        row: pairRanked[0],
-      }
-    : null
+  // Amendment 1, D and F: chosen on the rest (which decides) or as written; either goes to the check.
+  const chosenRest = forty.filter((r) => r.amended!.ok)
+  const chosenWritten = forty.filter((r) => r.passes)
+  let picks: Pick[] = forty
+    .filter((r) => r.amended!.ok || r.passes)
+    .map((r) => pickOf(r, 'rule', chosenBy(r.amended!.ok, r.passes)))
+  const pairWritten = rankByT(perMarket.filter((r) => r.passes))
+  const pairRest = rankBySmallerT(
+    perMarket.filter((r) => r.amended!.ok),
+    (r) => r.amended!,
+  )
+  const pw = pairWritten[0] ?? null
+  const pr = pairRest[0] ?? null
+  let pairs: Pick[] =
+    pr && pr === pw
+      ? [pickOf(pr, 'pair candidate', 'both')]
+      : [
+          ...(pr ? [pickOf(pr, 'pair candidate', 'rest')] : []),
+          ...(pw ? [pickOf(pw, 'pair candidate', 'as written')] : []),
+        ]
   const fallbackNote: string[] = []
   if (P.rehearsal && !picks.length) {
     picks = rankByT(forty)
       .filter((r) => !Number.isNaN(r.t))
       .slice(0, 3)
-      .map((r) => ({
-        role: 'rule',
-        index: r.index,
-        key: r.key,
-        market: 'ALL',
-        fallback: true,
-        row: r,
-      }))
+      .map((r) => pickOf(r, 'rule', null, true))
     fallbackNote.push(
-      'REHEARSAL ONLY: no rule was chosen; the three rules with the highest t are taken so the check path, the trade lines and the readings all run.',
+      'REHEARSAL ONLY: no rule was chosen under either reading; the three rules with the highest t are taken so the check path, the trade lines and the readings all run.',
     )
   }
-  if (P.rehearsal && !pair) {
+  if (P.rehearsal && !pairs.length) {
     const top = rankByT(perMarket).find((r) => !Number.isNaN(r.t))
     if (top) {
-      pair = {
-        role: 'pair candidate',
-        index: top.index,
-        key: top.key,
-        market: top.market,
-        fallback: true,
-        row: top,
-      }
+      pairs = [pickOf(top, 'pair candidate', null, true)]
       fallbackNote.push(
-        'REHEARSAL ONLY: no rule on one market qualified; the one with the highest t is taken as the pair candidate.',
+        'REHEARSAL ONLY: no rule on one market qualified under either reading; the one with the highest t is taken as the pair candidate.',
       )
     }
   }
-  const nothing = !chosenRows.length && !pairRanked.length
-  const ruleText = (r: RuleRow) =>
-    r.passes ? `chosen (lift ${fx(r.lift, 1)}, t ${fn(r.t, 2)})` : notSeenText(r.smallest)
-  const pairText = pair
-    ? `${pair.fallback ? 'REHEARSAL fallback: ' : ''}${pair.market} ${pair.key} (lift ${fx(pair.row.lift, 1)}, t ${fn(pair.row.t, 2)})`
-    : 'none'
-  const runNotes = forty
-    .map((r) => ({
-      key: r.key,
-      note: runNote(
-        RULE_READINGS.find((x) => x.name === r.reading)!,
-        turnLiftAtSameDistance(forty, r),
-      ),
-    }))
-    .filter((x) => x.note)
+  const nothing =
+    !chosenRest.length && !chosenWritten.length && !pairRest.length && !pairWritten.length
+  const ruleText = (r: RuleRow) => {
+    const a = r.amended!
+    const main = a.ok
+      ? `chosen on the rest (${restsText(a)})`
+      : notSeenBeside(a.smallest, plainSmallest(r))
+    if (a.ok === r.passes) return main
+    return `${main}; as written: ${r.passes ? `chosen (lift ${fx(r.lift, 1)}, t ${fn(r.t, 2)})` : 'not chosen'}`
+  }
+  const pairDesc = (x: Pick) =>
+    `${x.fallback ? 'REHEARSAL fallback: ' : ''}${x.market} ${x.key} (lift ${fx(x.row.lift, 1)}, t ${fn(x.row.t, 2)}; ${restsText(x.row.amended!)})`
+  const pairText = `on the rest: ${pr ? pairDesc(pickOf(pr, 'pair candidate', 'rest')) : 'none'}; as written: ${pw ? (pw === pr ? 'the same' : pairDesc(pickOf(pw, 'pair candidate', 'as written'))) : 'none'}${pairs.some((x) => x.fallback) ? `; ${pairDesc(pairs[0])}` : ''}`
+  const readingOf = (r: RuleRow) => RULE_READINGS.find((x) => x.name === r.reading)!
+  const runNotes = {
+    onRest: forty
+      .map((r) => ({
+        key: r.key,
+        note: runNoteOnRest(readingOf(r), turnRestsAtSameDistance(forty, r)),
+      }))
+      .filter((x) => x.note),
+    asWritten: forty
+      .map((r) => ({ key: r.key, note: runNote(readingOf(r), turnLiftAtSameDistance(forty, r)) }))
+      .filter((x) => x.note),
+  }
 
   const g = gitState()
   const counts = countsByKind(input, P.choose)
@@ -1667,20 +1958,31 @@ async function runChoose(
     halves: P.halves.map(spanText),
     goldHalves: P.goldHalves.map(spanText),
     bootstrap: { draws: BOOT_DRAWS, generator: BOOT_GENERATOR },
+    seeds,
     counts,
     rules: forty,
-    chosen: chosenRows.map((r) => r.key),
-    picks: picks.map(({ row, ...p }) => ({ ...p, lift: row.lift, t: row.t })),
-    pairRanking: pairRanked.map((r) => ({
-      market: r.market,
-      key: r.key,
-      index: r.index,
-      t: r.t,
-      lift: r.lift,
-      decided: r.decided,
-    })),
-    pairTieOrder: `highest t; a tie goes to the first kind in ${PLAN_KINDS.join(', ')}, then the readings ${RULE_READINGS.map((r) => r.name).join(', ')}, then the markets ${PLAN_MARKETS.join(', ')}`,
-    pairCandidate: pair ? (({ row, ...p }) => ({ ...p, lift: row.lift, t: row.t }))(pair) : null,
+    chosen: { onRest: chosenRest.map((r) => r.key), asWritten: chosenWritten.map((r) => r.key) },
+    picks: picks.map(pickJson),
+    pairRanking: {
+      onRest: pairRest.map((r) => ({
+        market: r.market,
+        key: r.key,
+        index: r.index,
+        smallerT: Math.min(r.amended!.shuffled.rest.t, r.amended!.mirrored.rest.t),
+        lift: r.lift,
+        decided: r.decided,
+      })),
+      asWritten: pairWritten.map((r) => ({
+        market: r.market,
+        key: r.key,
+        index: r.index,
+        t: r.t,
+        lift: r.lift,
+        decided: r.decided,
+      })),
+    },
+    pairTieOrder: `highest t (on the rest: the smaller t of the two); a tie goes to the first kind in ${PLAN_KINDS.join(', ')}, then the readings ${RULE_READINGS.map((r) => r.name).join(', ')}, then the markets ${PLAN_MARKETS.join(', ')}`,
+    pairCandidates: pairs.map(pickJson),
     fallback: fallbackNote,
     verdict: nothing ? NOTHING_CHOSEN : null,
     placebo1Outside: p1rows.filter((r) => r.inside === false).map((r) => r.label),
@@ -1697,13 +1999,24 @@ async function runChoose(
       })),
     runNotes,
     perMarket,
+    // Amendment 1, A and B: each series' lifts, so any rest can be worked out again from this file.
+    baselines: {
+      seeds,
+      shuffleGenerator: SHUFFLES_GENERATOR,
+      mirrorGenerator: MIRROR_GENERATOR,
+      series: allSeries,
+    },
     outputs: OUT_FILES,
     seconds: {
       workers: (tRun - t0) / 1000,
       counting: (tCount - tRun) / 1000,
       total: NaN as number,
     },
-    peakMB: { main: 0, workers: Math.max(...runs.map((r) => r.rssMB)), concurrency: jobs },
+    peakMB: {
+      main: 0,
+      workers: Math.max(...runs.map((r) => r.rssMB), ...allSeries.map((s) => s.peakMB)),
+      concurrency: jobs,
+    },
   }
 
   writeFileSync(
@@ -1724,6 +2037,9 @@ async function runChoose(
   choose.peakMB.main = Math.round(process.resourceUsage().maxRSS / 1024)
   writeFileSync(join(out, 'choose.json'), json(choose))
 
+  const keys = (rows: RuleRow[]) => (rows.length ? rows.map((r) => r.key).join(', ') : 'none')
+  const pairKey = (r: RuleRow | null) => (r ? `${r.market} ${r.key}` : 'none')
+  const pairRows = [...new Set([...pairRest, ...pairWritten])]
   const md: string[] = [`# ${label}Levels study: choosing run`, '']
   if (P.rehearsal)
     md.push(
@@ -1735,6 +2051,7 @@ async function runChoose(
     `Markets used: ${used.join(', ')}.${missing.length ? ` Left out (file missing): ${missing.join(', ')}.` : ''}`,
     `Choosing span: ${spanText(P.choose)}; halves ${P.halves.map(spanText).join(' and ')} (gold ${P.goldHalves.map(spanText).join(' and ')}). Visits by touch minute, trades by fill minute (UTC). The run reads no price at or after ${dayText(P.boundary)}.`,
     `Bootstrap: ${BOOT_DRAWS} draws, ${BOOT_GENERATOR}.`,
+    `Prices with no memory (Amendment 1): ${seeds} shuffled-days series and ${seeds} mirrored-minutes series.${seeds !== BASELINE_SEEDS ? ` **Fewer than the amendment's ${BASELINE_SEEDS} of each: a test run.**` : ''}`,
     '',
     `## ${label}Summary`,
     '',
@@ -1742,10 +2059,10 @@ async function runChoose(
     '',
     nothing
       ? `**${NOTHING_CHOSEN}.** The checking years stay closed.`
-      : `Rules chosen: ${chosenRows.length ? chosenRows.map((r) => r.key).join(', ') : 'none'}. Pair candidate: ${pairRanked.length ? `${pairRanked[0].market} ${pairRanked[0].key}` : 'none'}.`,
+      : `Rules chosen on the rest: ${keys(chosenRest)}; as written: ${keys(chosenWritten)}. Pair candidate on the rest: ${pairKey(pr)}; as written: ${pairKey(pw)}. Under Amendment 1 the rest decides; a rule or pair candidate chosen under either reading goes to the check.`,
     ...fallbackNote.map((x) => `\n**${x}**`),
     '',
-    placeboMd(p1rows, p2rows, placebo.shuffle, P, P.choose),
+    placeboMd(p1rows, p2rows, shuffles, P, P.choose, allSeries),
     '',
     `## Part 1: how often (${spanText(P.choose)})`,
     '',
@@ -1755,6 +2072,8 @@ async function runChoose(
     '',
     besideMd(input, p2rows, P.choose),
     '',
+    "The splits (by side, first and later visits, New York clock, number of turns, Fibonacci ratio, round numbers, twin set; in part2.json) have no baseline of their own (Amendment 1, H): they are read with the kind's baselines in mind, which are in the summary and in Part 4.",
+    '',
     part2Md(p2),
     '',
     `## Part 3: the plain trades (${spanText(P.choose)})`,
@@ -1763,40 +2082,49 @@ async function runChoose(
     '',
     '## Part 4: choosing',
     '',
-    "A rule is chosen when, on the choosing years, all hold: 1. its lift is 2 points or more; 2. the lift is above zero in at least 5 of the 7 markets (with fewer markets: in more than two thirds of those used); 3. the lift is above zero in each half; 4. its t is 3.0 or more. The smallest lift this test could have seen is the larger of the bar (2 points) and 3.0 times the rule's standard error. Lifts in points out of 100; \"Level / twins\" are the rates shown (plain averages of the markets). A rule whose Placebo 2 lift lies outside 2.5 standard errors of zero is read on the rest: its lift minus its Placebo 2 lift, for all markets, each market and each half, with the standard error the square root of the sum of the two squared standard errors; the bar's four lines are then those of the rest, and so is the smallest lift seen (3.0 times the rest's standard error).",
+    'A rule is chosen when, on the choosing years, all hold: 1. its lift is 2 points or more; 2. the lift is above zero in at least 5 of the 7 markets (with fewer markets: in more than two thirds of those used); 3. the lift is above zero in each half; 4. its t is 3.0 or more. Lifts in points out of 100; "Level / twins" are the rates shown (plain averages of the markets).',
+    '',
+    `**On the rest (Amendment 1, B to E; this reading decides).** Against each kind of prices with no memory (${seeds} shuffled-days series, ${seeds} mirrored-minutes series) a rule's baseline is the mean of its lifts there (for all markets, each market and each half; a series with no lift left out), its spread their standard deviation (n - 1), and the rest is the lift minus the baseline. The rest's standard error is the square root of S x S + spread x spread / n, S the larger of the lift's own standard error and the spread; its t is the rest over that, and needs two series with a lift. The four lines are put on the rest against each baseline and must hold against both. The smallest lift seen (E) is the larger of 2 points and 3.0 times the larger of the two standard errors of the rest; the plain figure (2 points or 3.0 times the lift's own standard error) is beside it.`,
+    '',
+    "**As written (the plan's own reading, Amendment 1, F).** The lines on the plain lift, or, for a rule whose Placebo 2 lift (shuffled days, seed 1) lies outside 2.5 standard errors of zero, on its lift minus that Placebo 2 lift, for all markets, each market and each half, with the standard error the square root of the sum of the two squared standard errors.",
     '',
     ruleTable(forty, true),
     '',
-    `Rules chosen: ${chosenRows.length ? chosenRows.map((r) => r.key).join(', ') : 'none'}.`,
+    `Rules chosen on the rest: ${keys(chosenRest)}. As written: ${keys(chosenWritten)}.`,
     '',
-    ...(forty.filter((r) => !r.passes).length
+    differText(forty, 'chosen'),
+    '',
+    ...(forty.filter((r) => !r.amended!.ok).length
       ? [
-          `Not chosen: ${forty
-            .filter((r) => !r.passes)
-            .map((r) => `${r.key} ${notSeenText(r.smallest)}`)
+          `Not chosen on the rest: ${forty
+            .filter((r) => !r.amended!.ok)
+            .map((r) => `${r.key} ${notSeenBeside(r.amended!.smallest, plainSmallest(r))}`)
             .join('; ')}.`,
           '',
         ]
       : []),
-    ...(runNotes.length
-      ? [
-          `Run rules read as "price moves at this level": ${runNotes.map((x) => x.key).join(', ')}.`,
-          '',
-        ]
-      : []),
+    `Run rules read as "price moves at this level" (the Turn reading at the same distance has a rest of 2 points or more against both baselines): ${runNotes.onRest.map((x) => x.key).join(', ') || 'none'}. As written (its plain Turn lift 2 points or more): ${runNotes.asWritten.map((x) => x.key).join(', ') || 'none'}.`,
+    '',
     `### The pair candidate`,
     '',
-    `A rule on one market qualifies with at least 150 visits that ended in a turn or a break (a run or a fail), a lift of 4 points or more, a lift above zero in each half, and a t of 3.5 or more. The one with the highest t is the pair candidate; tie order: ${choose.pairTieOrder}.`,
+    `A rule on one market qualifies with at least 150 visits that ended in a turn or a break (a run or a fail), counted on the real series, a lift of 4 points or more, a lift above zero in each half, and a t of 3.5 or more. On the rest the last three are put on the rest against that market's own two baselines and must hold against both, and the pair candidate is the qualifying rule whose smaller t of the two is the highest; as written, the lines are on the plain lift and the highest t wins. Tie order: ${choose.pairTieOrder}.`,
     '',
-    `Qualifying: ${pairRanked.length} of ${perMarket.length}.`,
+    `Qualifying on the rest: ${pairRest.length} of ${perMarket.length}; as written: ${pairWritten.length} of ${perMarket.length}.`,
     '',
-    pairRanked.length ? ruleTable(pairRanked, false) : '**No rule on one market qualified.**',
+    pairRows.length
+      ? ruleTable(
+          rankBySmallerT(pairRows, (r) => r.amended!),
+          false,
+        )
+      : '**No rule on one market qualified under either reading.**',
     '',
     `Pair candidate: ${pairText}.`,
     '',
-    `The ten rules with the highest t on one market (all ${perMarket.length} are in choose.json):`,
+    differText(perMarket, 'qualifies'),
     '',
-    ruleTable(rankByT(perMarket).slice(0, 10), false),
+    `The ten rules on one market with the highest smaller t on the rest (all ${perMarket.length} are in choose.json):`,
+    '',
+    ruleTable(rankBySmallerT(perMarket, (r) => r.amended!).slice(0, 10), false),
     '',
     nothing ? `**${NOTHING_CHOSEN}.**` : '',
     '',
@@ -1808,8 +2136,9 @@ async function runChoose(
     '',
   )
   writeFileSync(join(out, 'choose.md'), md.join('\n'))
+  // Counts only: no rule's name and no number of a real result.
   console.log(
-    `${label}choose: ${used.length} markets, ${input.visits.length} level and round-number visits; chosen ${chosenRows.length ? chosenRows.map((r) => r.key).join(', ') : 'none'}; pair ${pairRanked.length ? 'yes' : 'none'}${fallbackNote.length ? ' (rehearsal fallbacks taken)' : ''}; ${choose.seconds.total.toFixed(1)} s, peak main ${choose.peakMB.main} MB, worker ${Math.round(choose.peakMB.workers)} MB`,
+    `${label}choose: ${used.length} markets, ${input.visits.length} level and round-number visits, ${allSeries.length} series with no memory; rules chosen on the rest ${chosenRest.length}, as written ${chosenWritten.length}; pair candidate on the rest ${pr ? 'yes' : 'none'}, as written ${pw ? 'yes' : 'none'}${fallbackNote.length ? ' (rehearsal fallbacks taken)' : ''}; ${choose.seconds.total.toFixed(1)} s, peak main ${choose.peakMB.main} MB, worker ${Math.round(choose.peakMB.workers)} MB`,
   )
   return join(out, 'choose.json')
 }
@@ -1839,6 +2168,8 @@ interface CheckOpts {
   commit: string | null
   gitTest: boolean
   jobs: number
+  /** Series of each kind with no memory (Amendment 1, A): 10, fewer only in a rehearsal. */
+  seeds: number
 }
 
 /** Order of work point 5: the visits, trades and twin sums settled before the boundary must equal the choosing run's. */
@@ -1875,21 +2206,30 @@ interface CandidateResult {
   role: Pick['role']
   key: string
   market: string
+  /** Amendment 1, F: the reading that took it to the check (null: a rehearsal fallback). */
+  by: ChosenBy
   fallback: boolean
   chosenOn: { lift: number; t: number }
   level: RuleStats
+  /** The plain level lines, printed beside the ones on the rest. */
   levelLines: Line[]
+  /** Amendment 1, D: the level lines on the rest against both baselines on the checking years; they decide the reading. */
+  amended: BothReading
   trades: {
     name: string
     facts: ReturnType<typeof tradeFacts>
     lines: Line[]
     pass: boolean
   }[]
+  /** The reading from the level lines on the rest (Amendment 1, F). */
   reading: string
   beside: string | null
   positive: string[]
+  /** The note on a Run rule, on the rest (Amendment 1, D). */
   runNote: string | null
-  /** A rule read on the rest: Placebo 2 on the checking years, the rest, and the level lines applied to it (they decide the reading). */
+  /** The plan's own reading (F): from the plain level lines, or from the rest of seed 1 where the rule was read on it; with the plain note on a Run rule. */
+  asWritten: { reading: string; beside: string | null; positive: string[]; runNote: string | null }
+  /** As written, a rule read on the rest: Placebo 2 on the checking years, the rest, and the level lines applied to it. */
   rest: {
     choosing: unknown
     placebo2: RuleStats
@@ -1907,9 +2247,11 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
   const choose = JSON.parse(readFileSync(o.choosePath, 'utf8'))
   if (choose.rehearsal !== P.rehearsal)
     fail(`${o.choosePath} is ${choose.rehearsal ? 'a rehearsal' : 'a real choosing run'}`)
+  if (choose.seeds !== o.seeds)
+    fail(`${o.choosePath} used ${choose.seeds} series of each kind, the check ${o.seeds}`)
   const picks: (Omit<Pick, 'row'> & { lift: number; t: number })[] = [
     ...(choose.picks ?? []),
-    ...(choose.pairCandidate ? [choose.pairCandidate] : []),
+    ...(choose.pairCandidates ?? []),
   ]
   if (!picks.length) fail('choose.json names neither a chosen rule nor a pair candidate')
   for (const p of picks)
@@ -1940,7 +2282,7 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
       choose: resolve(o.choosePath),
       marketsUsed: used,
       marketsMissing: missing,
-      picks: picks.map((p) => ({ role: p.role, market: p.market, key: p.key })),
+      picks: picks.map((p) => ({ role: p.role, market: p.market, key: p.key, by: p.by })),
     },
   })
   if (refusal) fail(refusal)
@@ -1977,35 +2319,52 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
   // Nothing of the checking years is printed or saved before this line.
   const checkYears = P.checkYears
   const forty = fortyRules(input, P, P.check, 0)
+  // Amendment 1, F: P2's bar counts every rule and trade pair taken, by either reading.
   const pairsToCheck = picks.reduce((s, p) => s + RULES[p.index].reading.trades.length, 0)
-  // Rules read on the rest: Placebo 2 is run once here, on the shuffled days with 2019 to 2025 as a block of its own.
+  // As written, rules read on the rest use Placebo 2 (shuffled seed 1) with 2019 to 2025 as a block of its own.
   const restOn = new Map(
     ((choose.readOnRest ?? []) as { key: string }[]).map((x) => [x.key, x as unknown]),
   )
   const onRest = picks.filter((p) => p.role === 'rule' && restOn.has(p.key))
   let p2check: P2Row[] = []
   let p2shuffle: ReturnType<typeof shuffleInfo> = []
-  if (onRest.length) {
-    const p2runs = await runWorkers(
-      used.map((m) => ({
-        market: m,
-        file: file(m),
-        readBefore: null,
-        hashBefore: P.boundary,
-        series: 'shuffled' as const,
-        blocks: [...halvesOf(P, m), P.check],
-      })),
-      o.jobs,
-    )
-    p2check = placebo2Rows(
-      p2runs,
-      P,
-      P.check,
-      [...new Set(onRest.map((p) => RULES[p.index].kind as string))],
-      [...new Set(onRest.map((p) => RULES[p.index].reading.name as string))],
-    )
-    p2shuffle = shuffleInfo(p2runs)
-  }
+  // Amendment 1, D: the twenty series, built again on the whole files inside this single check
+  // (the shuffle with the checking years as their own block), reduced to lifts over the checking years.
+  const pairMarkets = [
+    ...new Set(picks.filter((p) => p.role === 'pair candidate').map((p) => p.market)),
+  ]
+  const series = await runSeries(
+    baselineSeries(o.seeds),
+    (m, kind, seed) => ({
+      market: m,
+      file: file(m),
+      readBefore: null,
+      hashBefore: P.boundary,
+      series: kind,
+      seed,
+      blocks: kind === 'shuffled' ? [...halvesOf(P, m), P.check] : undefined,
+    }),
+    used,
+    o.jobs,
+    (rs, s) => {
+      if (s.kind === 'shuffled' && s.seed === SHUFFLE_SEED) {
+        p2shuffle = shuffleInfo(rs)
+        if (onRest.length)
+          p2check = placebo2Rows(
+            rs,
+            P,
+            P.check,
+            [...new Set(onRest.map((p) => RULES[p.index].kind as string))],
+            [...new Set(onRest.map((p) => RULES[p.index].reading.name as string))],
+          )
+      }
+      return seriesLifts(rs, P, P.check, s, { perMarket: pairMarkets, cells: false })
+    },
+  )
+  const basesFor = (index: number, market: string) =>
+    market === 'ALL'
+      ? basesOf(series, (s) => s.forty[index], input.markets)
+      : basesOf(series, (s) => s.perMarket[market][index], [market])
   const results: CandidateResult[] = []
   for (const p of picks) {
     const rule = RULES[p.index]
@@ -2022,6 +2381,9 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
       BOOT_DRAWS,
     )
     const ll = levelLines(level, pair)
+    const amended = againstBoth(level, basesFor(p.index, pair ? p.market : 'ALL'), (r) =>
+      levelLines(r, pair),
+    )
     let rest: CandidateResult['rest'] = null
     if (!pair && restOn.has(p.key)) {
       const m = p2check
@@ -2038,6 +2400,7 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
         lines: levelLines(r, false),
       }
     }
+    // Amendment 1, G: the trade lines and their arithmetic do not change.
     const trades = rule.reading.trades.map((tr) => {
       const facts = tradeFacts(
         byPool(input.sides.lt, rule.kind),
@@ -2052,58 +2415,89 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
       const lines = tradeLines(facts, pair, pairsToCheck)
       return { name: tr.name, facts, lines, pass: allOk(lines) }
     })
-    const v = verdict(
-      rest ? rest.lines : ll,
-      trades.map((t) => ({
-        name: t.name,
-        lines: t.lines,
-        meanAfter: t.facts.meanAfter,
-        weeklyT: t.facts.weeklyT,
-        gapT: t.facts.gapT,
-      })),
-    )
-    const turnRows = pair
-      ? RULES.filter(
-          (r) =>
-            r.kind === rule.kind && r.reading.measure === 'turn' && r.reading.k === rule.reading.k,
-        ).map(
-          (r) =>
-            ruleStats(
-              byPool(input.sides.lv, r.kind),
-              byPool(input.sides.tv, twinPoolOf(r.kind)),
-              ruleMeasure(r.reading),
-              keep,
-              [keepHalf(P, 0), keepHalf(P, 1)],
-              markets,
-              0,
-            ).lift,
-        )
-      : [turnLiftAtSameDistance(forty, forty[rule.index])]
+    const tradeV = trades.map((t) => ({
+      name: t.name,
+      lines: t.lines,
+      meanAfter: t.facts.meanAfter,
+      weeklyT: t.facts.weeklyT,
+      gapT: t.facts.gapT,
+    }))
+    // Amendment 1, F: the level lines on the rest against both baselines decide the words.
+    const v = verdict([...amended.shuffled.lines, ...amended.mirrored.lines], tradeV)
+    const w = verdict(rest ? rest.lines : ll, tradeV)
+    const turn = RULES.find(
+      (r) => r.kind === rule.kind && r.reading.measure === 'turn' && r.reading.k === rule.reading.k,
+    )!
+    const turnLift = pair
+      ? ruleStats(
+          byPool(input.sides.lv, turn.kind),
+          byPool(input.sides.tv, twinPoolOf(turn.kind)),
+          ruleMeasure(turn.reading),
+          keep,
+          [keepHalf(P, 0), keepHalf(P, 1)],
+          markets,
+          0,
+        ).lift
+      : turnLiftAtSameDistance(forty, forty[rule.index])
+    const tb = basesFor(turn.index, pair ? p.market : 'ALL')
     results.push({
       role: p.role,
       key: p.key,
       market: p.market,
+      by: p.by,
       fallback: p.fallback,
       chosenOn: { lift: p.lift, t: p.t },
       level,
       levelLines: ll,
+      amended,
       trades,
       reading: v.reading,
       beside: v.beside,
       positive: v.positive,
-      runNote: runNote(rule.reading, turnRows[0] ?? NaN),
+      runNote: runNoteOnRest(rule.reading, [
+        turnLift - tb.shuffled.all.mean,
+        turnLift - tb.mirrored.all.mean,
+      ]),
+      asWritten: {
+        reading: w.reading,
+        beside: w.beside,
+        positive: w.positive,
+        runNote: runNote(rule.reading, turnLift),
+      },
       rest,
     })
   }
-  const chosenLifts: number[] = (choose.rules as RuleRow[]).map((r) => r.lift ?? NaN)
-  const both = RULES.filter(
-    (r) => Number.isFinite(chosenLifts[r.index]) && Number.isFinite(forty[r.index].lift),
+  const num = (x: unknown) => (typeof x === 'number' ? x : NaN)
+  const chosenLifts: number[] = (choose.rules as RuleRow[]).map((r) => num(r.lift))
+  // The smaller of the two rests of each rule, on the choosing years (from choose.json) and here.
+  const chosenRests: number[] = (choose.rules as RuleRow[]).map((r) =>
+    Math.min(num(r.amended?.shuffled.rest.lift), num(r.amended?.mirrored.rest.lift)),
   )
-  const rho = spearman(
-    both.map((r) => chosenLifts[r.index]),
-    both.map((r) => forty[r.index].lift),
+  const checkRests = RULES.map((r) => {
+    const b = basesFor(r.index, 'ALL')
+    return {
+      shuffled: forty[r.index].lift - b.shuffled.all.mean,
+      mirrored: forty[r.index].lift - b.mirrored.all.mean,
+    }
+  })
+  const smaller = checkRests.map((x) => Math.min(x.shuffled, x.mirrored))
+  const rank = (a: number[], b: number[]) => {
+    const both = RULES.filter((r) => Number.isFinite(a[r.index]) && Number.isFinite(b[r.index]))
+    return {
+      rho: spearman(
+        both.map((r) => a[r.index]),
+        both.map((r) => b[r.index]),
+      ),
+      n: both.length,
+    }
+  }
+  const plainRank = rank(
+    chosenLifts,
+    forty.map((r) => r.lift),
   )
+  const restRank = rank(chosenRests, smaller)
   const above = forty.filter((r) => r.lift > 0).length
+  const restAbove = smaller.filter((x) => x > 0).length
   const p1 = part1(input, P.check)
   const p5 = part5(input, [P.check])
   const rulesTaken = picks.length
@@ -2123,19 +2517,43 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
     files: filesInfo(runs),
     span: spanText(P.check),
     periods: P,
-    taken: { rules: rulesTaken, ruleTradePairs: pairsToCheck, p2Bar: p2Bar(pairsToCheck) },
+    seeds: o.seeds,
+    taken: {
+      rules: rulesTaken,
+      byReading: {
+        rest: picks.filter((p) => p.by === 'rest').length,
+        asWritten: picks.filter((p) => p.by === 'as written').length,
+        both: picks.filter((p) => p.by === 'both').length,
+        fallback: picks.filter((p) => p.by === null).length,
+      },
+      ruleTradePairs: pairsToCheck,
+      p2Bar: p2Bar(pairsToCheck),
+    },
     results,
     placebo2: { shuffle: p2shuffle, shuffleGenerator: SHUFFLE_GENERATOR, rows: p2check },
+    baselines: {
+      seeds: o.seeds,
+      shuffleGenerator: SHUFFLES_GENERATOR,
+      mirrorGenerator: MIRROR_GENERATOR,
+      series,
+    },
     forty: {
       aboveZero: above,
       of: RULES.length,
-      spearman: rho,
-      spearmanPairs: both.length,
+      spearman: plainRank.rho,
+      spearmanPairs: plainRank.n,
+      restAboveZero: restAbove,
+      restSpearman: restRank.rho,
+      restSpearmanPairs: restRank.n,
       rows: RULES.map((r) => ({
         key: r.key,
         choosing: chosenLifts[r.index],
         checking: forty[r.index].lift,
         marketsAbove: forty[r.index].marketsAbove,
+        restShuffled: checkRests[r.index].shuffled,
+        restMirrored: checkRests[r.index].mirrored,
+        smallerRestChoosing: chosenRests[r.index],
+        smallerRestChecking: smaller[r.index],
       })),
     },
     part1: p1,
@@ -2146,15 +2564,10 @@ async function runCheck(o: CheckOpts, P: LevelPeriods) {
   check.seconds = (Date.now() - t0) / 1000
   writeFileSync(join(o.out, 'check.json'), json(check))
   writeFileSync(join(o.out, 'check.md'), checkMd(check, P, used))
+  // Counts only: no rule's name and no number of a real result.
+  const t = check.taken.byReading
   console.log(
-    `${P.rehearsal ? 'REHEARSAL: ' : ''}check: ${rulesTaken} rules, ${pairsToCheck} rule and trade pairs; ` +
-      results
-        .map(
-          (r) =>
-            `${r.role === 'rule' ? '' : 'pair '}${r.market === 'ALL' ? '' : r.market + ' '}${r.key}: ${r.reading}`,
-        )
-        .join('; ') +
-      `; ${above}/40 lifts above zero, Spearman ${fn(rho, 3)}; ${check.seconds.toFixed(1)} s`,
+    `${P.rehearsal ? 'REHEARSAL: ' : ''}check: ${rulesTaken} taken (${picks.filter((p) => p.role === 'rule').length} rules, ${picks.filter((p) => p.role === 'pair candidate').length} pair candidates; by the rest ${t.rest}, as written ${t.asWritten}, both ${t.both}${t.fallback ? `, rehearsal fallbacks ${t.fallback}` : ''}), ${pairsToCheck} rule and trade pairs, ${series.length} series with no memory; written to ${o.out}; ${check.seconds.toFixed(1)} s`,
   )
 }
 
@@ -2167,6 +2580,14 @@ function lineRows(lines: Line[], d = 2): (string | number)[][] {
   ])
 }
 
+/** Amendment 1, D: one baseline's rest on the checking years, in a sentence. */
+const restSentence = (name: string, x: RestReading) =>
+  `Against ${name}: baseline ${fx(x.baseline.all.mean)} (spread ${fn(x.baseline.all.spread, 2)}, ${x.baseline.all.n} series); rest ${fx(x.rest.lift)} (SE ${fn(x.rest.se, 2)}, t ${fn(x.rest.t, 2)}), above zero in ${x.rest.marketsAbove} of ${x.rest.marketsUsed} markets (${Object.entries(
+    x.rest.marketLift,
+  )
+    .map(([m, v]) => `${m} ${fx(v)}`)
+    .join(', ')}).`
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkMd(c: any, P: LevelPeriods, markets: string[]): string {
   const label = P.rehearsal ? 'REHEARSAL: ' : ''
@@ -2176,37 +2597,58 @@ function checkMd(c: any, P: LevelPeriods, markets: string[]): string {
       `**REHEARSAL inside the development years: checking on ${c.span}, not 2019 to 2025. Nothing here is a result of the study.**`,
       '',
     )
+  const bySeries = (c.baselines.series as SeriesLifts[])
+    .map((s) => `${s.kind} ${s.seed} ${s.seconds.toFixed(0)} s ${s.peakMB} MB`)
+    .join('; ')
   out.push(
     `Generated ${c.generated}. Code: ${c.commit ?? 'rehearsal (no git test)'}. Choosing run: ${c.choose} (code ${c.chooseCommit ?? 'uncommitted tree'}). Marker: ${c.marker}.`,
     `Markets used: ${markets.join(', ')}.${c.marketsMissing.length ? ` Left out (file missing): ${c.marketsMissing.join(', ')}.` : ''}`,
     `Checking span: ${c.span}; visits by touch minute, trades by fill minute; levels built over each whole file.`,
+    `Prices with no memory (Amendment 1, D): ${c.seeds} shuffled-days series (the checking years a block of their own) and ${c.seeds} mirrored-minutes series, built again on the whole files inside this check; baselines over the checking years. Seconds per series and the largest worker's peak memory: ${bySeries}.`,
     '',
     `## ${label}Verdict`,
     '',
-    `Taken to the check: ${c.taken.rules} rules (the pair candidate included) and ${c.taken.ruleTradePairs} rule and trade pairs; P2's bar is a weekly t of ${c.taken.p2Bar.toFixed(1)}.`,
+    `Taken to the check: ${c.taken.rules} rules (the pair candidates included; by the rest ${c.taken.byReading.rest}, as written ${c.taken.byReading.asWritten}, both ${c.taken.byReading.both}${c.taken.byReading.fallback ? `, rehearsal fallbacks ${c.taken.byReading.fallback}` : ''}) and ${c.taken.ruleTradePairs} rule and trade pairs; P2's bar is a weekly t of ${c.taken.p2Bar.toFixed(1)}.`,
     '',
-    `Readings, tried in this order: ${VERDICTS.map((v) => `"${v}"`).join(', ')}.`,
+    `Readings, tried in this order: ${VERDICTS.map((v) => `"${v}"`).join(', ')}. The words use the level lines on the rest against both baselines (Amendment 1, F); the plan's own reading, as written, is printed beside them.`,
     '',
   )
   for (const r of c.results as CandidateResult[]) {
     out.push(
-      `### ${r.role === 'pair candidate' ? `Pair candidate ${r.market}` : 'Rule'} ${r.key}${r.fallback ? ' (REHEARSAL fallback, not chosen)' : ''}: **${r.reading}**`,
+      `### ${r.role === 'pair candidate' ? `Pair candidate ${r.market}` : 'Rule'} ${r.key}${r.fallback ? ' (REHEARSAL fallback, not chosen)' : ` (chosen ${r.by === 'both' ? 'on the rest and as written' : r.by === 'rest' ? 'on the rest only' : 'as written only'})`}: **${r.reading}**`,
+      '',
+      `As written: ${r.asWritten.reading}.${r.asWritten.reading !== r.reading ? ' **The two readings differ.**' : ''}`,
       '',
       `Chosen on: lift ${fx(r.chosenOn.lift)}, t ${fn(r.chosenOn.t, 2)}. On the checking years: lift ${fx(r.level.lift)} (level ${fn(r.level.rate)} / twins ${fn(r.level.twinRate)}), t ${fn(r.level.t, 2)}, above zero in ${r.level.marketsAbove} of ${r.level.marketsUsed} markets.`,
       '',
-      table(['Line', 'Rule', 'Value', ''], lineRows(r.levelLines)),
+      restSentence('shuffled days', r.amended.shuffled),
+      '',
+      restSentence('mirrored minutes', r.amended.mirrored),
+      '',
+      table(
+        ['Line', 'Rule (on the rest)', 'Against shuffled days', '', 'Against mirrored minutes', ''],
+        r.amended.shuffled.lines.map((l, i) => {
+          const m = r.amended.mirrored.lines[i]
+          const v = (x: Line) => fn(x.value, Number.isInteger(x.value) ? 0 : 2)
+          return [l.line, l.rule, v(l), l.ok ? 'holds' : 'fails', v(m), m.ok ? 'holds' : 'fails']
+        }),
+      ),
+      '',
+      'The plain level lines, beside them:',
+      '',
+      table(['Line', 'Rule (plain)', 'Value', ''], lineRows(r.levelLines)),
       '',
     )
     if (r.rest) {
       const x = r.rest
       out.push(
-        `**Read on the rest** (its Placebo 2 lift lay outside 2.5 standard errors of zero on the choosing years), so the level lines above are shown for reference and the reading uses the lines below. Placebo 2 on the checking years: lift ${fx(x.placebo2.lift)} (SE ${fn(x.placebo2.se, 2)}, t ${fn(x.placebo2.t, 2)})${x.outside ? ', outside 2.5 standard errors' : ''}${x.onlyWide ? `, ${ONLY_WIDE_TEXT}` : x.calm ? `; on days of at most 1.5 x ATR: ${fx(x.calm.lift)} (SE ${fn(x.calm.se, 2)})` : ''}. The rest: lift ${fx(x.rest.lift)} (SE ${fn(x.rest.se, 2)}, t ${fn(x.rest.t, 2)}), above zero in ${x.rest.marketsAbove} of ${x.rest.marketsUsed} markets (${Object.entries(
+        `**As written, read on the rest of seed 1** (its Placebo 2 lift lay outside 2.5 standard errors of zero on the choosing years). Placebo 2 on the checking years: lift ${fx(x.placebo2.lift)} (SE ${fn(x.placebo2.se, 2)}, t ${fn(x.placebo2.t, 2)})${x.outside ? ', outside 2.5 standard errors' : ''}${x.onlyWide ? `, ${ONLY_WIDE_TEXT}` : x.calm ? `; on days of at most 1.5 x ATR: ${fx(x.calm.lift)} (SE ${fn(x.calm.se, 2)})` : ''}. The rest: lift ${fx(x.rest.lift)} (SE ${fn(x.rest.se, 2)}, t ${fn(x.rest.t, 2)}), above zero in ${x.rest.marketsAbove} of ${x.rest.marketsUsed} markets (${Object.entries(
           x.rest.marketLift,
         )
           .map(([m, v]) => `${m} ${fx(v)}`)
           .join(', ')}).`,
         '',
-        table(['Line', 'Rule (on the rest)', 'Value', ''], lineRows(x.lines)),
+        table(['Line', 'Rule (on the rest of seed 1)', 'Value', ''], lineRows(x.lines)),
         '',
       )
     }
@@ -2228,21 +2670,43 @@ function checkMd(c: any, P: LevelPeriods, markets: string[]): string {
       )
     }
     if (r.beside) out.push(`Beside it: ${r.beside}.`, '')
-    if (r.runNote) out.push(`This Run rule is ${r.runNote}.`, '')
+    if (r.runNote) out.push(`This Run rule is ${r.runNote} (on the rest).`, '')
+    if (r.asWritten.runNote && !r.runNote)
+      out.push(`As written (its plain Turn lift), this Run rule is ${r.asWritten.runNote}.`, '')
   }
   out.push(
     '## The forty rules on the checking years (description; no trade results for rules that were not chosen)',
     '',
-    `${c.forty.aboveZero} of ${c.forty.of} lifts above zero. Spearman rank correlation of the forty lifts between the choosing and the checking years: ${fn(c.forty.spearman, 3)} (${c.forty.spearmanPairs} rules).`,
+    `Plain lifts: ${c.forty.aboveZero} of ${c.forty.of} above zero; Spearman rank correlation of the forty lifts between the choosing and the checking years: ${fn(c.forty.spearman, 3)} (${c.forty.spearmanPairs} rules).`,
+    '',
+    `The smaller of the two rests: ${c.forty.restAboveZero} of ${c.forty.of} above zero; Spearman between the choosing and the checking years: ${fn(c.forty.restSpearman, 3)} (${c.forty.restSpearmanPairs} rules).`,
     '',
     table(
-      ['Rule', 'Lift, choosing', 'Lift, checking', 'Markets above zero'],
+      [
+        'Rule',
+        'Lift, choosing',
+        'Lift, checking',
+        'Markets above zero',
+        'Rest, checking: shuffled days / mirrored minutes',
+        'Smaller rest: choosing / checking',
+      ],
       c.forty.rows.map(
-        (r: { key: string; choosing: number; checking: number; marketsAbove: number }) => [
+        (r: {
+          key: string
+          choosing: number
+          checking: number
+          marketsAbove: number
+          restShuffled: number
+          restMirrored: number
+          smallerRestChoosing: number
+          smallerRestChecking: number
+        }) => [
           r.key,
           fx(r.choosing),
           fx(r.checking),
           r.marketsAbove,
+          `${fx(r.restShuffled)} / ${fx(r.restMirrored)}`,
+          `${fx(r.smallerRestChoosing)} / ${fx(r.smallerRestChecking)}`,
         ],
       ),
     ),
@@ -2367,8 +2831,14 @@ async function main() {
   const cmd = process.argv[2]
   const jobs = Number(arg('jobs') ?? 4)
   if (!(jobs >= 1)) fail('--jobs must be 1 or more')
+  // Amendment 1, A: choose and check always use ten series of each kind; only a rehearsal takes fewer.
+  if (cmd !== 'rehearse' && process.argv.includes('--seeds'))
+    fail('--seeds is for rehearse only: choose and check use ten series of each kind')
+  const seeds = Number(arg('seeds') ?? BASELINE_SEEDS)
+  if (!(Number.isInteger(seeds) && seeds >= 2 && seeds <= BASELINE_SEEDS))
+    fail(`--seeds must be a whole number from 2 to ${BASELINE_SEEDS}`)
   if (cmd === 'choose') {
-    await runChoose(need('data'), need('out'), REAL_PERIODS, jobs)
+    await runChoose(need('data'), need('out'), REAL_PERIODS, jobs, BASELINE_SEEDS)
   } else if (cmd === 'check') {
     await runCheck(
       {
@@ -2379,6 +2849,7 @@ async function main() {
         marker: LEVELS_MARKER,
         gitTest: true,
         jobs,
+        seeds: BASELINE_SEEDS,
       },
       REAL_PERIODS,
     )
@@ -2387,7 +2858,7 @@ async function main() {
   } else if (cmd === 'rehearse') {
     const out = need('out')
     const data = need('data')
-    const choosePath = await runChoose(data, join(out, 'choose'), REHEARSAL_PERIODS, jobs)
+    const choosePath = await runChoose(data, join(out, 'choose'), REHEARSAL_PERIODS, jobs, seeds)
     await runCheck(
       {
         data,
@@ -2397,6 +2868,7 @@ async function main() {
         marker: join(out, 'CHECK-RAN.json'),
         gitTest: false,
         jobs,
+        seeds,
       },
       REHEARSAL_PERIODS,
     )
@@ -2404,7 +2876,7 @@ async function main() {
     console.error(
       'usage: levels-study.ts choose --data <dir> --out <dir> [--jobs N]\n' +
         '       levels-study.ts check --data <dir> --choose <choose.json> --out <dir> --commit <sha> [--jobs N]\n' +
-        '       levels-study.ts rehearse --data <dir> --out <dir> [--jobs N]\n' +
+        '       levels-study.ts rehearse --data <dir> --out <dir> [--jobs N] [--seeds N]\n' +
         '       levels-study.ts cut --data <dir> [--jobs N] [--detail]',
     )
     process.exit(2)
