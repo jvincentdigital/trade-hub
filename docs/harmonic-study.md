@@ -998,3 +998,77 @@ The decision rests on row counts and time stamps. Nobody has read a price of
 any of the four files, apart from the one row the conversion prints to show a
 file's format, and the rule has not been run on any of them. AUD/JPY's file
 stays unread.
+
+## Result of Amendment 5's run (2026-11-18)
+
+Run once, at 23:37 UTC, from commit `f2115ad`, on CAD/JPY, NZD/JPY and CHF/JPY
+(AUD/JPY left out, Amendment 5a). Marker
+`~/.local/share/trade-hub/harmonic-check/REPL-RAN.json`; `REPL-DONE.json`
+beside it closes the test. Output in
+`~/.local/share/trade-hub/harmonic-results/repl/`. The three files read had
+the SHA-256 written in Amendment 5a, and GBP/JPY's file the one recorded
+before the first check. The pooled figures were worked out again by a separate
+program from the list of trades and the twins' sums: no difference.
+
+**"Not there."** On three yen pairs it had never seen, the lead lost money in
+every pair and in both periods after costs, and the three together lost before
+any cost as well. The lead is closed.
+
+The pairs together, 1,591 trades filled from 2010 to 2025, at 120 hours, after
+costs:
+
+| Line                                                   | Value                           | Holds |
+| ------------------------------------------------------ | ------------------------------- | ----- |
+| 1. at least 200 trades                                 | 1,591                           | holds |
+| 2. a weekly t-statistic of 2.5 or more                 | -2.52                           | no    |
+| 3. at least 12 of the 16 years above zero              | 5                               | no    |
+| 4. ahead of at least 190 of the 200 pooled twins       | 103                             | no    |
+| 5. still above zero at double cost                     | -559.7 R                        | no    |
+| 6. at least 2 of the 3 pairs above zero                | 0                               | no    |
+| 7. above zero in each of 2010 to 2018 and 2019 to 2025 | neither (-166.4 R and -169.2 R) | no    |
+
+- **How it worked.** -0.211 R a trade after costs (-0.070 R before, -0.352 R
+  at double cost), -335.6 R in all. After 24, 48 and 72 hours a trade was
+  worth -0.149 R, -0.141 R and -0.196 R: no hold was above zero, before costs
+  or after.
+- **The pattern's timing.** Ahead of 103 of the 200 pooled twins, which is
+  what a coin gives. The median twin made -0.215 R a trade, the lead -0.211 R.
+  With the plan's own twins, as description: 113.
+- **How it is spread.** 87.0% of the trades ended at their stop. The best
+  trade made +17.9 R and the ten best +149.6 R; on GBP/JPY the ten best had
+  made +229 R and +200 R in its two periods.
+- **Buys and sells.** Buys 709 trades, -0.097 R; sells 882 trades, -0.303 R.
+- **Years above zero:** 2010, 2012, 2018, 2021 and 2023. Eleven of the sixteen
+  lost.
+
+Each pair alone, as description (its own 200 twins made as in Amendment 4):
+
+| Pair    | Trades | After 24 hours | 48 hours | 72 hours | 120 hours | Weekly t | Years above zero | Ahead of its twins | Sum      | Moves with GBP/JPY |
+| ------- | ------ | -------------- | -------- | -------- | --------- | -------- | ---------------- | ------------------ | -------- | ------------------ |
+| CAD/JPY | 533    | -0.141 R       | -0.194 R | -0.195 R | -0.349 R  | -3.00    | 3 of 16          | 29 of 200          | -186.1 R | 0.72               |
+| NZD/JPY | 460    | -0.184 R       | -0.195 R | -0.212 R | -0.220 R  | -1.53    | 5 of 16          | 116 of 200         | -101.2 R | 0.67               |
+| CHF/JPY | 598    | -0.130 R       | -0.053 R | -0.184 R | -0.081 R  | -0.50    | 5 of 16          | 159 of 200         | -48.3 R  | 0.55               |
+
+"Moves with GBP/JPY" is the correlation of daily changes over 2010 to 2025.
+Before costs, at 120 hours, a trade made -0.207 R on CAD/JPY, -0.078 R on
+NZD/JPY and +0.058 R on CHF/JPY.
+The repaired files hold 6,880,483, 7,024,661 and 7,600,203 candles; CAD/JPY's
+first candle after the repair is 2007-03-18 21:00 UTC.
+
+**How to read it.**
+
+- The GBP/JPY result did not carry over to other yen pairs, though they move
+  with GBP/JPY and lived through the same large moves of the yen. In the years
+  the lead was picked on, the three pairs lost 166 R; in the years it was
+  checked on, 169 R.
+- It is not a matter of costs. Before any cost the average of the three
+  together is below zero, and the twins, which pay the same costs, did as well
+  as the pattern.
+- So Amendment 4's own warning was the right reading: the best of 42 cells,
+  on one pair, carried by ten trades. "Positive, not proven" on GBP/JPY was
+  luck of the pick.
+- Nothing from this study is offered for a play account.
+
+Limits: three pairs, not four; assumed spreads, wider in R on these calmer
+pairs than on GBP/JPY (the before-cost figures do not depend on them); no
+overnight financing. Play money only. This is not financial advice.
