@@ -21,7 +21,12 @@ export type HarmonicMarket =
   | 'EURGBP'
   | 'EURJPY'
   | 'GBPJPY'
+  | 'AUDJPY'
+  | 'CADJPY'
+  | 'NZDJPY'
+  | 'CHFJPY'
 
+/** The study's seven markets. Amendment 5's four yen pairs are not in this list. */
 export const HARMONIC_MARKETS: HarmonicMarket[] = [
   'EURUSD',
   'GBPUSD',
@@ -63,6 +68,11 @@ export const MARKET_COSTS: Record<HarmonicMarket, MarketCosts> = {
   USDJPY: pair('USDJPY', 0.01, 0.009),
   EURJPY: pair('EURJPY', 0.01, 0.013),
   GBPJPY: pair('GBPJPY', 0.01, 0.02),
+  // Amendment 5: assumed typical spreads, set before any price was read.
+  AUDJPY: pair('AUDJPY', 0.01, 0.016),
+  CADJPY: pair('CADJPY', 0.01, 0.025),
+  NZDJPY: pair('NZDJPY', 0.01, 0.025),
+  CHFJPY: pair('CHFJPY', 0.01, 0.025),
   XAUUSD: {
     market: 'XAUUSD',
     pip: 0.1,
