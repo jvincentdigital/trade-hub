@@ -612,6 +612,375 @@ top of a zone, a poke beyond the level that closes back inside, a sister pair
 at a level at the same moment). That is a separate plan, written before its
 code.
 
+## Amendment 1: how the plan was read where it left a choice, what the placebos showed, and how every rule is read against prices with no memory (2026-11-18, written after the code was built and reviewed and before any real result table was read)
+
+**What had been seen when this was written.** No lift, rate or trade result
+of a real level. The placebo tables of two practice runs on the development
+copies; they hold no real result. And two status lines those practice runs
+printed: the first said that one rule was chosen and that a pair candidate
+exists; the second, after the review's fix to the shuffle (point 30), said
+that no rule was chosen and that a pair candidate exists. Which rule and
+which pair were not seen. The fix moved about ten days per market in the
+shuffle and changed nothing else that a lift depends on, so the rule of the
+first run was one of the five that were then "read on the rest" (R50 Turn
+hold, PD Turn quick, PD Run quick, F4C Turn hold, F4C Run hold), and whether
+it was chosen hung on the draw of one shuffle. That is one of the reasons for
+the last part of this amendment. Its rules were fixed without knowing which
+rule or pair they help or hurt.
+
+The build met places where two careful readers could take the plan two ways.
+Each was settled by the words closest to the plan, by people who had seen no
+real result: the engine's author, the author of the second finder (who saw no
+other code), a referee, and then the reviewers. They are listed here so the
+results can be redone by anyone from this page. Where a point concerns levels
+or visits, both programs use it, and their lists match on all 94 market-years
+of the choosing period (the plan asks for four).
+
+**Levels and twins**
+
+1. **The tolerance.** The swing finder's "at or below the candidate minus 2
+   times the ATR" and the zone's "no wider than 0.5 x `a`" use the 1e-9
+   tolerance like every other inclusive test. Two zones whose middles are
+   equally near to `h` within 1e-9 are a tie, and the older takes the swing.
+   This decides one real case (EUR/USD, 2007-08-07).
+2. **Sits on a round number.** The distance tested is the smaller of the two
+   edges' distances to the nearest R00 or R50 line. A wide band with a round
+   number strictly inside it and both edges further away is not left out.
+3. **Two-turn zones** are never left out for sitting on a round number (the
+   rule names the eight kinds). Their twins keep the twins' rule. So a
+   two-turn zone's lift is not cleaned of round numbers on the level side.
+4. **A twin that is left out** is not watched at all. It is in no list and no
+   sum.
+5. **"Another level of the same kind that is being watched in that minute"**
+   is a level in its life in that minute, from its first watched minute
+   through its last live minute. A Fibonacci level's life includes the end
+   minute of its first visit. Levels left out for a round number count; the
+   twin's own level does not.
+6. **Round-number lines** are watched only inside the range of prices of the
+   file. A line outside it can never be touched.
+7. **A Fibonacci level** whose life ends before the 15th day is never
+   watched. The minute at or above `H` that ends a life is searched from the
+   confirming close on.
+
+**Visits**
+
+8. **The first watched minute.** No visit can start in it, but its own away
+   test runs and is remembered from the next minute on.
+9. **How far.** "The minute of a break at 0.25 x ATR" is the first minute
+   inside the 24 hours whose Bid high is at or above the far edge plus 0.25 x
+   ATR, whether or not a turn came first. With no minute before it, how far
+   is 0.
+10. **Fifteen and sixty minutes later**, when the file ends first: the close
+    of the file's last candle.
+11. **After a break**, a visit with no break minute is listed as "none".
+
+**Trades**
+
+12. **T1 at a floor.** The skip test compares the Bid open with the near edge
+    plus 0.25 x ATR; the buy itself enters at the Ask.
+13. **T1, R is a distance.** When the entry minute opens beyond the stop (a
+    weekend gap), R is still the distance from the entry to the stop, and the
+    trade is taken if R is at least 5 costs; it is then stopped at once, at
+    that open. The first build skipped it. This adds 21 T1 trades at levels,
+    to about 99,000, on the development copies.
+14. **T0 and B0.** Whether R is under 5 times the cost is known before the
+    order works, so the trade is skipped then. A skipped T0 counts as "not
+    filled" in the share of visits whose order filled, for levels and twins
+    alike.
+15. **A twin's trade** is counted in the year and the counting week of its
+    fill minute, like a level's.
+
+**Counting, choosing and the report**
+
+16. **The order of the kinds** (the forty rules, the pair candidate's tie) is
+    the order in which "The levels" names them: R00, R50, PD, PW, Z4, ZD,
+    F4C, FDC, F4J, FDJ. The markets are in the order of "Data": EUR/USD,
+    GBP/USD, EUR/GBP, EUR/JPY, USD/JPY, GBP/JPY, gold.
+17. **The 2,000 draws** take every counting week that holds a visit of the
+    kind or of its twins, also a week whose visits all ended "neither".
+18. **The pair candidate's 150 visits** are that market's visits of the kind
+    that ended in a turn or a break (a run or a fail).
+19. **Trade lines.** P3: a year with no trade is not above zero. P4: the gap
+    is above zero and its t is 2.0 or more.
+20. **Part 1** counts a visit as a turn, a break or neither by its race at
+    0.25 x ATR.
+21. **The summary.** "How many turned" is the turn rate at 0.25 x ATR (turns
+    out of turns and breaks). "The median pips a turn went" is the median of how far, over the
+    visits whose race at 0.25 x ATR was a turn, all markets together.
+22. **Rows for all markets** in the trade tables pool all trades, as the gap
+    and the weekly t are defined; pips of different markets are added as they
+    are.
+23. **The twins' rate shown** beside "back" after 15 and 60 minutes,
+    "neither", the run rate and the T0 fill share is built like the one
+    beside the turn rate: the average of the twin rates (same market, UTC
+    year and side) that the level's visits are measured against.
+24. **The rate needed to break even** is the `p` for which `p` x W + (1 -
+    `p`) x L = 0, with W the average result after costs of the trades whose
+    target came first and L that of the others.
+25. **"Ahead of N twin sets."** The level's average result after costs
+    against each twin set's (each grid's) average over the same markets and
+    years, not matched by year and side.
+
+**The one check**
+
+26. **The same files.** Before the marker is written the check asks for the
+    same set of markets as the choosing run. After it, and before anything of
+    2019 on is saved, a fingerprint of all candles stamped before 2019 must
+    equal the choosing run's.
+27. **Order of work, point 5.** Compared: every visit to a level or a round
+    number with its trades, settled by a minute of 2018 (every field to 1e-9,
+    except a level's serial number and the range of the touch day), and the
+    twins' weekly sums for counting weeks that ended at least seven days
+    before 2019, except three counts that wait for a visit's end (T0 fills,
+    ended in a turn, ended in a break). The twins' sums by set are not
+    compared. For the twins this is a sound stand-in for the plan's "visits
+    and trades", not the comparison record by record.
+
+**The plan's own checks**
+
+28. **The cut test.** No file holds a minute in the last two clock hours of
+    2018 (the files end at 17:00 New York time), so that one minute is drawn
+    from the two hours before each market's last minute of 2018. "The first
+    hour of a day" is 17:00 to 17:59 New York time. A round-number line
+    beyond a cut file's range of prices is excused when it has no open visit.
+    The cut test sees a look-ahead only when its reach crosses one of the 40
+    cut minutes; for the away rule the guard is a unit test that compares the
+    watch with a literal minute-by-minute copy.
+29. **Known from.** Every level carries the close of the latest candle its
+    prices were read from (PD: the previous day; PW: the last day of the
+    previous week; a zone: the candle that confirmed each turn, band by band;
+    a Fibonacci level: the later of its two swings' confirming candles). The
+    program stops if that close is later than the time the level is known
+    from, or later than the first minute its band is used. The first build
+    compared two numbers taken from the same candle, which could never stop
+    it.
+30. **Placebo 2.** Days change places with days of the same weekday. A day
+    belongs to a block by the date it is named by; gold uses its own halves.
+    The first day of a file stays where it is. Only a moved day is rescaled,
+    as the plan says; a day left in its own place keeps its real prices, also
+    after a moved day (the first build rescaled every day after the first).
+    A minute keeps its New York wall-clock time on its new date. One generator
+    (mulberry32) per market, seeded with the seed number, so markets with the
+    same calendar get the same order of days and go on moving together; the
+    groups are shuffled block by block, then Monday to Friday.
+31. **Wide days.** A day is wide when its range is more than 1.5 x the ATR in
+    force at the touch. A Placebo 2 lift is said to come only from wide days
+    when it is outside on all days and no longer outside without them. A
+    day's range holds the minutes after the touch, so this split is partly
+    made by the outcome itself: on walks with no memory it alone gives the
+    calm days a positive and the wide days a negative Turn lift. The line is
+    printed where the plan asks for it and does not by itself name a cause.
+32. **Placebo 1** is also worked out for the two-turn zones.
+33. **Order of the report.** The summary comes first, as the plan says, and
+    the placebo section right after it. The lead reads the placebo section
+    first.
+
+**The review**
+
+Two reviewers read the code against this page, an auditor re-worked trades
+from the raw minutes with a program of its own, and a fourth person looked
+for the causes of the placebo readings below. None of them read a real result
+table. No look-ahead and no error in a trade, a cost or a count was found.
+Found and fixed before any run that counts: the "known from" guard that could
+never stop the program (point 29); T1's R (point 13); the rescaling of days
+that had not moved (point 30); the order of the report (point 33); the two
+list tools, which now refuse a file holding a bar of 2019 or later; and
+twelve unit tests for rules that no test would have caught breaking (the
+twins' left-out rule, a Fibonacci twin's single visit, T1's candle that never
+closes, the buy side of T1, gold's costs, the time exits, Placebo 1's far
+sets). The tests now number 129. The auditor's program re-worked 7,428 trade
+rows and 668 visits with no trade from the raw 1-minute files, and the end,
+status, fill, entry, stop and R of every one of the 165,644 visits: no
+difference. A reviewer's own rebuild from this page agreed on 3,788
+round-number visits with all their trades, and on the lifts, t's and gaps made
+from them.
+
+**What the placebos showed, and why**
+
+The figures here are from the practice runs before the fix of point 30. The
+run that counts prints its own; the causes were looked for on these.
+
+Placebo 1 (a twin as the level; turn rate at 0.25 x ATR; lift, standard
+error): R00 and R50 grids +0.24 (0.13); PD +0.35 (0.45); PW -0.57 (0.49); Z4
++1.49 (1.37); ZD +3.38 (2.47); F4C -0.23 (1.18); FDC +0.72 (1.77); F4J +1.65
+(1.76); FDJ +2.94 (2.06): all inside. Two-turn zones: ZDx2 +0.88 (1.30),
+inside; **Z4x2 +2.33 (0.74), limit 1.86: outside.**
+
+The cause for Z4x2, as far as it was found. It is not an error: a second
+program placed the twins and worked out the same +2.33, and none of 73,105
+twin visits checked was misplaced. On 22 price series with no memory (below)
+the same placebo gives +0.62 on average (spread 0.78, largest +2.19), so
+about 0.6 of it comes from how two-turn zones and their twins are built. The
+other 1.7 is a steady hump of 1 to 2 points in the twins' own turn rate at
+sets 0.55 to 0.64, there in both halves, on both sides and in 10 of 14 years.
+Looked at and ruled out: the swing's 2 x ATR distance, the neighbouring
+swings, another watched level nearby, wide days, and visits that come in
+clusters (drawing whole zones gives the same standard error as drawing
+weeks). Whether it is chance (about 2.2 spreads out) or something in the
+market at about 0.6 x ATR from a two-turn zone was not decided. The plan asks
+for the cause to be found; it was found in part, and that is said again
+beside every two-turn-zone result. For reading: the twin sets of two-turn
+zones differ among themselves by up to about 2.5 points, so a two-turn-zone
+Turn lift under about 2.3 points is no more than one twin set shows over the
+others. Two-turn zones are not one of the ten kinds and nothing is chosen
+from them.
+
+Placebo 2 (shuffled days, seed 1) lay outside 2.5 standard errors of zero in
+eight cells. Each was traced with ten shuffles (seeds 1 to 10) and with walks
+that have no memory at all:
+
+- **R50, turn rate at 1.00: -0.94 (0.27).** Chance of this one shuffle. The
+  ten shuffles give +0.10 on average with a spread of 0.49; the walks give
+  zero. The spread between shuffles is about twice the standard error from
+  the 2,000 draws, so for round numbers at the hold distance that standard
+  error is too small.
+- **F4C, turn rate at 1.00: +3.83 (1.17), and run rate at 1.00: -4.08
+  (1.36).** One chance event of this shuffle, read twice on the same visits.
+  The ten shuffles give +0.62 and -0.91 with spreads of 1.26 and 1.61.
+- **PD, turn rate at 0.10: -0.84, at 0.25: -1.09; run rate at 0.25: +1.18.**
+  The shuffled series itself. All ten shuffles agree in sign (means -0.63,
+  -0.49 and +0.64). On shuffled days the ATR in force comes from 14 unrelated
+  days and fits the day badly, so twice as many visits fall on days wider
+  than 1.5 x ATR (38% against 18% on the real series), and on those days
+  price that reaches yesterday's high or low runs on more often than at the
+  twin. Walks do not show it.
+- **F4J, turn rate at 0.10: -3.14.** How the kind is built. An FJ band is a
+  tenth of its leg wide. The twins that get visited come from wider bands,
+  measured in ATR at the touch, than the levels that get visited (medians
+  0.198 against 0.154 on walks), and at a fixed distance a wider band turns
+  price more easily. It is there on every series with no memory (ten shuffles
+  -3.65, walks -2.04) and goes away when band widths are matched.
+- **ZDx2, run rate at 1.00: -7.83.** How the kind is built: series with no
+  memory give the same (walks -6.43, ten shuffles -5.00).
+
+**The wider finding.** On prices with no memory a lift is not zero for
+several kinds. The plan's sentence "if they do not [turn price], it changes
+nothing" does not hold for them. Mean lifts in points, over ten shuffles of
+the real days and, in brackets, over six walks made from the real minutes
+with each minute mirrored at random:
+
+| Kind | Turn quick    | Turn hold      | Run quick     | Run hold       |
+| ---- | ------------- | -------------- | ------------- | -------------- |
+| R00  | -0.02 (-0.01) | -0.01 (+0.01)  | +0.04 (-0.31) | +0.02 (-0.01)  |
+| R50  | +0.12 (-0.03) | +0.10 (+0.04)  | -0.09 (+0.06) | -0.10 (+0.05)  |
+| PD   | -0.49 (+0.01) | -0.11 (+0.12)  | +0.64 (-0.04) | -0.01 (-0.26)  |
+| PW   | +0.13 (-0.04) | +0.27 (+0.39)  | -0.13 (-0.04) | -0.56 (-0.44)  |
+| Z4   | +1.91 (+2.12) | +2.34 (+3.68)  | -1.64 (-2.37) | -3.18 (-4.49)  |
+| ZD   | +5.31 (+6.45) | +10.45 (+4.03) | -1.45 (-4.37) | -10.66 (-3.09) |
+| F4C  | -0.03 (+0.65) | +0.62 (+0.35)  | +0.16 (+0.10) | -0.91 (-0.13)  |
+| FDC  | +1.35 (+2.83) | +2.29 (+1.43)  | -1.18 (-2.13) | -2.32 (-1.23)  |
+| F4J  | -2.81 (-1.27) | -0.92 (+0.04)  | +0.22 (-0.24) | -0.01 (-1.92)  |
+| FDJ  | +0.69 (+1.88) | +0.57 (+1.05)  | -0.60 (-1.44) | -1.64 (-7.19)  |
+| Z4x2 | +0.64 (+1.19) | +1.04 (+1.27)  | +0.02 (-1.53) | -1.12 (-1.80)  |
+| ZDx2 | +3.60 (+5.65) | +4.11 (+6.03)  | -3.12 (-5.86) | -5.00 (-7.42)  |
+
+Round numbers, yesterday's and last week's high and low, and the FC levels sit
+near zero. The zones (John's floors and ceilings) do not: with every minute a
+coin flip, a three-turn 4-hour zone still "turns price" about 2 to 4 points
+more often than its twins and its breaks "run" about 2 to 4 points less
+often, and the daily zones show more. Part of the cause was traced (for the
+run rate, a zone is reached only after price has come through its own nearer
+twins, whose runs then count against it; for FJ, the band widths) and part
+was not. It does not have to be traced to be taken off: what prices with no
+memory show cannot be the market remembering a level. These figures come from
+the cause-finder's own programs; the runner now measures them itself, as set
+out next, and its figures are the ones used.
+
+**Every rule is read against prices with no memory**
+
+The plan already takes a rule's Placebo 2 lift off its lift when Placebo 2 is
+"outside" (the rule is "read on the rest"). The review showed two weak points
+in doing that with one shuffle. One shuffle is a noisy measure: its draw alone
+moved R50 Turn hold by 0.94 and the two F4C hold rules by about 4 points, and
+in practice decided whether a rule was chosen. And for kinds with few visits
+its standard error is too wide to flag an effect of several points that comes
+from how the kind is built (Z4, ZD and FDC above), so such a rule would be
+read plain and could be "chosen" on coin-flip prices. From here on:
+
+A. **Two kinds of prices with no memory, ten series of each.**
+
+- **Shuffled days**: the plan's Placebo 2, with seeds 1 to 10. Seed 1 is the
+  plan's own and is still reported as the plan says.
+- **Mirrored minutes**: the real 1-minute candles in their real order and at
+  their real stamps, each minute either kept or turned upside down. In a
+  turned minute every move is mirrored in ratio: the step from the close
+  before to its open, the move from its open to its close, and its two wicks,
+  which change places. With `o`, `h`, `l`, `c` the minute's real prices, `p`
+  the real close before it and `P` the new close before it (for the first
+  minute of the file, `p` and `P` are both its own open): a kept minute gets
+  O = `P` x `o` / `p`, C = O x `c` / `o`, H = max(O, C) x `h` / max(`o`,
+  `c`) and L = min(O, C) x `l` / min(`o`, `c`); a turned minute gets O = `P`
+  x `p` / `o`, C = O x `o` / `c`, H = max(O, C) x min(`o`, `c`) / `l` and L =
+  min(O, C) x max(`o`, `c`) / `h`. Whether a minute is turned is decided by its clock minute alone,
+  the same in every market, so the markets go on moving together: one
+  generator (mulberry32) per seed is drawn once for every clock minute from
+  2000-01-01 00:00 UTC on, whether or not a market has a candle in it, and a
+  minute whose draw is below 0.5 is turned. Seeds 1 to 10. Volatility keeps
+  its real shape by hour, by day and by year; direction has no memory at all.
+
+All kinds, their twins, visits and races are built on each of the twenty
+series exactly as on the real one.
+
+B. **A rule's baseline** against one of the two kinds is the mean of its ten
+lifts there, each worked out like the lift itself, for all markets, for each
+market and for each half; a series in which there is no lift to work out is
+left out of that mean. **Its spread** is the standard deviation of those
+lifts (n - 1). **The rest** is the lift minus the baseline, for all markets,
+each market and each half.
+
+C. **The standard error of a rest** is the square root of S x S + spread x
+spread / n, where S is the larger of the lift's own standard error (the 2,000
+draws) and the spread, and n is the number of series that had a lift. **Its
+t** is the rest divided by that. A t needs at least two such series; without
+them the line that asks for a t does not hold. A market or a half with no
+series that had a lift has no rest and is not above zero.
+
+D. **Every line the plan puts on a lift is put on the rest, against each of
+the two baselines, and must hold against both.** That is: the four lines of
+the choosing bar; the pair candidate's lines (its 150 visits are counted on
+the real series; its baselines and spreads are its own market's); the level
+lines L1 to L3 in the check; and the 2 points of the note on a Run rule. The
+pair candidate is the qualifying rule whose smaller t of the two is the
+highest, ties as the plan says. This holds for every rule, not only for the
+ones Placebo 2 would have flagged. In the single check the twenty series are
+built again on the whole files, and the baselines for the lines of the check
+are worked out on 2019 to 2025 (the shuffle as the plan says, with 2019 to
+2025 as its own block).
+
+E. **"The smallest lift this test could have seen"** is the larger of 2
+points and 3.0 times the larger of the rule's two standard errors of the
+rest. The plain figure is printed beside it.
+
+F. **The plan's own reading is still printed**, for every rule and for the
+pair candidate: the lines on the plain lift, or on the rest against seed 1
+alone where seed 1 lies outside 2.5 of its standard errors, as the plan words
+it. Where the two readings differ, that is said. This amendment's reading
+decides the words of the results. So that nothing the plan would have checked
+stays unchecked, a rule or a pair candidate chosen under either reading is
+taken to the single check, marked with the reading that chose it; the words
+it is given there use the level lines on the rest, with the plain lines
+printed beside them. The number of rule and trade pairs counted for line P2
+is the number taken.
+
+G. **The trade lines P1 to P6 and the trade conditions of the readings do not
+change.** On prices with no memory no trade has an average result above zero
+before costs, at a level or at a twin, so the trades need no baseline.
+
+H. **Tables.** Parts 2 and 3 stay as the plan has them. The summary's line
+for each kind adds the two baselines of the turn rate at 0.25 x ATR beside
+the lift. The splits (by side, by clock, by number of turns, by ratio) have
+no baseline of their own; they are read with the kind's baseline in mind, and
+that is said above them. Beside each cell of Placebo 2's table (seed 1, with
+the plan's "outside" mark) the mean and the spread of the ten shuffles and of
+the ten mirrored series are printed. Anything in them that the causes written
+above do not cover is looked into before the real tables are read.
+
+**What this cannot do.** The two kinds of prices with no memory do not agree
+everywhere (ZD Turn hold: +10.45 on shuffled days against +4.03 on mirrored
+minutes; F4J Turn quick: -2.81 against -1.27). That is why a rule must pass
+against both. A real market is neither of them. A rest says "more than both
+kinds of prices with no memory give", and no more than that.
+
 ## Results
 
 Not run yet.
