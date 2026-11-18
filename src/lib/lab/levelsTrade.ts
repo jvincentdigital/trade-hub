@@ -210,7 +210,8 @@ export function tradeT1(ctx: LevelsCtx, v: Touch): TradeResult {
   const spread = ctx.costs.spreadAt(o)
   const entry = dir === 1 ? o : o + spread
   const stop = dir === 1 ? Math.max(far, ext) + 0.1 * atr : Math.min(far, ext) - 0.1 * atr
-  const R = dir * (stop - entry)
+  // R is a distance: an entry that opens beyond its stop (a gap) has R = |entry - stop|.
+  const R = Math.abs(stop - entry)
   if (tooSmall(ctx, R, spread)) return result('T1', 'skip_r', td, e)
   const ex = exits(ctx, td, e, entry, stop, R, spread, atr, 1)
   return result('T1', 'trade', td, e, e, entry, stop, R, spread, ex)

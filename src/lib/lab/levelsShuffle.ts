@@ -2,8 +2,9 @@
 // 2): the shuffled-days series. Each day changes places only with days of the
 // same name (Monday ... Friday) in the same block of years, by a Fisher-Yates
 // shuffle from one named generator with seed 1. A day keeps its own 1-minute
-// candles; in time order, every price of a day is multiplied by the close of
-// the day now before it over the close of the day that was really before it;
+// candles; in time order, every price of a moved day is multiplied by the close
+// of the day now before it over the close of the day that was really before it
+// (a day left in its own place keeps its prices);
 // each minute keeps its New York clock time counted from its day's 17:00
 // start; a minute whose new stamp falls outside its new day, or on a stamp
 // already taken, is dropped. Pure.
@@ -83,7 +84,7 @@ export function shuffleDays(
   for (let p = 0; p < D; p++) {
     const q = order[p]
     if (q !== p) moved++
-    const f = p === 0 ? 1 : lastClose / days.close[q - 1]
+    const f = q === p ? 1 : lastClose / days.close[q - 1]
     const shift = startWall(p) - startWall(q)
     const name = days.name[p]
     const seen = new Set<number>()

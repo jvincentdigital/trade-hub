@@ -61,6 +61,8 @@ export interface RunOptions {
   noTwins?: boolean
   /** Called with the full record (its trades included) of every twin and grid-line visit, as it is found. */
   onTwinVisit?: (rec: VisitRec) => void
+  /** Tests: watch these levels in place of the ones built from the bars. */
+  levels?: Level[]
 }
 
 export interface SnapRec {
@@ -228,13 +230,18 @@ export function runLevels(bars: Bars, market: HarmonicMarket, opt: RunOptions = 
   }
 
   // ---- levels
-  const levels = buildLevels(ctx)
+  const levels = opt.levels ?? buildLevels(ctx)
   const watched: { l: Level; first: number; lastLive: number; atr: number }[] = []
   for (const l of levels) {
     const first = Math.max(l.start, f15)
     if (first >= l.lifeEnd || first >= n) continue
     if (time[first] < l.knownFrom)
       throw new Error('Known from: a level was built from a candle that closed after it')
+    for (let k = 0; k < l.from.length; k++)
+      if (l.built[k] > (k === 0 ? l.knownFrom : time[l.from[k]]))
+        throw new Error(
+          'Known from: a level was built from a candle that closed after the time it became known',
+        )
     const s = segmentAt(l, first)
     const atr = ctx.inForce[ctx.days.ofMinute[first]]
     const leftOut = nearRound(grid, l.lo[s], l.hi[s], atr)

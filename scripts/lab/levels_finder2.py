@@ -127,6 +127,10 @@ def year_start(y):
 # ---------------------------------------------------------------- loading
 
 
+# Choosing years only ("Order of work", point 1): a file with a bar of 2019 on is refused.
+Y2019 = 1546300800
+
+
 def load(path):
     T = array("q")
     H = array("d")
@@ -139,6 +143,8 @@ def load(path):
         for line in f:
             p = line.split(",")
             t = int(p[0])
+            if t >= Y2019:
+                sys.exit("%s: holds a bar stamped at or after 2019-01-01: refused" % path)
             if t <= prev:
                 sys.exit("%s: stamps not increasing at %d" % (path, t))
             prev = t

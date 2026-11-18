@@ -170,6 +170,135 @@ describe('T1, after price closes back out', () => {
   })
 })
 
+describe('T1 at the edges of its rules', () => {
+  const times = [T + 300, T + 600, T + 900, T + 2700, T + 2760, T + 2820]
+  // The buy of 'a buy mirrors it' above: a floor [99, 100] from above, ATR 10.
+  const mirror = (entry: number[], first: number[] = [100, 100, 98, 100]) => [
+    [100, 100.2, 99.5, 99.8],
+    first,
+    [100, 101, 99.6, 100.6],
+    entry,
+    [102, 104.1, 101, 104],
+  ]
+  const buy = (rows: number[][]) =>
+    tradeT1(ctxOf(barsOf(rows, times.slice(0, 5))), visit({ dir: -1, near: 100, far: 99 }))
+
+  it('a buy is skipped when the entry opens at or above the near edge + 0.25 x ATR', () => {
+    expect(buy(mirror([102.5, 103, 102, 102.5])).status).toBe('skip_open')
+    expect(buy(mirror([102.4, 103, 102, 102.5])).status).toBe('trade')
+  })
+
+  it('a buy is no trade when the Bid low reached the far edge - 0.25 x ATR before the trigger closed', () => {
+    expect(buy(mirror([101, 105, 100.9, 101], [100, 100, 96.5, 100])).status).toBe('broke')
+    expect(buy(mirror([101, 105, 100.9, 101], [100, 100, 96.6, 100])).status).toBe('trade')
+  })
+
+  it('R is the distance to the stop: an entry that opens beyond its stop is a trade, stopped at once', () => {
+    // A sell: the stop is 103 (max(101, 102) + 1); the entry minute opens at 106, above it.
+    // R = 3 >= 5 x 0.5. In the fill minute the stop is hit (106.5 + 0.5 >= 103) and fills at
+    // the opening Ask 106.5: -0.5 and two market fills (0.25), -0.75 = -0.25 R.
+    const rows = [
+      [100, 100.5, 99.8, 100.2],
+      [100, 102, 100, 100],
+      [100, 100.4, 99, 99.4],
+      [106, 106.5, 105, 106],
+      [98, 98, 95.9, 96],
+    ]
+    const t = tradeT1(ctxOf(barsOf(rows, times.slice(0, 5))), visit({ far: 101 }))
+    expect([t.status, t.dir, t.fill, t.entry, t.stop, t.R]).toEqual(['trade', -1, 3, 106, 103, 3])
+    expect(ex(t, 0)).toEqual(['stop', 3, 106.5, -0.25, 0, -0.5])
+    expect(ex(t, 1)).toEqual(['stop', 3, 106.5, -0.25, 0, -0.5])
+    // A buy: the stop is 97 (min(99, 98) - 1); the entry minute opens at Bid 94, Ask 94.5.
+    // R = 2.5 = 5 x 0.5, kept. The stop fills at the open 94: -0.5 - 0.25 = -0.3 R.
+    const b = buy(mirror([94, 94.5, 93, 94]))
+    expect([b.status, b.dir, b.entry, b.stop, b.R]).toEqual(['trade', 1, 94.5, 97, 2.5])
+    expect(ex(b, 0)).toEqual(['stop', 3, 94, -0.3, 0, -0.6])
+  })
+
+  it('a candle with no minute after it in its file never closes, so it cannot trigger', () => {
+    // The touch is in the 12:00 UTC quarter, the file's last; its last minute closes back out.
+    const rows = [
+      [100, 100.5, 99.8, 100.2],
+      [100, 100.2, 99, 99],
+    ]
+    const t = tradeT1(ctxOf(barsOf(rows, [T + 300, T + 600])), visit({ far: 101 }))
+    expect([t.status, t.done]).toEqual(['no_trigger', -1])
+  })
+})
+
+describe('the skip under 5 costs, at its edges', () => {
+  const flat = () =>
+    ctxOf(
+      barsOf([
+        [100, 100, 99, 100],
+        [100, 100.3, 99, 100],
+      ]),
+    )
+  it('a pair: R exactly 5 x the spread is kept, just under it is skipped', () => {
+    // T0 at a line: R = 0.25 x ATR; 5 x 0.5 = 2.5.
+    expect(tradeT0(flat(), visit({ atr: 10 })).status).toBe('trade')
+    expect(tradeT0(flat(), visit({ atr: 9.96 })).status).toBe('skip_r')
+  })
+
+  it('gold: R against 5 x (spread + $0.07)', () => {
+    const gold = (atr: number) => {
+      const ctx: LevelsCtx = {
+        ...ctxOf(
+          barsOf([
+            [1800, 1800, 1799, 1800],
+            [1800, 1800.06, 1799, 1800],
+          ]),
+        ),
+        costs: MARKET_COSTS.XAUUSD,
+      }
+      return tradeT0(ctx, visit({ near: 1800, far: 1800, atr })).status
+    }
+    // Spread 0.28 at 1800: 5 x 0.35 = 1.75 = 0.25 x 7.
+    expect(gold(7)).toBe('trade')
+    expect(gold(6.96)).toBe('skip_r')
+  })
+
+  it("gold: B0's spread is the one at its order price P", () => {
+    const ctx: LevelsCtx = {
+      ...ctxOf(
+        barsOf([
+          [1800, 1800, 1799, 1800],
+          [1800.5, 1801.5, 1800, 1801],
+        ]),
+      ),
+      costs: MARKET_COSTS.XAUUSD,
+    }
+    // P = 1800 + 0.1 x 10 = 1801.
+    const t = tradeB0(ctx, visit({ near: 1800, far: 1800 }))
+    expect(t.status).toBe('trade')
+    expect(t.spread).toBeCloseTo((0.28 * 1801) / 1800, 15)
+  })
+})
+
+describe('the time exits, counted from the fill minute', () => {
+  it('quick at 24 hours and hold at 120 hours after the fill stamp', () => {
+    // A T0 sell fills at minute 1 (T + 60). Flat prices after it: no stop, no target.
+    const flatRow = [100, 100.1, 99.9, 100]
+    const times = [
+      T,
+      T + 60,
+      T + 24 * H, // 24 hours after the touch minute, not after the fill
+      T + 60 + 24 * H,
+      T + 60 + 96 * H,
+      T + 60 + 120 * H - 60,
+      T + 60 + 120 * H,
+      T + 60 + 121 * H,
+    ]
+    const rows = times.map((_, i) => (i === 1 ? [100, 100.3, 99.9, 100] : flatRow))
+    const t = tradeT0(ctxOf(barsOf(rows, times)), visit({ end: 7 }))
+    expect([t.status, t.fill]).toEqual(['trade', 1])
+    expect(t.exits.map((x) => [x.how, x.at])).toEqual([
+      ['time', 3],
+      ['time', 6],
+    ])
+  })
+})
+
 describe('B0, with the break', () => {
   it('a buy stop at P = far + 0.1 x ATR: fills at P or the opening Ask if higher; stop 0.25 x ATR below', () => {
     const ctx = ctxOf(

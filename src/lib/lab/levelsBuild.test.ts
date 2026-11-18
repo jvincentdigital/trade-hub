@@ -122,15 +122,17 @@ describe('zones from six swing highs (and a seventh)', () => {
       l.hi,
       l.turns,
       l.sides,
+      l.built,
     ])
+    // built: the close of the latest candle whose swing went into each band.
     expect(brief).toEqual([
       // A: two turns from the close of 18 (minute 19) until its third turn's close (minute 23).
-      ['Z4x2', 19000, 19, 23, [19], [100], [101.5], [2], 1],
+      ['Z4x2', 19000, 19, 23, [19], [100], [101.5], [2], 1, [19000]],
       // A armed from the close of 22 until its death at the close of 24.
-      ['Z4', 23000, 23, 25, [23], [100], [101.5], [3], 1],
-      ['Z4x2', 21000, 21, 25, [21], [102], [103], [2], 1],
+      ['Z4', 23000, 23, 25, [23], [100], [101.5], [3], 1, [23000]],
+      ['Z4x2', 21000, 21, 25, [21], [102], [103], [2], 1, [21000]],
       // B armed at 24; the band widens from the first minute after 26's close.
-      ['Z4', 25000, 25, 37, [25, 27], [101.25, 101], [103, 103], [3, 4], 1],
+      ['Z4', 25000, 25, 37, [25, 27], [101.25, 101], [103, 103], [3, 4], 1, [25000, 27000]],
     ])
     expect(out.every((l) => l.what === 'ceiling')).toBe(true)
     expect(segmentAt(out[3], 26)).toBe(0)
@@ -187,6 +189,8 @@ describe('Fibonacci levels', () => {
         (l) => l.sides === 1 && l.knownFrom === 21000 && l.start === 21 && l.lifeEnd === 26,
       ),
     ).toBe(true)
+    // Built from the swings confirmed at 15 and 20: known from the close of 20.
+    expect(ceil.every((l) => l.built.length === 1 && l.built[0] === 21000)).toBe(true)
   })
 
   it('an up-leg gives floors at H - r x (H - L); the candidate low at or below the high edge leaves it out', () => {
@@ -201,6 +205,7 @@ describe('Fibonacci levels', () => {
       true,
     )
     expect([floor[0].legHigh, floor[0].legLow]).toEqual([110, 90])
+    expect(floor.map((l) => l.built)).toEqual([[26000], [26000]])
   })
 })
 
@@ -226,23 +231,27 @@ describe('PD and PW', () => {
   it('PD: the previous day high and low, live for the day, known from its close', () => {
     const { out, push } = collect()
     dayLevels(days, push)
-    expect(out.map((l) => [l.what, l.lo[0], l.knownFrom, l.start, l.lifeEnd, l.sides])).toEqual([
-      ['high', 101, utc(2015, 1, 8, 22), 1, 2, 3],
-      ['low', 99, utc(2015, 1, 8, 22), 1, 2, 3],
+    expect(
+      out.map((l) => [l.what, l.lo[0], l.knownFrom, l.start, l.lifeEnd, l.sides, l.built]),
+    ).toEqual([
+      // built: the close of the day whose high and low they are.
+      ['high', 101, utc(2015, 1, 8, 22), 1, 2, 3, [utc(2015, 1, 8, 22)]],
+      ['low', 99, utc(2015, 1, 8, 22), 1, 2, 3, [utc(2015, 1, 8, 22)]],
       // Monday's day holds the weekend stub: its PD is Friday's, and it starts with the stub.
-      ['high', 102, utc(2015, 1, 9, 22), 2, 4, 3],
-      ['low', 98, utc(2015, 1, 9, 22), 2, 4, 3],
-      ['high', 103, utc(2015, 1, 12, 22), 4, 5, 3],
-      ['low', 97, utc(2015, 1, 12, 22), 4, 5, 3],
+      ['high', 102, utc(2015, 1, 9, 22), 2, 4, 3, [utc(2015, 1, 9, 22)]],
+      ['low', 98, utc(2015, 1, 9, 22), 2, 4, 3, [utc(2015, 1, 9, 22)]],
+      ['high', 103, utc(2015, 1, 12, 22), 4, 5, 3, [utc(2015, 1, 12, 22)]],
+      ['low', 97, utc(2015, 1, 12, 22), 4, 5, 3, [utc(2015, 1, 12, 22)]],
     ])
   })
 
   it('PW: the previous week high and low, live for the whole week, known from its last day close', () => {
     const { out, push } = collect()
     weekLevels(days, buildWeeks(days), push)
-    expect(out.map((l) => [l.what, l.lo[0], l.knownFrom, l.start, l.lifeEnd])).toEqual([
-      ['high', 102, utc(2015, 1, 9, 22), 2, 5],
-      ['low', 98, utc(2015, 1, 9, 22), 2, 5],
+    expect(out.map((l) => [l.what, l.lo[0], l.knownFrom, l.start, l.lifeEnd, l.built])).toEqual([
+      // built: the close of the last day (Friday) of the previous week.
+      ['high', 102, utc(2015, 1, 9, 22), 2, 5, [utc(2015, 1, 9, 22)]],
+      ['low', 98, utc(2015, 1, 9, 22), 2, 5, [utc(2015, 1, 9, 22)]],
     ])
   })
 })

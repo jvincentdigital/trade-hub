@@ -1035,7 +1035,7 @@ function placeboMd(
   span: Span,
 ): string {
   const out: string[] = [
-    '## Placebos (read these before any real table)',
+    '## Placebos (a placebo outside its limits is explained before any real result is read)',
     '',
     `**Placebo 1, a twin as the level** (${spanText(span)}): twin set 0.60 (round numbers: the grid at 25.0 pips, $5.00) is treated as the level and measured against the sets at least 0.10 away from it (round numbers: the grids at least 5 pips, $1, away), by market, UTC year and side as always. Its lift at 0.25 x ATR must be inside plus or minus 1.5 points or 2.5 standard errors, whichever is wider. R00 and R50 share the 41 grids, so they have one row.`,
     '',
@@ -1059,7 +1059,7 @@ function placeboMd(
       ? `**Placebo 1 falls outside for ${p1Out.map((r) => r.label).join(', ')}. The cause is to be found and written down in the results before any real result below is read.**`
       : 'Placebo 1 is inside its limits for every kind.',
     '',
-    `**Placebo 2, shuffled days** (${spanText(span)}): each market's days put in a random order, each day changing places only with days of the same name in the same block of years (${P.halves.map(spanText).join(' and ')}; gold ${P.goldHalves.map(spanText).join(' and ')}${span === P.check ? `; ${spanText(P.check)}` : ''}); ${SHUFFLE_GENERATOR}. A day keeps its own 1-minute candles; in time order every price of a day is multiplied by the close of the day now before it over the close of the day that was really before it (the first day of a file keeps its place and its prices); each minute keeps its New York clock time counted from its day's 17:00 start; a minute whose clock time has no stamp in its new day, or whose stamp is taken, is dropped. All ten kinds, their twins, visits and races are built on this series as on the real one. Each lift should lie within 2.5 standard errors of zero.`,
+    `**Placebo 2, shuffled days** (${spanText(span)}): each market's days put in a random order, each day changing places only with days of the same name in the same block of years (${P.halves.map(spanText).join(' and ')}; gold ${P.goldHalves.map(spanText).join(' and ')}${span === P.check ? `; ${spanText(P.check)}` : ''}); ${SHUFFLE_GENERATOR}. A day keeps its own 1-minute candles; in time order every price of a moved day is multiplied by the close of the day now before it over the close of the day that was really before it (a day left in its own place keeps its prices; the first day of a file keeps its place and its prices); each minute keeps its New York clock time counted from its day's 17:00 start; a minute whose clock time has no stamp in its new day, or whose stamp is taken, is dropped. All ten kinds, their twins, visits and races are built on this series as on the real one. Each lift should lie within 2.5 standard errors of zero.`,
     '',
     `Shuffle per market (days, days moved, minutes dropped for their clock time, for a taken stamp): ${shuffles.map((s) => `${s.market} ${s.days}, ${s.moved}, ${s.outside}, ${s.taken}`).join('; ')}.`,
     '',
@@ -1736,8 +1736,6 @@ async function runChoose(
     `Choosing span: ${spanText(P.choose)}; halves ${P.halves.map(spanText).join(' and ')} (gold ${P.goldHalves.map(spanText).join(' and ')}). Visits by touch minute, trades by fill minute (UTC). The run reads no price at or after ${dayText(P.boundary)}.`,
     `Bootstrap: ${BOOT_DRAWS} draws, ${BOOT_GENERATOR}.`,
     '',
-    placeboMd(p1rows, p2rows, placebo.shuffle, P, P.choose),
-    '',
     `## ${label}Summary`,
     '',
     summaryMd(input, P.choose, p2, p3, forty, ruleText, pairText),
@@ -1746,6 +1744,8 @@ async function runChoose(
       ? `**${NOTHING_CHOSEN}.** The checking years stay closed.`
       : `Rules chosen: ${chosenRows.length ? chosenRows.map((r) => r.key).join(', ') : 'none'}. Pair candidate: ${pairRanked.length ? `${pairRanked[0].market} ${pairRanked[0].key}` : 'none'}.`,
     ...fallbackNote.map((x) => `\n**${x}**`),
+    '',
+    placeboMd(p1rows, p2rows, placebo.shuffle, P, P.choose),
     '',
     `## Part 1: how often (${spanText(P.choose)})`,
     '',

@@ -46,6 +46,12 @@ export interface Level {
   lo: number[]
   hi: number[]
   turns: number[]
+  /**
+   * Known from: for each band, the close (UTC second) of the latest chart
+   * candle whose prices built it. It may not be later than knownFrom (the
+   * first band) or than the first minute of its band.
+   */
+  built: number[]
   /** For the twins' left-out rule: levels of one group are tested against each other. */
   group: string
   /** Fibonacci: the leg's ends (H the high, L the low); else NaN. */
@@ -229,7 +235,8 @@ export function zoneLevels(
     const sides = z.type === 1 ? FROM_BELOW : FROM_ABOVE
     const deathAt = z.death >= 0 ? effAt(chart, z.death) : n
     if (z.turnAt.length >= 2) {
-      const j2 = z.turnAt[1]
+      const k = 1
+      const j2 = z.turnAt[k]
       push({
         kind: two,
         what,
@@ -239,8 +246,9 @@ export function zoneLevels(
         lifeEnd: z.turnAt.length >= 3 ? effAt(chart, z.turnAt[2]) : deathAt,
         once: false,
         from: [effAt(chart, j2)],
-        lo: [z.lo[1]],
-        hi: [z.hi[1]],
+        lo: [z.lo[k]],
+        hi: [z.hi[k]],
+        built: [chart.stop[z.turnAt[k]]],
         turns: [2],
         group: two,
         legHigh: NaN,
@@ -252,10 +260,12 @@ export function zoneLevels(
       const lo: number[] = []
       const hi: number[] = []
       const turns: number[] = []
+      const built: number[] = []
       for (let t = 2; t < z.turnAt.length; t++) {
         from.push(effAt(chart, z.turnAt[t]))
         lo.push(z.lo[t])
         hi.push(z.hi[t])
+        built.push(chart.stop[z.turnAt[t]])
         turns.push(t + 1)
       }
       push({
@@ -269,6 +279,7 @@ export function zoneLevels(
         from,
         lo,
         hi,
+        built,
         turns,
         group: kind,
         legHigh: NaN,
@@ -338,6 +349,8 @@ export function fibLevels(
         from: [start],
         lo: [lo],
         hi: [hi],
+        // H, L and the candidate come from the two swings and the candles up to their confirmations.
+        built: [chart.stop[Math.max(p.confirm, s.confirm)]],
         turns: [0],
         group,
         legHigh: H,
@@ -352,9 +365,10 @@ export function fibLevels(
 /** PD: on each day, the previous day's high and low, live for the day, from either side. */
 export function dayLevels(days: NyChart, push: (l: Omit<Level, 'id'>) => void): void {
   for (let d = 1; d < days.n; d++) {
+    const src = d - 1
     for (const [what, x] of [
-      ['high', days.high[d - 1]],
-      ['low', days.low[d - 1]],
+      ['high', days.high[src]],
+      ['low', days.low[src]],
     ] as const)
       push({
         kind: 'PD',
@@ -367,6 +381,7 @@ export function dayLevels(days: NyChart, push: (l: Omit<Level, 'id'>) => void): 
         from: [days.first[d]],
         lo: [x],
         hi: [x],
+        built: [days.stop[src]],
         turns: [0],
         group: 'PD',
         legHigh: NaN,
@@ -398,6 +413,8 @@ export function weekLevels(
         from: [start],
         lo: [x],
         hi: [x],
+        // weeks.high and weeks.low of week w - 1 come from its days.
+        built: [days.stop[weeks.lastDay[w - 1]]],
         turns: [0],
         group: 'PW',
         legHigh: NaN,

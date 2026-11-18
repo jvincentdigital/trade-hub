@@ -37,7 +37,7 @@ const twoWeeks = flat(
 const ALL: [number, number][] = [[utc(2015, 1, 1), utc(2015, 2, 1)]]
 
 describe('shuffled days (Placebo 2)', () => {
-  it('swaps same-name days by Fisher-Yates and chains the prices by the closes', () => {
+  it('swaps same-name days by Fisher-Yates and rescales each moved day by the closes', () => {
     // Groups: Monday holds only Mon 12 (the first day keeps its place), so no
     // draw; then Tue [1, 6], Wed [2, 7], Thu [3, 8], Fri [4, 9], one draw
     // each: j = floor(u x 2). 0.1 swaps, 0.9 keeps.
@@ -45,13 +45,14 @@ describe('shuffled days (Placebo 2)', () => {
     expect(Array.from(s.order)).toEqual([0, 6, 2, 8, 4, 5, 1, 7, 3, 9])
     expect(s.moved).toBe(4)
     expect(s.outside + s.taken).toBe(0)
-    // Worked by hand, slot by slot: factor = new close before / real close before.
-    // slot 0 day 0: 1 -> 6, 8.  slot 1 day 6: 8/16 -> 5, 4.  slot 2 day 2: 4/4 -> 12, 16.
-    // slot 3 day 8: 16/32 -> 2.5, 2.  slot 4 day 4: 2/8 -> 6, 8.  slot 5 day 5: 8/32 -> 5, 4.
-    // slot 6 day 1: 4/8 -> 2.5, 2.  slot 7 day 7: 2/8 -> 10, 8.  slot 8 day 3: 8/16 -> 5, 4.
-    // slot 9 day 9: 4/4 -> 12, 16.
+    // Worked by hand, slot by slot. A moved day: factor = close of the day now before it
+    // / close of the day really before it. A day in its own place keeps its prices.
+    // slot 0 day 0: kept -> 6, 8.  slot 1 day 6: 8/16 -> 5, 4.  slot 2 day 2: kept -> 12, 16.
+    // slot 3 day 8: 16/32 -> 2.5, 2.  slot 4 day 4: kept -> 24, 32.  slot 5 day 5: kept -> 20, 16.
+    // slot 6 day 1: 16/8 -> 10, 8.  slot 7 day 7: kept -> 40, 32.  slot 8 day 3: 32/16 -> 20, 16.
+    // slot 9 day 9: kept -> 12, 16.
     expect(Array.from(s.bars.close)).toEqual([
-      6, 8, 5, 4, 12, 16, 2.5, 2, 6, 8, 5, 4, 2.5, 2, 10, 8, 5, 4, 12, 16,
+      6, 8, 5, 4, 12, 16, 2.5, 2, 24, 32, 20, 16, 10, 8, 40, 32, 20, 16, 12, 16,
     ])
     expect(Array.from(s.bars.high)).toEqual(Array.from(s.bars.close))
     // Each minute keeps its clock time on its new day: slot 1 (Tue 6) now holds

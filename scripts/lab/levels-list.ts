@@ -14,8 +14,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HARMONIC_MARKETS, type HarmonicMarket } from '../../src/lib/lab/harmonic'
-import { loadBars } from '../../src/lib/lab/harmonicLoad'
+import { firstStampAtOrAfter, loadBars } from '../../src/lib/lab/harmonicLoad'
 import { runLevels, type LevelRec, type VisitRec } from '../../src/lib/lab/levels'
+
+/** Choosing years only ("Order of work", point 1): a file with a bar of 2019 on is refused. */
+const Y2019 = Date.UTC(2019, 0, 1) / 1000
 
 const LEVELS_HEADER = 'kind,what,known_from,first_watched,low,high,atr,left_out'
 const VISITS_HEADER =
@@ -64,6 +67,8 @@ async function main() {
   if (!HARMONIC_MARKETS.includes(market)) throw new Error(`unknown market ${marketArg}`)
   const year = Number(yearArg)
   const t0 = Date.now()
+  const late = await firstStampAtOrAfter(file, Y2019)
+  if (late !== null) throw new Error(`${file} holds a bar stamped at or after 2019-01-01: refused`)
   const bars = await loadBars(file)
   const t1 = Date.now()
   const run = runLevels(bars, market, { listYear: year })
