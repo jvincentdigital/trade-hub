@@ -460,4 +460,193 @@ looking at a result.
     point 9, then the markets in the order EUR/USD, GBP/USD, gold, USD/JPY,
     EUR/GBP, EUR/JPY, GBP/JPY.
 
-Not run yet beyond this point.
+### The answer (run 2026-11-18)
+
+**"Not there."** The patterns form often, but trading the point where they
+are supposed to end is a coin flip that leans the wrong way, on every one of
+the seven markets, with or without a confirmation.
+
+- **How often it worked, 2010 to 2018.** 4,372 trades with an order at D.
+  Price went a median of 12 pips the trade's way and 13 pips against it. A
+  target as far as the stop (1 R) came first 43.7% of the time; it needs more
+  than 50% to pay. No target from 5 to 50 pips, or from 0.5 to 3 R, made
+  money, before costs or after. Holding for 4 to 120 hours did not either
+  (one hold, 72 hours, was a little above zero before costs and below it
+  after).
+- **Per pair.** All seven lost at 1 R. The best was EUR/GBP at about zero
+  before costs. No pair stands out, and the best pair of the old years
+  (GBP/JPY, below) lost in the new ones.
+- **With a confirmation.** RSI and EMA, the method as John remembered it,
+  triggers rarely: 167 trades in nine years on seven markets, 16 to 34 a
+  market. It lost a little at 1 R. At a far target (3 R) it showed +0.18 R a
+  trade in 2010 to 2018 and +0.03 R in 2019 to 2025 on 132 trades: too few to
+  tell from luck. Adding the bigger trend made it look better still in the old
+  years (+0.33 R, 89 trades) and then it lost in the new ones (-0.23 R, 74
+  trades). The reversal candle, the trend alone and the London and New York
+  hours all lost after costs in both periods.
+- **The one rule that qualified** (all four patterns, 30-minute chart, swing
+  size 3, order at D with the bigger trend, target at 0.618) earned +0.025 R a
+  trade in 2010 to 2018 with a weekly t of 0.29. On 2019 to 2025 it lost
+  0.172 R a trade over 275 trades and was ahead of 6 of its 200 twins.
+- **The best pair** in the old years, GBP/JPY (all four patterns, 15-minute
+  chart, swing size 2, order at D, target at 0.618), lost 0.091 R a trade
+  over 152 trades in the new years and was ahead of 47 of its 200 twins.
+- **Costs, one line.** The stops are small here (about 15 pips), so the
+  spread takes about 0.10 R a trade; but the trades lose before costs too.
+
+### What was run
+
+- Code: commit `9a9aace` on `lab/harmonic-patterns`, pushed before either
+  run. The choosing run read copies of the files that end at 2018-12-31. The
+  check ran once, at 2026-11-18 14:31 UTC, and wrote its marker first.
+- Before the check the seven full files were loaded once with the study's own
+  loader, to make sure it accepts them. Row counts only; nothing was computed.
+- All seven markets passed the clock check and were used. The files (SHA-256):
+
+```
+fdd9fe3c4695653951eef8b47a0099bfa8e8c07887d68a09512c4c9ac336afb2  EURUSD/EURUSD_1m.fixed.csv.gz
+2a5559d1bdcbecb2ae807778561206a0831fc404d5d8153ef8686e769723f538  GBPUSD/GBPUSD_1m.fixed.csv.gz
+2ee908c82589366e558a52b5f904c6a9c2e4c2bf7ab578ac0fad50a15eb65d01  XAUUSD/XAUUSD_1m.fixed.csv.gz
+f0101ef0ec20ab373c3fabcfe84cc3144c8f85914e74b8da4a987cabffc4183b  USDJPY/USDJPY_1m.fixed.csv.gz
+5fe9c0b3b02df71c2f8df3426f07afbaf1b59028465fb0b23462bd01ab15e64a  EURGBP/EURGBP_1m.fixed.csv.gz
+cf0abfe2de0d150e6c2022c3805b6b0495d85fc28aa42f044f1f7e17f298bf1a  EURJPY/EURJPY_1m.fixed.csv.gz
+b787ac5199f94dd58088173be0437ea39b0f7d6d16df975fe0363f9f270d6547  GBPJPY/GBPJPY_1m.fixed.csv.gz
+```
+
+- The full tables of both runs are in `docs/harmonic-results/` (`choose.md`,
+  `check.md`).
+
+### Part 1: how often the patterns appear
+
+Seven markets, both charts, both swing sizes. About one pattern in five gets
+to its end point; the rest are cancelled first.
+
+| Pattern   | Formed 2010 to 2018 | Price reached D | Cancelled first | Passed D inside the confirming candle | Formed 2019 to 2025 | Price reached D |
+| --------- | ------------------- | --------------- | --------------- | ------------------------------------- | ------------------- | --------------- |
+| Gartley   | 7399                | 2324 (31.4%)    | 4503            | 572                                   | 5351                | 1684 (31.5%)    |
+| Bat       | 5598                | 868 (15.5%)     | 4677            | 53                                    | 3941                | 529 (13.4%)     |
+| Butterfly | 10237               | 2083 (20.3%)    | 7926            | 228                                   | 7577                | 1440 (19.0%)    |
+| Crab      | 4493                | 262 (5.8%)      | 4226            | 4                                     | 3245                | 169 (5.2%)      |
+| All four  | 27727               | 5537 (20.0%)    | 21332           | 857                                   | 20114               | 3822 (19.0%)    |
+
+### Part 2: the look-back, order at D, 2010 to 2018
+
+Both charts, both swing sizes and all four patterns together. "Went my way"
+and "went against" are how far the Bid moved from the entry, before costs
+(gold's figures are in pips of $0.10). 1,165 more patterns were skipped
+because their stop was nearer than five times the cost.
+
+| Market    | Trades | Went my way (median) | Went against (median) | Reached +10 pips first | Reached 1 R first | Average at 1 R, before costs | After costs |
+| --------- | ------ | -------------------- | --------------------- | ---------------------- | ----------------- | ---------------------------- | ----------- |
+| All seven | 4372   | 12.2 pips            | 13.4 pips             | 49.9%                  | 43.7%             | -0.047 R                     | -0.150 R    |
+| EUR/USD   | 707    | 9.9 pips             | 11.6 pips             | 47.0%                  | 43.4%             | -0.057 R                     | -0.144 R    |
+| GBP/USD   | 664    | 10.2 pips            | 12.5 pips             | 48.9%                  | 41.6%             | -0.091 R                     | -0.181 R    |
+| Gold      | 559    | 23.1 pips            | 21.9 pips             | 50.4%                  | 44.0%             | -0.068 R                     | -0.189 R    |
+| USD/JPY   | 698    | 9.2 pips             | 9.3 pips              | 45.8%                  | 44.8%             | -0.033 R                     | -0.139 R    |
+| EUR/GBP   | 448    | 8.7 pips             | 7.4 pips              | 45.1%                  | 44.4%             | -0.001 R                     | -0.126 R    |
+| EUR/JPY   | 668    | 14.6 pips            | 14.5 pips             | 53.4%                  | 44.5%             | -0.029 R                     | -0.125 R    |
+| GBP/JPY   | 628    | 17.5 pips            | 18.0 pips             | 57.8%                  | 43.2%             | -0.037 R                     | -0.145 R    |
+
+Every target, all seven markets (pip targets are in pips; gold's in dollars):
+
+| Target             | Reached before the stop | Average before costs | Average after costs |
+| ------------------ | ----------------------- | -------------------- | ------------------- |
+| 0.5 R              | 56.4%                   | -0.072 R             | -0.174 R            |
+| 1 R                | 43.7%                   | -0.047 R             | -0.150 R            |
+| 1.5 R              | 35.5%                   | -0.034 R             | -0.139 R            |
+| 2 R                | 29.1%                   | -0.048 R             | -0.154 R            |
+| 3 R                | 21.5%                   | -0.065 R             | -0.171 R            |
+| 5 pips (gold $1)   | 61.8%                   | -1.2 pips            | -2.6 pips           |
+| 10 pips (gold $2)  | 49.9%                   | -1.0 pips            | -2.5 pips           |
+| 15 pips (gold $3)  | 42.5%                   | -0.7 pips            | -2.2 pips           |
+| 20 pips (gold $5)  | 36.3%                   | -0.8 pips            | -2.3 pips           |
+| 30 pips (gold $8)  | 29.0%                   | -0.6 pips            | -2.1 pips           |
+| 50 pips (gold $12) | 21.0%                   | -0.2 pips            | -1.7 pips           |
+
+In the plan's fixed words: **no target made money; the best row is the
+least-losing one, not a sweet spot.** That holds for the targets in R and for
+the targets in pips.
+
+What the trade was worth after a hold, stop in place:
+
+| Held for  | Above zero then, before costs | Average before costs | Average after costs |
+| --------- | ----------------------------- | -------------------- | ------------------- |
+| 4 hours   | 31.7%                         | -0.061 R             | -0.171 R            |
+| 12 hours  | 22.6%                         | -0.041 R             | -0.151 R            |
+| 24 hours  | 17.5%                         | -0.042 R             | -0.152 R            |
+| 48 hours  | 14.1%                         | -0.016 R             | -0.125 R            |
+| 72 hours  | 12.4%                         | +0.052 R             | -0.058 R            |
+| 120 hours | 9.1%                          | -0.005 R             | -0.115 R            |
+
+The same trade split three ways:
+
+| Split (entry at D, all markets) | Trades | Reached 1 R first | Average at 1 R, before costs | After costs |
+| ------------------------------- | ------ | ----------------- | ---------------------------- | ----------- |
+| Gartley                         | 2196   | 45.6%             | -0.011 R                     | -0.103 R    |
+| Bat                             | 828    | 41.7%             | -0.112 R                     | -0.197 R    |
+| Butterfly                       | 1093   | 39.8%             | -0.093 R                     | -0.238 R    |
+| Crab                            | 255    | 49.8%             | +0.055 R                     | -0.023 R    |
+| 15-minute chart                 | 2574   | 43.0%             | -0.054 R                     | -0.164 R    |
+| 30-minute chart                 | 1798   | 44.7%             | -0.037 R                     | -0.130 R    |
+| Swing size 2                    | 2535   | 43.0%             | -0.052 R                     | -0.163 R    |
+| Swing size 3                    | 1837   | 44.5%             | -0.040 R                     | -0.132 R    |
+
+### Part 3: do the confirmations help?
+
+All four patterns, both charts and both swing sizes together. The first
+columns are the choosing years; the columns for 2019 to 2025 come from the
+check and are description only.
+
+| Entry (all four patterns, both charts, both swing sizes) | Trades 2010 to 2018 | Average at 1 R, after costs | Average at 3 R, after costs | Trades 2019 to 2025 | Won at 1 R, before costs | Average at 1 R, before costs | After costs | Average at 3 R, before costs | After costs |
+| -------------------------------------------------------- | ------------------- | --------------------------- | --------------------------- | ------------------- | ------------------------ | ---------------------------- | ----------- | ---------------------------- | ----------- |
+| E0, order at D                                           | 4372                | -0.150 R                    | -0.171 R                    | 2887                | 42.6%                    | -0.067 R                     | -0.172 R    | -0.058 R                     | -0.166 R    |
+| C1, RSI and EMA                                          | 167                 | -0.053 R                    | +0.176 R                    | 132                 | 43.2%                    | -0.097 R                     | -0.150 R    | +0.084 R                     | +0.030 R    |
+| C2, reversal candle                                      | 1625                | -0.080 R                    | -0.035 R                    | 1163                | 45.0%                    | -0.047 R                     | -0.119 R    | +0.002 R                     | -0.072 R    |
+| C3, with the bigger trend                                | 2310                | -0.129 R                    | -0.143 R                    | 1578                | 41.6%                    | -0.098 R                     | -0.199 R    | -0.070 R                     | -0.175 R    |
+| C4, London and New York hours                            | 2381                | -0.176 R                    | -0.235 R                    | 1558                | 40.3%                    | -0.113 R                     | -0.215 R    | -0.115 R                     | -0.221 R    |
+| C5, trend plus RSI and EMA                               | 89                  | -0.112 R                    | +0.333 R                    | 74                  | 39.2%                    | -0.179 R                     | -0.227 R    | -0.180 R                     | -0.230 R    |
+
+C1 trades per market, 2010 to 2018: EUR/USD 32, GBP/USD 16, Gold 17, USD/JPY 34, EUR/GBP 22, EUR/JPY 21, GBP/JPY 25.
+
+### Part 4: choosing and the single check
+
+**Choosing, 2010 to 2018.** 1 of the 336 versions qualified: all four
+patterns, 30-minute chart, swing size 3, entry C3, exit X2. 400 trades, 28.0%
+won before costs, +0.103 R a trade before costs and +0.025 R after, sums of
++9.16 R and +0.90 R in the two halves, weekly t 0.29. Of the 2,352 versions
+on one market alone, 4 qualified; the best by weekly t was GBP/JPY, all four
+patterns, 15-minute chart, swing size 2, entry E0, exit X2: 250 trades, 32.0%
+won before costs, +0.142 R before costs and +0.021 R after, weekly t 0.22.
+
+**The check, 2019 to 2025.**
+
+| Line (after costs)                        | The candidate, all markets | The pair candidate, GBP/JPY |
+| ----------------------------------------- | -------------------------- | --------------------------- |
+| 1. Trades (200; pair 100)                 | 275, holds                 | 152, holds                  |
+| 2. Weekly t of 2.5 or more                | -1.75, no                  | -0.77, no                   |
+| 3. At least 5 of 7 years above zero       | 2, no                      | 2, no                       |
+| 4. Ahead of at least 190 of 200 twins     | 6, no                      | 47, no                      |
+| 5. Above zero at double cost              | -0.256 R a trade, no       | -0.212 R a trade, no        |
+| 6. More than half the markets above zero  | 2 of 7, no                 | not used                    |
+| Won before costs                          | 24.7%                      | 30.3%                       |
+| Average a trade before costs, after costs | -0.088 R, -0.172 R         | +0.030 R, -0.091 R          |
+| **Reading**                               | **"Not there"**            | **"Not there"**             |
+
+Before costs neither clears lines 2 and 4, so neither is "real but too small
+to trade", and neither is above zero after costs, so neither is "positive,
+not proven".
+
+**Did choosing carry information?** Of the 336 versions, 36 were above zero
+after costs on 2019 to 2025: none with an order at D alone or with the
+London and New York hours, and only one with at least 200 trades (at +0.001
+R a trade). The rank correlation of a version's average result between the
+two periods is 0.16.
+
+### What it means
+
+The Butterfly family behaves like the Fibonacci pullback this lab tested
+before, which is no surprise: its end points are the same Fibonacci levels.
+The five-point shape, the confirmations and the choice of target do not turn
+a coin flip into an edge on these seven markets. The next test asks the
+question one step earlier: does price turn at a level at all, more often than
+at a nearby price (`docs/levels-study.md`, branch `lab/indicator-research`).
