@@ -312,6 +312,44 @@ missing. Nothing has been computed.
    it and the average result after costs, in pips and in R. The same fixed
    wording applies. These are descriptions, not among the 336 versions.
 
+## Amendment 2: John's pairs, longer holds and a middle answer (2026-11-17 night, before any code was written)
+
+John read the summary of this plan and asked (2026-11-17) for three things:
+to look first at whether the trades work and less at fees; to test on the
+pairs he trades and find the pair where the method works best; and to see
+what holding a position for days would have done. Nothing has been computed.
+
+1. **Markets.** Four are added: USD/JPY, EUR/GBP, EUR/JPY and GBP/JPY, from
+   the same source, 2005 to 2025, with the same clock repair and check. With
+   EUR/USD, GBP/USD and gold that makes seven. A market whose file fails the
+   clock check is left out and named in the results. Spreads: USD/JPY 0.9
+   pip, EUR/GBP 1.0, EUR/JPY 1.3, GBP/JPY 2.0. A pip is 0.01 for the yen
+   pairs. Where the plan says "the three markets", read "the markets used".
+   Pass line 6 becomes: more than half of the markets used are above zero.
+2. **The best pair.** The 336 versions are also run on each market alone. A
+   version on one market qualifies with at least 150 trades over 2010 to 2018
+   and an average result above zero after costs in both halves. The best by
+   weekly t-statistic is the **pair candidate**. It is checked once on 2019
+   to 2025, in the same single run as the candidate, with the same pass lines
+   except line 6 and with 100 trades in place of 200. If no version on any
+   one market qualifies, the results say so.
+3. **Holding longer.** Parts 2 and 3 also show what a trade was worth 72 and
+   120 hours after the fill, stop in place.
+4. **Order of reporting.** Every table leads with how often the trade worked
+   and how far price went, before costs, with the after-cost figure beside
+   it. The choosing, the pass lines and the readings stay after costs.
+5. **A middle answer.** A fourth reading, **"Positive, not proven"**: the
+   candidate (or the pair candidate) does not pass, but after costs its
+   average result on 2019 to 2025 is above zero and it is ahead of at least
+   100 of its 200 twins. In those words it may be offered to John for a
+   play-money account as the next test, never as a proven rule. The readings
+   are tried in this order: worth a play account; positive, not proven; real
+   but too small to trade; not there.
+6. **Limits added.** The pair candidate is the best of 2,352 tries (336
+   versions on seven markets), so luck alone makes it look good in the
+   choosing years more easily than the candidate. The spreads of the four new
+   pairs are assumed typical values.
+
 ## Results
 
 Not run yet.
