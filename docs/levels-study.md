@@ -983,4 +983,368 @@ kinds of prices with no memory give", and no more than that.
 
 ## Results
 
-Not run yet.
+### How the run that counts was prepared (2026-11-18)
+
+**The code for Amendment 1.** One programmer added points A to H to the
+runner. A second read the change against this page, rebuilt the mirrored
+minutes and every rest with programs of his own (the largest difference in a
+mirrored price was 1 part in 10^14; all 2,880 baselines, spreads, rests,
+standard errors and t's of a rehearsal agreed) and planted fourteen errors,
+each of which a unit test caught. A third made three wording fixes. The unit
+tests number 152. The code was committed and pushed (efb2339) before any real
+table was read; the choosing run and the check both ran from that commit.
+
+**Readings taken where Amendment 1 left a point open.** None was chosen by
+looking at a result.
+
+1. _Two pair candidates._ When the pair candidate on the rest and the one as
+   written are different rules, both go to the check. It did not come up.
+2. _The end of the study._ The study ends without a check only when nothing
+   is chosen under either reading, as point F implies.
+3. _The pair candidate as written._ The plan's sentence about reading a rule
+   on the rest names the choosing bar and the lines L1 to L3. So the code
+   puts the pair candidate's lines, as written, on the plain lift, also for a
+   rule whose Placebo 2 lift is outside. This is the one reading that
+   mattered: see Part 4.
+4. _The note on a Run rule_ uses the smaller of the two Turn rests at the
+   same distance.
+5. _Point E with fewer than two series that had a lift:_ the smallest lift is
+   written "not seen (no standard error)".
+6. _The forty rules on 2019 to 2025_ are worked out without draws, as before,
+   so their rests are printed without a standard error.
+7. _The mirrored minutes_ are computed with each ratio taken first (O = P x
+   (o / p)): the same algebra, and the high and the low keep their order
+   exactly.
+
+**A control run.** Before the run that counts, the same commit ran the whole
+choosing step (2005 to 2018, ten series of each kind) on a made-up world: the
+seven development files with every minute kept or turned by seed 99, that is,
+prices with their real swings in size and no memory of direction. Nothing was
+chosen there under either reading and no rule on one market qualified. Of the
+80 rests, 3 were more than 2 standard errors from zero (R50 Run hold, -2.15
+and -2.18; ZD Turn hold against mirrored minutes, -2.00) and none more than
+3; the best rule on one market had a smaller t of 2.39. The zones' lifts
+stood off zero there as in Amendment 1's table (Z4 Turn quick: lift +2.85,
+baselines +2.62 and +2.43, rests +0.23 and +0.42). The reading on the rest
+finds nothing where there is nothing.
+
+**Order of reading.** The status line of the choosing run (counts only), then
+its placebo section, then its tables. The check ran after that.
+
+### The answer (run 2026-11-18)
+
+**Price did not turn at these levels more than at nearby prices. No rule was
+chosen, and a quick order placed at a level lost money before costs in all
+ten kinds.** One rule on one market qualified under the plan's own reading (not
+under Amendment 1's), so the single check ran for it: on USD/JPY, a break of
+yesterday's high or low runs on more often than a break of a nearby price.
+Its reading on 2019 to 2025 is **"Real but too small to trade"**: the level
+lines held on the unseen years against both kinds of prices with no memory,
+and the trade that goes with the break lost 0.07 R a trade after costs.
+
+John's questions, on 2005 to 2018 and seven markets:
+
+- **Do the floors and ceilings of the bigger charts turn price?** Not more
+  than prices with no memory do. A 4-hour zone that had turned price three
+  times or more was visited 938 times. At the quick distance 57.6 of 100
+  visits turned against 55.3 at nearby prices (+2.33, t 1.08), and prices
+  with no memory give +1.96 and +2.64 from the way a zone is built, so
+  nothing is left (+0.36 and -0.31). At the hold distance it was 52.8 against
+  45.2 (+7.56), of which +3.88 and +3.54 is the build; what is left (+3.68
+  and +4.01) is 1.2 standard errors: "not seen at 9.6 points or more". 938
+  visits in fourteen years cannot show less than that. On 2019 to 2025, as
+  description only, the quick lift was -4.43 and the hold lift +4.77. Daily
+  zones (228 visits) turned price less often than nearby prices (59.7 against
+  67.1). More turns did not make a zone stronger: quick lift with two turns
+  -2.8 (4,843 visits), three +3.1 (696), four or more -5.0 (178); daily +2.4
+  (1,162), -6.0 (164), -12.5 (43). These splits have no baseline of their
+  own, and for the two-turn zones Placebo 1 lay outside its limit (cause
+  found in part, see below).
+- **Round numbers and yesterday's high and low** turned price less often
+  than nearby prices: 48.0 of 100 against 50.3 at the 00 levels (-2.36, t
+  -7.8, in all seven markets), 49.0 against 50.3 at the 50 levels (-1.28, t
+  -5.1, in five of the seven), 47.7 against 50.5 at yesterday's high and low
+  (-2.78, t -6.6, in all seven). Prices with no memory show nothing of the kind, and 2019 to 2025
+  showed it again (-2.46, -1.76, -2.31). Last week's high and low: 49.3
+  against 49.8.
+- **How far a turn goes.** The quick distance was 27 to 39 pips on average
+  and the hold distance 107 to 154. Where price turned at the quick distance,
+  the median distance it then went was 53 to 85 pips.
+- **The plain trades.** The order at the level (T0, quick) lost 1.3 to 5.3
+  pips a trade before costs in all ten kinds, and 2.7 to 6.9 after. All kinds
+  together, after costs: T0 -0.110 R (136,410 trades), T1 -0.092 R (85,399),
+  B0 -0.102 R (103,194).
+- **What waiting for the close back out adds.** T1 lost less than T0 in nine
+  of the ten kinds (yesterday's high and low: T0 -0.136 R, T1 -0.107 R; the
+  classic daily Fibonacci levels: T0 -0.168 R, T1 -0.044 R) and still lost
+  in every one.
+- **Quick against hold.** No difference: T0 -0.110 R quick and -0.111 R hold;
+  T1 -0.092 R and -0.088 R; B0 -0.102 R and -0.082 R.
+- **Fibonacci.** Nothing. Quick Turn lifts: F4C -1.9 (t -1.87), FDC 0.0, F4J
+  -2.6 (prices with no memory give -3.1 and -2.6 for John's 0.786 to 0.886
+  area, so the rest is +0.5 and 0.0), FDJ -0.2.
+- **The best pair.** None under Amendment 1's reading. Under the plan's own:
+  USD/JPY, breaks of yesterday's high or low. Real, and too small to trade.
+- **Pairs that move alike.** EUR/JPY and GBP/JPY are close to one bet: their
+  daily changes move together 0.82 (2005 to 2011), 0.74 (2012 to 2018) and
+  0.76 (2019 to 2025). USD/JPY and GBP/JPY reached 0.71 in 2005 to 2011 only;
+  EUR/USD and GBP/USD 0.66, 0.56 and 0.70.
+
+### What was run
+
+- **The choosing run**: commit efb2339, the development copies of the seven
+  files (they end on 2018-12-31), 2005 to 2018 (gold from 2009). 142,658
+  visits to the ten kinds: R00 44,843; R50 49,088; PD 26,785; PW 12,985; Z4
+  938; ZD 228; F4C 4,390; FDC 880; F4J 2,098; FDJ 423; and 5,132 and 1,290 to
+  the two-turn zones of the 4-hour and the daily chart. Trades in the ten
+  kinds: T0 136,410, T1 85,399, B0 103,194. Twenty series with no memory, all
+  kinds built on each.
+- **The check**, once: the marker was written on 2026-11-18 at 21:34 UTC,
+  before any bar from 2019 on was read. The full files had the hashes taken
+  before the builds. One pick. Settled before 2019: 165,557 visits with their
+  trades and the twins' sums compared with the choosing run, 0 differences.
+  The twenty series were built again on the whole files inside the check.
+- **Files**: `~/.local/share/trade-hub/levels-results/choose` and
+  `~/.local/share/trade-hub/levels-results/check` on the Mac Mini (not in
+  git): `choose.md` and `check.md` hold every table of this page's parts; the
+  json files hold every number, each series' lifts included, so any rest can
+  be worked out again.
+
+### The placebos, read first
+
+Everything in them is covered by the causes written in Amendment 1.
+
+**Placebo 1** is the same as in the practice runs: every kind inside, and the
+two-turn zones of the 4-hour chart outside (Z4x2 +2.33, standard error 0.74,
+limit 1.86). The cause is the one written there, found in part. Nothing is
+chosen from two-turn zones.
+
+**Placebo 2**, shuffled days with seed 1 (after the fix of point 30, so not
+the shuffle of the practice runs), lay outside 2.5 standard errors of zero in
+seven cells. Beside each, the mean and the spread of the ten shuffles and of
+the ten mirrored series say which of the three written causes it is:
+
+- **Chance of this one shuffle**: R00 turn 1.00 (+0.79; ten shuffles -0.02,
+  spread 0.41; mirrored +0.01) and F4C turn 1.00 (+3.05; ten shuffles +0.47,
+  spread 1.20; mirrored -0.76). In the practice runs it was R50 and F4C at
+  the same distance. The spread between shuffles is again wider than one
+  shuffle's standard error there.
+- **The shuffled series itself**: PD turn 0.10 (-0.89), turn 0.25 (-1.18) and
+  run 0.25 (+1.25); the ten shuffles agree (-0.64, -0.49, +0.57) and the
+  mirrored series show nothing (-0.04, +0.09, -0.20).
+- **How the kind is built**: Z4 turn 1.00 (+6.72; ten shuffles +3.88,
+  mirrored +3.54) and F4J turn 0.10 (-3.05; -3.96 and -2.99).
+
+The means of the ten series stand off zero where Amendment 1's table says
+they would: the zones (Z4, ZD, Z4x2, ZDx2), FDC and F4J, in both kinds of
+prices with no memory, and PD on shuffled days only. One mark falls outside
+that list, R00 run 0.25 on shuffled days (-0.22, spread 0.26), which is the
+size chance gives among 120 means.
+
+### Parts 1 to 3: the choosing years in one table
+
+All markets, 2005 to 2018. "Turned" is out of 100 visits that turned or broke
+at the quick distance (0.25 x ATR, 24 hours). Pips are a trade's average.
+
+| Kind | Visits | Turned: at the level / at nearby prices | Lift | Prices with no memory give: shuffled days / mirrored minutes | Median pips a turn went | T0 quick, pips before / after costs | T1 quick, before / after |
+| ---- | ------ | --------------------------------------- | ---- | ------------------------------------------------------------ | ----------------------- | ----------------------------------- | ------------------------ |
+| R00  | 44,843 | 48.0 / 50.3                             | -2.4 | +0.1 / +0.0                                                  | 80.0                    | -2.4 / -3.9                         | -1.9 / -3.5              |
+| R50  | 49,088 | 49.0 / 50.3                             | -1.3 | -0.1 / +0.1                                                  | 85.1                    | -1.9 / -3.5                         | -1.1 / -2.9              |
+| PD   | 26,785 | 47.7 / 50.5                             | -2.8 | -0.5 / +0.1                                                  | 59.7                    | -2.3 / -3.7                         | -1.0 / -2.6              |
+| PW   | 12,985 | 49.3 / 49.8                             | -0.5 | -0.0 / +0.3                                                  | 59.0                    | -1.3 / -2.7                         | -0.8 / -2.5              |
+| Z4   | 938    | 57.6 / 55.3                             | +2.3 | +2.0 / +2.6                                                  | 53.0                    | -3.5 / -4.8                         | -2.7 / -4.2              |
+| ZD   | 228    | 59.7 / 67.1                             | -7.4 | +3.9 / +5.1                                                  | 61.9                    | -5.3 / -6.9                         | -3.6 / -5.4              |
+| F4C  | 4,390  | 48.9 / 50.7                             | -1.9 | -0.2 / -0.0                                                  | 62.3                    | -1.5 / -2.9                         | +0.2 / -1.4              |
+| FDC  | 880    | 48.9 / 48.9                             | -0.0 | +0.6 / +1.9                                                  | 61.5                    | -3.7 / -5.2                         | -1.2 / -2.9              |
+| F4J  | 2,098  | 61.1 / 63.7                             | -2.6 | -3.1 / -2.6                                                  | 58.5                    | -1.5 / -2.9                         | +0.2 / -1.4              |
+| FDJ  | 423    | 75.7 / 76.0                             | -0.2 | +1.0 / +0.3                                                  | 58.9                    | -1.8 / -3.2                         | -0.3 / -2.0              |
+
+Fifteen minutes after a touch the close was back on the near side of the
+level less often than at nearby prices too (R00 51.6 of 100 against 54.3; PD
+51.4 against 55.0; Z4 46.9 against 52.1).
+
+**The trades, cell by cell.** Part 3 has 480 cells for the ten kinds (each
+kind, on all markets and on each market, three trades, quick and hold). 68
+were above zero after costs. Of those, 15 had 200 trades or more, and the
+steadiest of them had a weekly t of 1.29 (last week's high and low on
+EUR/USD, with the break, hold: +0.067 R on 1,394 trades). On all markets
+together three cells were above zero after costs, none of them steady (FDJ T0
+hold +0.043 R on 410 trades, weekly t 0.72; ZD B0 hold +0.158 R on 87 trades;
+F4C T1 hold +0.005 R). No lead is taken from these tables.
+
+### Part 4: choosing and the single check
+
+**Choosing, 2005 to 2018.** None of the forty rules was chosen, on the rest
+or as written. In the table a rule's "decided visits" are the ones that ended
+in a turn or a break (for a Run rule: a run or a fail).
+
+| Rule           | Decided visits | Lift (t)      | Prices with no memory give: shuffled days / mirrored minutes | What is left, the rest (t): against shuffled days / against mirrored minutes | 2019 to 2025: lift | 2019 to 2025: the rest, shuffled / mirrored | 2019 to 2025: markets above zero |
+| -------------- | -------------- | ------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------------ | ------------------------------------------- | -------------------------------- |
+| R00 Turn quick | 43,324         | -2.36 (-7.83) | +0.10 / +0.02                                                | -2.46 (-7.83) / -2.38 (-6.97)                                                | -2.46              | -2.52 / -2.49                               | 0                                |
+| R00 Turn hold  | 33,773         | -0.18 (-0.55) | -0.02 / +0.01                                                | -0.16 (-0.37) / -0.19 (-0.52)                                                | +0.16              | +0.34 / +0.26                               | 4                                |
+| R00 Run quick  | 31,248         | +0.48 (1.41)  | -0.22 / -0.11                                                | +0.70 (2.01) / +0.59 (1.32)                                                  | +0.34              | +0.34 / +0.48                               | 5                                |
+| R00 Run hold   | 24,403         | -0.52 (-1.56) | -0.13 / -0.14                                                | -0.39 (-1.14) / -0.38 (-1.11)                                                | -0.72              | -0.99 / -0.83                               | 1                                |
+| R50 Turn quick | 47,365         | -1.28 (-5.13) | -0.05 / +0.10                                                | -1.23 (-4.84) / -1.38 (-4.24)                                                | -1.76              | -1.73 / -1.88                               | 2                                |
+| R50 Turn hold  | 36,900         | -0.45 (-1.68) | +0.11 / +0.05                                                | -0.56 (-2.02) / -0.50 (-1.29)                                                | -0.59              | -0.54 / -0.52                               | 2                                |
+| R50 Run quick  | 34,027         | -0.32 (-1.10) | +0.00 / -0.06                                                | -0.32 (-0.90) / -0.26 (-0.86)                                                | +0.50              | +0.65 / +0.61                               | 5                                |
+| R50 Run hold   | 26,618         | +0.26 (0.96)  | -0.15 / -0.11                                                | +0.41 (1.42) / +0.37 (1.17)                                                  | -0.15              | -0.20 / -0.23                               | 2                                |
+| PD Turn quick  | 25,924         | -2.78 (-6.62) | -0.49 / +0.09                                                | -2.29 (-5.30) / -2.87 (-5.82)                                                | -2.31              | -1.77 / -2.56                               | 0                                |
+| PD Turn hold   | 20,137         | +0.17 (0.28)  | -0.01 / +0.23                                                | +0.17 (0.29) / -0.06 (-0.08)                                                 | -0.61              | -0.91 / -0.34                               | 1                                |
+| PD Run quick   | 18,829         | +2.33 (4.66)  | +0.57 / -0.20                                                | +1.76 (3.37) / +2.53 (4.93)                                                  | +2.88              | +2.19 / +3.13                               | 7                                |
+| PD Run hold    | 14,559         | -0.77 (-1.31) | -0.05 / +0.08                                                | -0.73 (-1.21) / -0.86 (-1.34)                                                | -0.06              | +0.05 / -0.05                               | 4                                |
+| PW Turn quick  | 12,594         | -0.51 (-0.94) | -0.04 / +0.34                                                | -0.47 (-0.85) / -0.85 (-1.49)                                                | -0.89              | -0.85 / -1.22                               | 2                                |
+| PW Turn hold   | 9,806          | +1.31 (1.80)  | +0.30 / +0.32                                                | +1.01 (1.33) / +0.99 (1.31)                                                  | +1.10              | +0.93 / +0.54                               | 4                                |
+| PW Run quick   | 8,987          | +1.40 (2.38)  | +0.03 / -0.38                                                | +1.38 (2.26) / +1.78 (2.91)                                                  | +1.09              | +1.42 / +1.61                               | 5                                |
+| PW Run hold    | 6,953          | -2.44 (-3.15) | -0.50 / -0.31                                                | -1.94 (-2.10) / -2.13 (-2.67)                                                | -1.45              | -1.17 / -0.63                               | 3                                |
+| Z4 Turn quick  | 875            | +2.33 (1.08)  | +1.96 / +2.64                                                | +0.36 (0.16) / -0.31 (-0.14)                                                 | -4.43              | -5.34 / -6.85                               | 1                                |
+| Z4 Turn hold   | 691            | +7.56 (2.48)  | +3.88 / +3.54                                                | +3.68 (1.17) / +4.01 (1.26)                                                  | +4.77              | +2.37 / +6.26                               | 5                                |
+| Z4 Run quick   | 483            | -0.77 (-0.27) | -1.23 / -0.85                                                | +0.46 (0.16) / +0.08 (0.03)                                                  | +3.32              | +5.16 / +6.64                               | 5                                |
+| Z4 Run hold    | 384            | -2.35 (-0.81) | -2.93 / -4.37                                                | +0.58 (0.19) / +2.03 (0.67)                                                  | -5.65              | -0.68 / -6.17                               | 1                                |
+| ZD Turn quick  | 207            | -7.41 (-1.62) | +3.88 / +5.13                                                | -11.30 (-2.42) / -12.54 (-2.28)                                              | -2.85              | -7.16 / -8.08                               | 3                                |
+| ZD Turn hold   | 144            | -3.44 (-0.48) | +7.81 / +8.70                                                | -11.25 (-1.50) / -12.13 (-1.44)                                              | -0.03              | -6.62 / -2.35                               | 2                                |
+| ZD Run quick   | 85             | +2.57 (0.33)  | -2.00 / -3.29                                                | +4.57 (0.57) / +5.86 (0.67)                                                  | +8.58              | +10.79 / +8.47                              | 4                                |
+| ZD Run hold    | 71             | +0.73 (0.11)  | -5.13 / -6.95                                                | +5.86 (0.84) / +7.68 (0.99)                                                  | -10.32             | +0.50 / -5.54                               | 0                                |
+| F4C Turn quick | 4,294          | -1.89 (-1.87) | -0.16 / -0.01                                                | -1.73 (-1.68) / -1.88 (-1.83)                                                | +2.11              | +2.51 / +2.02                               | 6                                |
+| F4C Turn hold  | 3,327          | -0.61 (-0.48) | +0.47 / -0.76                                                | -1.08 (-0.82) / +0.15 (0.10)                                                 | +0.62              | +0.99 / +0.38                               | 5                                |
+| F4C Run quick  | 3,096          | +2.02 (1.76)  | +0.35 / -0.01                                                | +1.68 (1.08) / +2.03 (1.73)                                                  | -2.88              | -3.59 / -2.70                               | 1                                |
+| F4C Run hold   | 2,416          | +0.80 (0.55)  | -0.86 / +0.41                                                | +1.66 (1.10) / +0.39 (0.25)                                                  | -1.27              | -1.92 / -0.86                               | 2                                |
+| FDC Turn quick | 851            | -0.02 (-0.01) | +0.57 / +1.91                                                | -0.59 (-0.31) / -1.93 (-1.01)                                                | +2.08              | +0.94 / +0.84                               | 5                                |
+| FDC Turn hold  | 643            | +4.39 (2.17)  | +1.64 / +2.99                                                | +2.75 (1.33) / +1.40 (0.67)                                                  | +4.28              | +1.59 / +1.37                               | 6                                |
+| FDC Run quick  | 598            | +0.71 (0.34)  | -1.17 / -2.10                                                | +1.89 (0.78) / +2.82 (1.30)                                                  | -1.03              | -0.30 / -1.93                               | 2                                |
+| FDC Run hold   | 447            | -3.72 (-1.61) | -1.70 / -2.57                                                | -2.02 (-0.85) / -1.14 (-0.48)                                                | -4.96              | -2.84 / -2.60                               | 1                                |
+| F4J Turn quick | 1,947          | -2.62 (-1.76) | -3.08 / -2.61                                                | +0.46 (0.24) / -0.00 (-0.00)                                                 | -4.39              | -1.87 / -1.87                               | 1                                |
+| F4J Turn hold  | 1,446          | -0.75 (-0.43) | -1.37 / -0.48                                                | +0.62 (0.35) / -0.27 (-0.13)                                                 | -0.29              | +0.91 / +0.02                               | 4                                |
+| F4J Run quick  | 958            | +2.21 (1.12)  | +1.14 / +0.43                                                | +1.06 (0.44) / +1.78 (0.75)                                                  | +2.68              | +2.38 / +2.67                               | 3                                |
+| F4J Run hold   | 738            | -1.43 (-0.57) | -0.01 / -1.35                                                | -1.42 (-0.55) / -0.08 (-0.03)                                                | -1.54              | -1.38 / -0.71                               | 2                                |
+| FDJ Turn quick | 338            | -0.23 (-0.08) | +1.03 / +0.33                                                | -1.26 (-0.41) / -0.56 (-0.18)                                                | +0.16              | +0.03 / -2.29                               | 4                                |
+| FDJ Turn hold  | 253            | -0.83 (-0.23) | +1.20 / +2.08                                                | -2.03 (-0.55) / -2.91 (-0.77)                                                | -2.85              | -3.40 / -7.01                               | 3                                |
+| FDJ Run quick  | 123            | +9.08 (1.23)  | -0.38 / +0.36                                                | +9.47 (1.25) / +8.72 (1.14)                                                  | +16.51             | +18.37 / +18.60                             | 5                                |
+| FDJ Run hold   | 94             | -3.14 (-0.38) | -2.64 / -2.25                                                | -0.50 (-0.06) / -0.89 (-0.10)                                                | +8.11              | +7.49 / +12.80                              | 4                                |
+
+Sixteen of the 80 rests are more than 2 standard errors from zero (the
+control run on prices with no memory had 3). Eight of them are past 3, all in
+four rules: R00, R50 and PD Turn quick below zero, and PD Run quick above
+it. So the real market is not prices with no memory, and what it does at the
+plainest levels is the opposite of holding: price goes through a 00 level and
+through yesterday's high or low more often than through a nearby price.
+
+**The nearest miss** is PD Run quick: after a break of yesterday's high or
+low, price ran on a further quarter of the daily range (instead of failing
+back) 51.4 times in 100 against 49.1 at nearby prices, in all seven markets
+and in both halves (+2.33, t 4.66). Against mirrored minutes it holds all four
+lines (+2.53, t 4.93). Against shuffled days it holds three and misses the
+first by a quarter of a point (+1.76 against the bar of 2; t 3.37). As written
+it is read on the rest of seed 1 (+1.08) and is not chosen either. It did not
+go to the check, so it has no reading. As description, on 2019 to 2025 its
+lift was +2.88, above zero in all seven markets, with rests of +2.19 and
++3.13.
+
+**The pair candidate.** Of the 280 rules on one market, none qualified on the
+rest. One qualified as written: **USD/JPY, PD Run quick**, with 3,038 decided
+visits, 52.5 runs in 100 against 48.2 (+4.32, t 3.96, halves +5.25 and
++3.45). On the rest it is +3.65 (t 3.28) against shuffled days and +4.99 (t
+4.36) against mirrored minutes, so it misses the 4 points and the t of 3.5
+against the first. Under reading 3 above its as-written lines are on the plain
+lift. Had they been put on the rest of seed 1, as the plan does for the
+choosing bar, it would not have qualified (+4.32 less +1.98 is +2.34). Point F
+sends it to the check as chosen "as written only", and the words it gets
+there come from the level lines on the rest.
+
+**The check, 2019 to 2025.** One rule and one rule and trade pair were taken,
+so line P2 asks for a weekly t of 2.5.
+
+| USD/JPY, PD Run quick             | 2005 to 2018 | 2019 to 2025                 |
+| --------------------------------- | ------------ | ---------------------------- |
+| Decided visits                    | 3,038        | 1,403                        |
+| Runs in 100: level / nearby       | 52.5 / 48.2  | 56.1 / 48.7                  |
+| Lift (t)                          | +4.32 (3.96) | +7.44 (4.69)                 |
+| Shuffled days give (spread)       | +0.66 (0.70) | +1.62 (1.34)                 |
+| Rest against shuffled days (t)    | +3.65 (3.28) | +5.83 (3.55): L1 and L2 hold |
+| Mirrored minutes give (spread)    | -0.67 (1.08) | -0.73 (1.12)                 |
+| Rest against mirrored minutes (t) | +4.99 (4.36) | +8.17 (5.02): L1 and L2 hold |
+| B0 quick: trades                  | 3,175        | 1,478 (P1 holds)             |
+| Target first                      | 47.4%        | 47.6%                        |
+| Average before costs              | +0.003 R     | -0.009 R, -0.8 pips          |
+| Average after costs               | -0.058 R     | -0.073 R, -2.0 pips          |
+| At double cost                    |              | -0.136 R (P5 fails)          |
+| Weekly t                          | -3.18        | -2.48 (P2 fails)             |
+| Years above zero                  |              | 1 of 7, only 2025 (P3 fails) |
+| Gap to its twins (t)              | +0.091 R     | +0.138 R (4.19) (P4 holds)   |
+
+By year, in R: 2019 -21.6, 2020 -1.4, 2021 -6.8, 2022 -7.6, 2023 -25.9, 2024
+-51.7, 2025 +7.6; in all -107.3 R on 1,478 trades.
+
+**"Real but too small to trade"**, under Amendment 1's reading and under the
+plan's own. The level lines hold on years the choice never saw, more strongly
+than on the choosing years, and against both kinds of prices with no memory.
+The trade that goes with the break breaks even before costs and loses after
+them: it is far better than the same trade at a nearby price (the gap) and
+still not a way to make money. No note on the Run rule applies: the
+Turn reading at the same distance is below zero.
+
+**Did choosing carry information?** Of the forty rules, 17 had a lift above
+zero on 2019 to 2025, and 17 a smaller rest above zero. The rank correlation
+of the forty lifts between the two periods is 0.44 (on the smaller rest:
+0.44). What carried over is the picture above: R00, R50 and PD Turn quick
+below zero again (-2.46, -1.76 and -2.31; R00 and PD in no market above
+zero), PD Run quick above it again. The zones and the Fibonacci levels did
+not carry over (Z4 Turn quick +2.33 then -4.43; F4C Turn quick -1.89 then
++2.11).
+
+### Part 5: pairs that move alike
+
+Daily changes, correlation by period (2005 to 2011, 2012 to 2018, 2019 to
+2025); the 4-hour figures are within 0.06 of these.
+
+| Pair                | 2005 to 2011 | 2012 to 2018 | 2019 to 2025 |
+| ------------------- | ------------ | ------------ | ------------ |
+| EUR/JPY and GBP/JPY | 0.82         | 0.74         | 0.76         |
+| USD/JPY and GBP/JPY | 0.71         | 0.68         | 0.57         |
+| EUR/USD and GBP/USD | 0.66         | 0.56         | 0.70         |
+| EUR/JPY and USD/JPY | 0.65         | 0.64         | 0.67         |
+| GBP/USD and GBP/JPY | 0.66         | 0.62         | 0.52         |
+| EUR/USD and EUR/JPY | 0.62         | 0.52         | 0.33         |
+| GBP/USD and EUR/GBP | -0.36        | -0.51        | -0.58        |
+| USD/JPY and gold    | -0.17        | -0.39        | -0.39        |
+
+EUR/JPY and GBP/JPY are close to one bet in every period. Gold is not close
+to any of the six (0.39 at most, either way).
+
+### What it means
+
+- **The idea as John put it does not show up in these prices.** A level that
+  "turns price back every time it gets there" would have a Turn lift well
+  above what prices with no memory give. No kind has one. The zones look like
+  it on a chart because any price that was a turning point three times looks
+  like a floor afterwards; made-up prices with no memory produce the same
+  picture and the same 2 to 4 points.
+- **The plainest levels do the opposite.** At a 00 level and at yesterday's
+  high and low, price went through more often than at a nearby price, on both
+  periods. Fading them is worse than fading a random price.
+- **One thing is real, and small.** A break of yesterday's high or low runs
+  on more often than a break of a nearby price: in all seven markets, on both
+  periods, most on USD/JPY. It is worth 2 to 3 runs in 100 across the seven
+  markets and 4 to 7 on USD/JPY. A plain trade with the break breaks even
+  before costs and loses after them.
+- **By this page's own rule the confirmations are not tested.** "What comes
+  after" was only for rules whose level lines hold as turning points. None
+  does.
+- **If anything here is taken further**, it is the break of yesterday's high
+  or low as a condition inside another rule (never fade it; lean with it),
+  not as a trade of its own. That would be a new plan, written before its
+  code, on data this study has not used for choosing. Nothing is started.
+- **The method lesson.** A comparison with nearby prices is not neutral for
+  levels made from past turning points. Every such test needs prices with no
+  memory beside it, several series of them, before a single real table is
+  read. Without that step the tables would have shown 4-hour zones turning
+  price 8 points more often at the hold distance, about half of which is the
+  way a zone is built.
+
+Limits as said in advance, and two more. The years 2019 to 2025 have now been
+opened once for this study, for one candidate; the figures of the other
+thirty-nine rules on those years are description and carry no reading. And
+the one candidate reached the check through the plan's own reading of the
+pair candidate, which Amendment 1 would not have passed; the check's answer
+does not depend on that, since its level lines hold against both baselines.
+
+Play money only. No broker is connected. This is not financial advice.
