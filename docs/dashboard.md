@@ -230,6 +230,54 @@ dollars with the live pairs (`quoteToUsd`).
 | `src/lib/hooks/useRace.ts`           | SWR hook for `/api/race`, plus `requestClose` (Close now)                |
 | `useCandleMap` in `useMarketData.ts` | Candles for every open market in one SWR fetch                           |
 
+## Terminal
+
+Added 2026-11-18 (`/terminal`, "Terminal" in the nav, second item). A
+MetaTrader 4 style screen: a big live chart on top, the trades below. Play
+money only.
+
+- **Chart** (about 52% of the screen height on a computer, 300 px on a
+  phone): candles of one market, 15m / 1h / 4h from Kraken (GBP/JPY
+  computed). ECB-only pairs (USD/JPY, NZD/USD) say "Daily candles only for
+  this market"; the lab's US30 has no candle route and says so. Default: the
+  market of the newest open trade, else gold. A header strip has a market
+  picker, the last price (priced like the rows) and the change against the
+  close a day back. Open trades of the shown account(s) in that market are
+  price lines with labels at the right: entry solid, stop red dashed, target
+  green (T1 and T2 when the trade has a first target). Closed trades whose
+  entry and exit fall in the loaded candles show an arrow at the entry, a dot
+  at the exit and a dotted line between, green if it made money (at most 30).
+  Times are Puerto Rico time (intraday candles move back 4 hours; daily keep
+  their date).
+- **Account filter**: All accounts (the strategy accounts only, since the
+  funded tests copy London v1 and would count its trades twice), one strategy
+  account, or one funded test size (labelled "copies London v1"). Saved as
+  `trade-hub-terminal-account` in localStorage, in try/catch.
+- **Tabs**: Open trades (count) and History (count). MT4 columns: Account,
+  Market, Type, Size (`sizeText`), Opened, Entry, Stop, Target, Price now,
+  Pips (forex only), Profit (before fees, like `openPnl`); History adds
+  Closed, Exit, Reason (`REASON_TEXT`) and the net profit. A trade closed in
+  halves is two rows, the first says "hit first target (half)". Clicking a
+  row picks its market and highlights its lines (others dim; the chart keeps
+  its stop and targets in view). The tables scroll inside their box.
+- **Footer**: Balance, Equity (balance + open P&L) and Open P&L; with All
+  accounts it says it is the sum of the play accounts. "Updated" is the last
+  time the race or the prices changed (Puerto Rico time).
+- **Live**: `useRace` (60 s) and `useLivePrices`; candles refresh every 60 s.
+- Empty and error states: no open trades in the account, the race not
+  reachable, no candles for a market.
+
+| File                                        | Role                                                     |
+| ------------------------------------------- | -------------------------------------------------------- |
+| `src/app/terminal/page.tsx`                 | The page: header strip, chart, filter, tabs, footer      |
+| `src/components/terminal/TerminalChart.tsx` | lightweight-charts candles, price lines, trade markers   |
+| `src/lib/race/terminal.ts`                  | Pure: accounts, rows, footer sums, chart lines and trips |
+| `src/lib/race/terminal.test.ts`             | Tests                                                    |
+
+Local dev from a git worktree whose `node_modules` is a symlink: Turbopack
+refuses it ("points out of the filesystem root"), so run
+`next dev --webpack` there.
+
 ## Gotcha
 
 In the sheet, `<b>Not built yet:</b> trailing ... P&amp;L ...` rendered as

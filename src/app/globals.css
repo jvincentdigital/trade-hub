@@ -241,3 +241,108 @@ body::before {
     display: none;
   }
 }
+
+/* Terminal (src/app/terminal/page.tsx): a big chart on top, trades below, like
+   MT4. Looks are inline; only what changes with width is here. The tables
+   scroll sideways inside their box, never the page. */
+.term-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 20px;
+}
+.term-tf {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  align-items: center;
+}
+.term-tf > span {
+  padding: 0 12px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.term-chart {
+  position: relative;
+  height: 300px;
+}
+@media (min-width: 768px) {
+  .term-chart {
+    height: clamp(360px, 52vh, 760px);
+  }
+  .term-tf {
+    margin-left: auto;
+  }
+}
+.term-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.term-scroll {
+  overflow-x: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.term-table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.term-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--border);
+  white-space: nowrap;
+}
+.term-table td {
+  height: 44px;
+  padding: 0 10px;
+  border-bottom: 0.5px solid var(--border);
+  white-space: nowrap;
+}
+.term-table td.r {
+  text-align: right;
+}
+.term-table .term-acct {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (min-width: 768px) {
+  .term-table .term-acct {
+    max-width: 240px;
+  }
+}
+.term-table tbody tr {
+  cursor: pointer;
+}
+.term-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+.term-table tbody tr[data-on] {
+  background: var(--indigo-dim);
+  box-shadow: inset 3px 0 0 var(--indigo);
+}
+.term-table tbody tr:focus-visible {
+  outline-offset: -2px;
+}
+.term-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  padding: 10px 16px;
+  border-top: 0.5px solid var(--border);
+  font-size: 14px;
+}
