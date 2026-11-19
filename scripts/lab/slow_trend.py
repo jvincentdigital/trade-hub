@@ -470,7 +470,7 @@ def report(ev, ev_on, data, files, filled):
         elif x['line'] == 2:
             vt = 'total %s, %d of 7 years above zero' % (pct(v['total']), v['years_above'])
         elif x['line'] == 3:
-            vt = 'rule %s, always long %s' % (pct(v['total']), pct(v['always_long']))
+            vt = 'rule %s, always long %s' % (pct(v['rule']), pct(v['always_long']))
         elif x['line'] == 4:
             vt = 'average %s a month; 95th percentile of luck %s; ahead of %d of 1,000' % (pct(v['mean'], 3), pct(v['p95'], 3), v['runs_below'])
         else:
