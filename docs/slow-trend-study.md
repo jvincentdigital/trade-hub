@@ -156,7 +156,50 @@ The download can be automated, so no rate is entered by hand.
 
 ## Results
 
-Not run yet.
+Run on 2026-11-19 from commit `f10eeec` plus one fix. The first run stopped
+with an error in the report code (a wrong key name) after the self-test and
+before any result was written or printed; the fix (commit after `f10eeec`, the
+key name only) was pushed and the run repeated. Output:
+`~/.local/share/trade-hub/slow-trend/results/` (`slow-trend.md`,
+`slow-trend.json`). Daily closes: `~/.local/share/trade-hub/slow-trend/daily/`,
+built from the clock-repaired 1-minute files, 2005 (gold 2009, the index late
+2010) to 2026-10-30; the 2026 monthly files passed the clock check.
+
+**"Not there."** Four of the five lines fail.
+
+| Line | Value | Holds |
+| --- | --- | --- |
+| 1. 2010 to 2025: average above zero with t of 2 or more | +0.028% a month, t 0.25 | no |
+| 2. 2019 to 2025: total above zero, 4 of 7 years | +7.6%, 5 of 7 years | holds |
+| 3. 2010 to 2025: ahead of always long | +5.5% against +19.3% | no |
+| 4. 2010 to 2025: above the 95th percentile of luck | ahead of 709 of 1,000 runs (the 95th percentile is +0.122% a month) | no |
+| 5. 2010 to 2025: above zero with markup and costs doubled | -13.8% | no |
+
+Sized portfolio, monthly results summed, after costs and financing:
+
+| Period | Months | Average a month | t | Total | Worst drop |
+| --- | --- | --- | --- | --- | --- |
+| 2006 to 2009 (the papers' years) | 47 | +0.27% | 0.95 | +12.7% | -7.7% |
+| 2010 to 2025 | 192 | +0.03% | 0.25 | +5.5% | -13.1% |
+| 2019 to 2025 | 84 | +0.09% | 0.54 | +7.6% | -13.1% |
+| 2026, January to October (own line) | 10 | -0.07% | -0.16 | -0.7% | -4.2% |
+
+- **Over sixteen years the rule made about +5.5% in all**, a third of a
+  percent a year, while simply holding the same markets made +19.3%. The
+  plain version (size 1) made +9.9%.
+- **By market, 2010 to 2025:** it lost on the three dollar and pound pairs
+  (EUR/USD -48.8%, GBP/USD -67.9%, EUR/GBP -37.9%) and made money where the
+  market simply rose for years (USD/JPY +63.6%, gold +58.5%, the index
+  +78.2%), in each case less than always long did (+94.6%, +84.6%,
+  +114.3%).
+- **Costs, one line:** they decide line 5: the doubled markup and costs take
+  the total from +5.5% to -13.8%.
+- With the overnight rates (the second look) the reading is the same: +5.9%,
+  t 0.27, "Not there".
+
+So the papers' rule, on these six markets after 2009, is what its long
+critics say: the trend gain left is about what the costs and the financing
+take, and it lags holding.
 
 ## Amendment 3: how the plan is read where it leaves a choice (2026-11-19, before any return was computed)
 
