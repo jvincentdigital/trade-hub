@@ -224,7 +224,14 @@ function HistoryRow(props: {
         }}
       >
         <span
-          style={{ gridArea: 'mk', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
+          style={{
+            gridArea: 'mk',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '4px 8px',
+            minWidth: 0,
+          }}
         >
           <strong style={{ fontSize: FS.md, fontWeight: 600, whiteSpace: 'nowrap' }}>{name}</strong>
           <span
