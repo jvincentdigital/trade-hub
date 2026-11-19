@@ -1,12 +1,20 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, TrendingUp, BookOpen, Scale, Wallet } from 'lucide-react'
+import {
+  LayoutDashboard,
+  TrendingUp,
+  BookOpen,
+  Scale,
+  Wallet,
+  ChartCandlestick,
+} from 'lucide-react'
 
 // Crypto and Watchlist are off the nav (John, 2026-11-12); /crypto and
 // /watchlist still open when typed. Race became Compare (/race redirects).
 const nav = [
   { href: '/', label: 'Today', icon: LayoutDashboard },
+  { href: '/terminal', label: 'Terminal', icon: ChartCandlestick },
   { href: '/forex', label: 'Forex', icon: TrendingUp },
   { href: '/strategies', label: 'Strategies', icon: BookOpen },
   { href: '/demo', label: 'Demo', icon: Wallet },

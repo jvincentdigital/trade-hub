@@ -22,11 +22,13 @@ describe('nav', () => {
     // Each item twice: the desktop sidebar and the phone bottom bar.
     expect(labels).toEqual([
       'Today',
+      'Terminal',
       'Forex',
       'Strategies',
       'Demo',
       'Compare',
       'Today',
+      'Terminal',
       'Forex',
       'Strategies',
       'Demo',
