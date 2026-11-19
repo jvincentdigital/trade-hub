@@ -157,3 +157,45 @@ The download can be automated, so no rate is entered by hand.
 ## Results
 
 Not run yet.
+
+## Amendment 3: how the plan is read where it leaves a choice (2026-11-19, before any return was computed)
+
+Written with the script (`scripts/lab/slow_trend.py`), before it was run on
+any price. Nothing here was chosen by looking at a result.
+
+1. **The trading day.** A 1-minute candle belongs to the New York date of its
+   stamp plus 7 hours, so candles from 17:00 New York on count for the next
+   day; a day's close is the close of its last candle. A month's close is the
+   close of its last trading day.
+2. **Yearly volatility** for the calm size: the standard deviation (n - 1)
+   of the 60 daily log changes that end with the month's last close, times
+   the square root of 261 (weekdays in a year). A size is 10% divided by
+   that, at most 3.
+3. **A tie** (the month-end close exactly equal to the one 12 months before)
+   gives no position that month.
+4. **Trading cost** is half a round trip on every change of the signed
+   position, which is the plan's rule in one formula: a change of direction
+   moves the position by twice its size and pays one round trip; a change of
+   size pays half a round trip on the change; opening the first position
+   pays half a round trip.
+5. **A month counts for a market** when that market has closes at the end of
+   the month, of the month before, and of the month 13 months back.
+6. **Results are monthly fractions of the account, summed** (no compounding).
+   "Ends ahead of always long" (line 3) compares the two sums over 2010 to
+   2025. "Still above zero" (line 5) is that sum with both the markup and the
+   trading costs doubled. A year is above zero (line 2) when the sum of its
+   months is.
+7. **Luck.** Python's `random.Random(1)`. For each of the 1,000 runs and each
+   market in the order EUR/USD, GBP/USD, USD/JPY, EUR/GBP, gold, the index, a
+   whole number of months from 13 to 120 is drawn; the market's own sequence
+   of long and short months is moved by it, wrapped around over the months
+   it has positions. Sizes stay with their calendar months. The 95th
+   percentile is the 950th of the 1,000 run averages, sorted; line 4 asks the
+   rule's average to be strictly above it.
+8. **The euro rate.** The BIS series for the euro area is the main
+   refinancing rate up to 17 September 2024 and the deposit facility rate
+   after it, the ECB's own steering rate since then. It is used as
+   published; from September 2024 the two differ by 0.15 point.
+9. **2026** (Amendment 1): the source's monthly files for January to October
+   2026, converted and clock-checked the same way as the yearly files (weekly
+   reopen 17:00 New York for the pairs, 18:00 for gold and the index).
