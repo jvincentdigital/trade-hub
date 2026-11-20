@@ -382,6 +382,17 @@ const plainTick = (m: FundedTick): FundedTick => ({
   confirm: undefined,
 })
 
+/** The strategy's own tick for the market, else another strategy's as a plain one (also used by ./combined.ts). */
+export function ownTick(
+  markets: FundedTick[],
+  strategy: string,
+  market: string,
+): FundedTick | undefined {
+  const here = markets.filter((m) => m.market === market)
+  const own = here.find((m) => m.strategy === strategy) ?? here.find((m) => m.strategy == null)
+  return own ?? (here[0] && plainTick(here[0]))
+}
+
 /**
  * One check for a funded test:
  * 1. Each open trade closes if a later path candle of its market hit its stop
@@ -405,12 +416,7 @@ export function stepFunded(
   feeds: readonly string[] = [FUNDED_SIGNALS_FROM],
 ): FundedStep {
   const prices = { ...lastPrices, ...Object.fromEntries(markets.map((m) => [m.market, m.price])) }
-  /** The strategy's own tick for the market, else another strategy's as a plain one. */
-  const tickOf = (strategy: string, market: string): FundedTick | undefined => {
-    const here = markets.filter((m) => m.market === market)
-    const own = here.find((m) => m.strategy === strategy) ?? here.find((m) => m.strategy == null)
-    return own ?? (here[0] && plainTick(here[0]))
-  }
+  const tickOf = (strategy: string, market: string) => ownTick(markets, strategy, market)
   let balance = f.balance
   const open: FundedTrade[] = []
   const closed: ClosedFundedTrade[] = []

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { bookClose, createRaceState, type LiveTrade, type RaceState } from './live'
 import { createFunded } from './funded'
+import { createCombined } from './combined'
 import {
   ALL,
   booksFor,
@@ -72,6 +73,17 @@ describe('accounts', () => {
     expect(booksFor(s, ALL).map((b) => b.id)).toEqual(['a', 'b'])
     const [f] = booksFor(s, 'funded')
     expect(f.label).toBe('Funded test $10K (copies London v1)')
+  })
+
+  it('lists the combined account once it started, outside All', () => {
+    const s = race()
+    expect(validAccount(s, 'combined')).toBe(ALL)
+    s.combined = createCombined(0)
+    expect(booksFor(s, ALL).map((b) => b.id)).toEqual(['a', 'b'])
+    const [c] = booksFor(s, 'combined')
+    expect(c.label).toBe('Combined, no contradicting trades')
+    expect(c.balance).toBe(10_000)
+    expect(validAccount(s, 'combined')).toBe('combined')
   })
 
   it('falls back to All when the saved account is gone', () => {

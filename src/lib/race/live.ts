@@ -117,6 +117,33 @@ export const fundedSchema = z.object({
 })
 export type FundedState = z.infer<typeof fundedSchema>
 
+/** A signal the combined account did not take, with the reason in plain words (./combined.ts). */
+export const combinedRefusalSchema = z.object({
+  /** Unix seconds of the check. */
+  at: z.number(),
+  strategy: z.string(),
+  market: z.string(),
+  direction: sideSchema,
+  reason: z.string(),
+})
+export type CombinedRefusal = z.infer<typeof combinedRefusalSchema>
+
+/** The combined account (owner, 2026-11-20): several strategies' signals, never two trades that bet against each other. */
+export const combinedSchema = z.object({
+  startMoney: z.number().positive(),
+  /** Milliseconds. */
+  startedAt: z.number(),
+  /** Start money plus every closed trade's net P&L. */
+  balance: z.number(),
+  open: z.array(fundedTradeSchema),
+  closed: z.array(closedFundedTradeSchema),
+  /** Newest signal acted on, per "<strategy>:<market>", so one signal makes one trade. */
+  lastSignal: z.record(z.string(), z.number()),
+  /** Refused signals of the last 7 days, oldest first. */
+  refused: z.array(combinedRefusalSchema),
+})
+export type CombinedState = z.infer<typeof combinedSchema>
+
 export const tickLogSchema = z.object({
   at: z.number(),
   checked: z.number(),
@@ -157,6 +184,8 @@ export const raceStateSchema = z.object({
    * that runs this code.
    */
   fundedB: z.array(fundedSchema).optional(),
+  /** The combined account, no contradicting trades (./combined.ts); started by the first tick that runs this code. */
+  combined: combinedSchema.optional(),
   /** John's calls (./johnsCalls.ts): every call he made, oldest first, with its limit orders. */
   calls: z.array(callSchema).optional(),
 })
