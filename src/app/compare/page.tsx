@@ -40,6 +40,7 @@ import {
   sizeLabel,
   PAUSED_TEXT,
 } from '@/lib/race/funded'
+import { COMBINED, COMBINED_SIGNALS_FROM, combinedView } from '@/lib/race/combined'
 import { useFundedSize } from '@/lib/hooks/useFundedSize'
 import { SizeSwitch } from '@/components/home/SizeSwitch'
 import { sizeText, sizingLine, sizingOf, usdPerQuoteFor } from '@/lib/sizing/sizing'
@@ -139,6 +140,7 @@ export default function ComparePage() {
       </div>
 
       <FundedLive />
+      <CombinedLive />
       <Comparison />
       <PastResults />
     </div>
@@ -795,6 +797,115 @@ function FundedLive() {
           )}
         </div>
       ))}
+    </section>
+  )
+}
+
+/** The combined account (src/lib/race/combined.ts): several strategies' signals, never two trades that bet against each other. */
+function CombinedLive() {
+  const { data } = useSWR('/api/race', fetcher, { refreshInterval: 60_000 })
+  const [now] = useState(() => Date.now())
+  const state = data?.state ?? null
+  if (!state) return null
+  const nowSec = Math.floor(now / 1000)
+  const c = state.combined
+  const v = c ? combinedView(c, state.prices, nowSec) : null
+  const nameOf = (id: string) => state.strategies[id]?.name ?? id
+  const week = (c?.refused ?? [])
+    .filter((r) => r.at >= nowSec - COMBINED.refusedDays * 86_400)
+    .reverse()
+  return (
+    <section style={{ ...card, marginTop: 16 }} aria-labelledby="combined-title">
+      <div style={sectionHead}>
+        <h2 id="combined-title" style={h2}>
+          {COMBINED.label}
+        </h2>
+      </div>
+      <p style={small}>
+        {`One ${money(COMBINED.startMoney)} play account that takes the signals of ${COMBINED_SIGNALS_FROM.length} strategies, in a set order, and never holds two trades that bet against each other. A new trade is refused when it would hold a currency the other way from an open trade (a GBP/USD buy is long the pound, so a GBP/JPY sell is refused), when it is the same bet the other way round as an open trade (EUR/USD and GBP/USD, EUR/JPY and GBP/JPY, USD/JPY against EUR/USD), when ${COMBINED.maxSameWay} open trades already go the same way on one of its currencies, or when ${COMBINED.sizing.maxOpen} are open. ${COMBINED.sizing.riskPct}% risk per trade, rounded down to 0.01 lot; each trade keeps the stop, targets and exits of the strategy that sent it. No new trades once the day is down ${COMBINED.dayStopPct}% of its opening balance.`}
+      </p>
+      {!c || !v ? (
+        <p style={{ fontSize: 13, marginTop: 8 }}>
+          {`Starts with ${money(COMBINED.startMoney)} at the next race check.`}
+        </p>
+      ) : (
+        <>
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 12 }}>
+            {`Started ${when(c.startedAt / 1000)}`}
+          </h3>
+          <p style={{ fontSize: 13, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+            <b>{money(v.money, { cents: true })}</b>{' '}
+            <span style={{ color: color(v.result) }}>
+              {money(v.result, { sign: true, cents: true })}
+            </span>
+            {` · balance ${money(c.balance)} · day loss ${money(v.dayLoss)}${v.dayStopped ? ' · no new trades today' : ''}`}
+          </p>
+          <TradeList
+            title={`Open trades (${c.open.length}), P&L at the last check`}
+            trades={c.open.map((t) => ({
+              key: `${t.market}-${t.entryTime}`,
+              market: t.market,
+              direction: t.direction,
+              time: t.entryTime,
+              how: `opened from ${nameOf(t.strategy)}`,
+              pnl: openPnl(t, state.prices[t.market]),
+              size: sizeOf(t),
+              checks: t.checks,
+            }))}
+            empty="No open trades."
+            checklist
+          />
+          <TradeList
+            title={`Closed trades (${c.closed.length}), fees included`}
+            trades={[...c.closed].reverse().map((t) => ({
+              key: `${t.market}-${t.entryTime}${t.part1Of ? '-part' : ''}`,
+              market: t.market,
+              direction: t.direction,
+              time: t.exitTime,
+              how: `${liveHow(t)}, from ${nameOf(t.strategy)}`,
+              pnl: t.pnl,
+              size: sizeOf(t),
+              checks: t.checks,
+            }))}
+            empty="No closed trades yet."
+            checklist
+          />
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>
+              {`Refused signals, last ${COMBINED.refusedDays} days (${week.length})`}
+            </p>
+            {week.length === 0 ? (
+              <p style={small}>No refused signals.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {week.map((r, i) => (
+                  <li key={`${r.at}-${r.strategy}-${r.market}-${i}`} style={tradeRow}>
+                    <span
+                      style={{
+                        color: r.direction === 'long' ? 'var(--green)' : 'var(--red)',
+                        fontWeight: 600,
+                        width: 34,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {r.direction === 'long' ? 'BUY' : 'SELL'}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {sym(r.market)}{' '}
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {`from ${nameOf(r.strategy)}, ${when(r.at)}`}
+                      </span>
+                      <span style={sizeLine}>
+                        {r.reason.replace(/from ([a-z0-9-]+)\)/, (_, id) => `from ${nameOf(id)})`)}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </section>
   )
 }

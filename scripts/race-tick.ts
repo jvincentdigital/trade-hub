@@ -91,6 +91,14 @@ import {
   type FundedTick,
 } from '../src/lib/race/funded'
 import {
+  COMBINED,
+  COMBINED_SIGNALS_FROM,
+  combinedView,
+  createCombined,
+  refusalLine,
+  stepCombined,
+} from '../src/lib/race/combined'
+import {
   createRaceState,
   MAX_TICK_LOG,
   stepStrategy,
@@ -483,6 +491,9 @@ async function tick() {
   // flag). Other markets get a plain tick, for a trade opened before a switch.
   const candidates: FundedCandidate[] = []
   const fundedTicks: FundedTick[] = []
+  // The combined account (src/lib/race/combined.ts) the same way, fed by COMBINED_SIGNALS_FROM.
+  const combinedCandidates: FundedCandidate[] = []
+  const combinedTicks: FundedTick[] = []
   for (const p of PLANS) {
     const ticks: MarketTick[] = []
     for (const id of p.markets) {
@@ -515,6 +526,17 @@ async function tick() {
           candidates.push({ strategy: p.id, market: id, signal: t.signal, reanchor: t.reanchor })
       } else if (p.kind !== 'lab' && !fundedTicks.some((x) => x.market === id))
         fundedTicks.push({ ...t, strategy: p.id })
+      if (COMBINED_SIGNALS_FROM.includes(p.id)) {
+        combinedTicks.push({ ...t, strategy: p.id })
+        if (t.signal)
+          combinedCandidates.push({
+            strategy: p.id,
+            market: id,
+            signal: t.signal,
+            reanchor: t.reanchor,
+          })
+      } else if (p.kind !== 'lab' && !combinedTicks.some((x) => x.market === id))
+        combinedTicks.push({ ...t, strategy: p.id })
     }
     const r = stepStrategy(state.strategies[p.id], ticks, nowSec, state.sizing, blockNew)
     state.strategies[p.id] = {
@@ -599,6 +621,46 @@ async function tick() {
     state = withFunded(state, stepped, test.id)
   }
 
+  // The combined account: several strategies' signals, never two trades that
+  // bet against each other. Started fresh by the first check that runs this code.
+  if (!state.combined) {
+    state.combined = createCombined(Date.now(), combinedCandidates)
+    console.log(
+      `  ${COMBINED.name} started with $${COMBINED.startMoney.toLocaleString('en-US')}; it trades signals that come after now`,
+    )
+  }
+  {
+    const r = stepCombined(
+      state.combined,
+      combinedTicks,
+      combinedCandidates,
+      nowSec,
+      blockNew,
+      lastPrices,
+    )
+    closed += r.closed.length
+    opened += r.opened.length
+    for (const c of r.closed)
+      console.log(`  CLOSE ${COMBINED.name} ${c.market} ${c.reason} ${money(c.pnl)}`)
+    for (const t of r.opened) {
+      const inst = getInstrument(t.market)
+      const size = sizingOf({ inst, ...t, target: t.takeProfit })
+      const sizeWords = inst
+        ? sizingLine(inst, size)
+        : `${t.units.toFixed(3)} units, $${tradeRisk(t).toFixed(2)} at the stop`
+      console.log(
+        `  OPEN  ${COMBINED.name} ${t.market} ${t.direction} at ${t.entry} (signal from ${t.strategy}): ${sizeWords}`,
+      )
+    }
+    for (const x of r.refused) console.log(`  ${refusalLine(x)}`)
+    const signalOf = (t: FundedTrade) =>
+      combinedCandidates.find((c) => c.strategy === t.strategy && c.market === t.market)?.signal
+    state.combined = {
+      ...r.combined,
+      open: withChecks(r.combined.open, r.opened, (t) => checkOf(t, signalOf(t))),
+    }
+  }
+
   // The funded tests checked once more at the end of the check, after the new trades.
   const closePrices = state.prices
   for (const test of FUNDED_TESTS)
@@ -636,6 +698,12 @@ async function tick() {
     const v = fundedView(acc, state.prices, nowSec)
     console.log(
       `  ${acc.label.padEnd(34)} $${v.money.toFixed(2).padStart(9)}  ${money(v.result)}  open ${v.openCount}  closed ${acc.closed.length}  ${v.status}, day loss $${v.dayLoss.toFixed(2)} of $${v.dayLimit.toFixed(2)}, ${v.days} of ${FUNDED.minDays} days`,
+    )
+  }
+  if (state.combined) {
+    const v = combinedView(state.combined, state.prices, nowSec)
+    console.log(
+      `  ${COMBINED.name.padEnd(34)} $${v.money.toFixed(2).padStart(9)}  ${money(v.result)}  open ${v.openCount}  closed ${state.combined.closed.length}  day loss $${v.dayLoss.toFixed(2)}${v.dayStopped ? ' (day stop)' : ''}`,
     )
   }
   console.log(`Saved ${FILE} (play money only)`)

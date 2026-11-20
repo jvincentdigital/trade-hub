@@ -99,7 +99,7 @@ export default function TerminalPage() {
     [setSaved],
   )
 
-  const { strategies, funded } = useMemo(() => allBooks(state), [state])
+  const { strategies, funded, combined } = useMemo(() => allBooks(state), [state])
   const books = useMemo(() => booksFor(state, account), [state, account])
   const open = useMemo(
     () => openRows(books, (m) => priceOf(m, prices, state?.prices)),
@@ -258,6 +258,15 @@ export default function TerminalPage() {
           {funded.length > 0 && (
             <optgroup label="Funded tests">
               {funded.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {combined.length > 0 && (
+            <optgroup label="Combined account">
+              {combined.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.label}
                 </option>

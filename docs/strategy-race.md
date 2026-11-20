@@ -452,6 +452,82 @@ Tick log names: `Funded test v1 + breakouts <size>`, for example:
   PASS  Funded test v1 + breakouts $10K GBP-USD (london-breakout): a GBP-USD trade is already open (from johns-london-v1)
 ```
 
+## Combined account (no contradicting trades)
+
+Asked for by the owner on 2026-11-20, after seeing race accounts bet against
+each other (one bought GBP/USD while another sold GBP/JPY). One $10,000 play
+account that takes the signals of a chosen list of strategies and never holds
+two trades that bet against each other. Code: `src/lib/race/combined.ts`
+(pure, tested in `combined.test.ts`), stored as `combined` in `race.json`,
+started fresh by the first tick that runs this code ("Combined started with
+$10,000; it trades signals that come after now"). Every signal out there at
+that moment counts as used.
+
+**The signal list: the owner picks it in the Saturday 2026-11-21 review.**
+It is one constant, `COMBINED_SIGNALS_FROM` in `combined.ts`, in priority
+order. For now it holds every strategy whose signals open trades in its own
+race account at each check: John's London v1, the lab's top 5, the London
+breakout, then the 9 built-in rules. Claude's picks (opened by its own script)
+and John's calls (his own orders) are not in the check's signals, so they are
+not in it. When two strategies signal in the same check, the one higher in
+the list is offered first.
+
+| Rule             | Value                                                                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Start            | $10,000, play money                                                                                                                              |
+| Risk per trade   | 2% of the balance, sized on the fill-to-stop distance and rounded down to 0.01 lot, like the funded tests                                        |
+| Levels and exits | each trade keeps its own strategy's stop, targets and exits (v1: half at TP1, news close, lone-wick rule on GBP/USD)                             |
+| Same market      | never two open trades in one market                                                                                                              |
+| a. Opposite side | refused when it holds any currency the other way from an open trade                                                                              |
+| b. Same bet      | refused when it is the same bet as an open trade, the other way round (table below)                                                              |
+| c. Caps          | at most 2 open trades the same way on any one currency (the dollar too), at most 4 open in all                                                   |
+| Day stop         | no new trade once the day is down 4% of its opening balance (FTMO's day, midnight in Prague, `session.ts`)                                       |
+| Also             | the entry window (02:00 to 12:30 AST on weekdays) and the race's market rules: Bitcoin only among crypto, nothing on USD/JPY, NZD/USD or GBP/JPY |
+
+No pass or fail, no 3-a-day limit and no worst-case check: simpler than the
+funded tests on purpose.
+
+**Legs.** Each market splits into two currencies (`legsOf`): a buy is long the
+first and short the second, a sell the other way. EUR/USD is EUR against USD,
+EUR/GBP and GBP/JPY their two currencies, gold (`pax-gold`) XAU against USD,
+bitcoin BTC against USD, US30 against USD. So an open GBP/USD buy is long GBP
+and short USD: a GBP/JPY sell (short GBP) is refused, and so is a gold sell
+(long USD).
+
+**Same bet table** (`SAME_BET`), measured on daily changes 2019 to 2025
+(levels check, Part 5, `~/.local/share/trade-hub/levels-results/check/check.md`):
+
+| Markets             | Daily correlation | Same bet as                       |
+| ------------------- | ----------------- | --------------------------------- |
+| EUR/USD and GBP/USD | +0.70             | a buy of one, a buy of the other  |
+| EUR/JPY and GBP/JPY | +0.76             | a buy of one, a buy of the other  |
+| USD/JPY and EUR/USD | -0.49             | a buy of one, a sell of the other |
+
+With these three groups every "same bet the other way round" also shares a
+currency on the other side, so rule a would refuse it too. Rule b is checked
+first so the log names the real reason, and it still holds if a group without
+a shared currency is added later.
+
+The checks run in this order: entry window, day stop, same market, same bet,
+opposite side, the caps, the market rules, then the sizing. A refused signal
+is used (not offered again) and logged in the tick log:
+
+```
+  REFUSED Combined: GBP-JPY sell from london-breakout: short GBP against the open GBP-USD buy
+  REFUSED Combined: GBP-USD sell from london-breakout: the same bet as the open EUR-USD buy, the other way round: EUR-USD and GBP-USD move together (+0.70 on daily changes, 2019 to 2025)
+  REFUSED Combined: USD-CHF buy from mfx-ema-12-36-pullback: long USD is already in 2 open trades (at most 2 the same way on one currency)
+  OPEN  Combined GBP-USD long at 1.3123 (signal from johns-london-v1): 0.15 lots ...
+```
+
+The refusals of the last 7 days are also kept in `combined.refused` and
+listed under its card on Compare (time, market, side, source, reason). The
+Terminal page has it in the account filter as "Combined, no contradicting
+trades"; "All accounts" stays the strategy accounts only, since this account
+copies their signals.
+
+Not built yet: Close now ids for its trades on Today, and `race-close-all.ts`
+and `make funded-reset` do not touch it.
+
 ## Trading day: entries 02:00 to 12:30, daily close 12:45 AST (John, 2026-11-11)
 
 **The daily close ended on 2026-11-12** (next section). The entry window
@@ -855,6 +931,7 @@ hourly job is not installed yet".
 | `src/lib/race/leaderboard.ts`   | Pure: `portfolioBacktest`, `scoreStrategy`, ranking, `WINDOW_DAYS`                        |
 | `src/lib/race/live.ts`          | Pure: state schema, old-file move, `stepStrategy`, `summarize`, `closeAll`, `entryLevels` |
 | `src/lib/race/funded.ts`        | Pure: the funded test (limits, `stepFunded`, `checkFunded`, `fundedView`)                 |
+| `src/lib/race/combined.ts`      | Pure: the combined account, no contradicting trades (`stepCombined`, `contradiction`)     |
 | `src/lib/race/session.ts`       | Pure: entry window, FTMO's Prague day                                                     |
 | `src/lib/race/closeRequests.ts` | Pure: Close now ids and booking (`bookCloseRequests`)                                     |
 | `src/lib/race/johnsCalls.ts`    | Pure: John's calls (`planCall`, `stepCalls`, `cancelCall`); shapes in `callSchema.ts`     |

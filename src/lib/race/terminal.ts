@@ -3,6 +3,7 @@ import { getInstrument, type PriceMap } from '../paper/instruments'
 import { hasIntraday } from '../feeds'
 import { pipSize } from '../sizing/sizing'
 import { fundedAccountId, fundedAccounts, fundedLabel, FUNDED_TESTS } from './funded'
+import { COMBINED } from './combined'
 import { openPnl, REASON_TEXT, type ClosedLiveTrade, type LiveTrade, type RaceState } from './live'
 
 // The Terminal page (src/app/terminal): a chart on top, trades below, like
@@ -20,9 +21,13 @@ export interface Book {
 
 export const ALL = 'all'
 
-/** The 18 strategy accounts, then every funded test size (they copy London v1). */
-export function allBooks(state: RaceState | null): { strategies: Book[]; funded: Book[] } {
-  if (!state) return { strategies: [], funded: [] }
+/** The 18 strategy accounts, then every funded test size (they copy London v1), then the combined account. */
+export function allBooks(state: RaceState | null): {
+  strategies: Book[]
+  funded: Book[]
+  combined: Book[]
+} {
+  if (!state) return { strategies: [], funded: [], combined: [] }
   const strategies = Object.values(state.strategies).map((s) => ({
     id: s.ruleId,
     label: s.name,
@@ -39,21 +44,33 @@ export function allBooks(state: RaceState | null): { strategies: Book[]; funded:
       closed: f.closed,
     })),
   )
-  return { strategies, funded }
+  const c = state.combined
+  const combined = c
+    ? [
+        {
+          id: COMBINED.id,
+          label: COMBINED.label,
+          balance: c.balance,
+          open: c.open,
+          closed: c.closed,
+        },
+      ]
+    : []
+  return { strategies, funded, combined }
 }
 
-/** "All accounts" is the strategy accounts only: the funded tests copy v1, so adding them would count its trades twice. */
+/** "All accounts" is the strategy accounts only: the funded tests and the combined account copy them, so adding them would count trades twice. */
 export function booksFor(state: RaceState | null, account: string): Book[] {
-  const { strategies, funded } = allBooks(state)
+  const { strategies, funded, combined } = allBooks(state)
   if (account === ALL) return strategies
-  return [...strategies, ...funded].filter((b) => b.id === account)
+  return [...strategies, ...funded, ...combined].filter((b) => b.id === account)
 }
 
 /** The account picked, or All when the saved one is gone. */
 export function validAccount(state: RaceState | null, saved: string): string {
   if (!state) return saved
-  const { strategies, funded } = allBooks(state)
-  return [...strategies, ...funded].some((b) => b.id === saved) ? saved : ALL
+  const { strategies, funded, combined } = allBooks(state)
+  return [...strategies, ...funded, ...combined].some((b) => b.id === saved) ? saved : ALL
 }
 
 /**
